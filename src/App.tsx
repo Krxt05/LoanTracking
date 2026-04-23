@@ -3,7 +3,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { fetchAppData, AppData, LoanRecord, updateLoanStatus, createNewLoan, editExistingLoan } from './services/dataService';
 import { formatCurrency, formatNumber, parseThaiDate } from './lib/utils';
-import { TrendingUp, TrendingDown, AlertCircle, CalendarClock, Activity, FileSpreadsheet, List, X, CheckCircle2, UserX, Wallet, RefreshCcw, LineChart, Bell, BellOff, Home, BarChart2, Languages, Calendar } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertCircle, CalendarClock, Activity, FileSpreadsheet, List, X, CheckCircle2, UserX, Wallet, RefreshCcw, LineChart, Bell, BellOff, Home, BarChart2, Languages } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, getNotificationPermission, sendTestNotification } from './services/pushService';
@@ -27,9 +27,7 @@ export default function App() {
   const [showNotifModal, setShowNotifModal] = useState(false);
   const [isSendingTestNotif, setIsSendingTestNotif] = useState(false);
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('lang') as Lang) || 'th');
-  const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'calendar' | 'loans' | 'analytics'>('dashboard');
-  const [selectedCalDate, setSelectedCalDate] = useState<Date>(new Date());
-  const [newLoanModalMode, setNewLoanModalMode] = useState<'loan' | 'withdraw'>('loan');
+  const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'alerts' | 'loans' | 'analytics'>('dashboard');
 
   const toggleLang = () => {
     setLang(l => { const next = l === 'th' ? 'en' : 'th'; localStorage.setItem('lang', next); return next; });
@@ -591,73 +589,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Calendar Tab Content: Full Monthly Schedule */}
-        <div className={activeMobileTab === 'calendar' ? 'block' : 'hidden md:hidden'}>
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-6">
-            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-              <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-emerald-600" /> {t('navCalendar', lang)}
-              </h2>
-              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                {formatToThaiStr(selectedCalDate)}
-              </span>
-            </div>
-            <div className="p-4 flex flex-col items-center justify-center">
-              <DatePicker
-                selected={selectedCalDate}
-                onChange={(date) => date && setSelectedCalDate(date)}
-                inline
-                calendarClassName="mobile-full-calendar"
-                highlightDates={data?.loans.map(l => parseThaiDate(l.dueDate)).filter(d => d !== null) as Date[]}
-                dayClassName={(date) => {
-                  const hasLoans = data?.loans.some(l => {
-                    const d = parseThaiDate(l.dueDate);
-                    return d && d.getDate() === date.getDate() && d.getMonth() === date.getMonth() && d.getFullYear() === date.getFullYear();
-                  });
-                  return hasLoans ? "has-loan-dot" : "";
-                }}
-              />
-            </div>
-            <div className="bg-slate-50 p-4 border-t border-slate-100 min-h-[150px]">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
-                {t('due', lang)}: {formatToThaiStr(selectedCalDate)}
-              </h3>
-              <div className="space-y-3">
-                {data?.loans.filter(l => {
-                  const d = parseThaiDate(l.dueDate);
-                  return d && d.getDate() === selectedCalDate.getDate() && d.getMonth() === selectedCalDate.getMonth() && d.getFullYear() === selectedCalDate.getFullYear();
-                }).length === 0 ? (
-                  <div className="py-8 text-center text-slate-400 text-sm italic">
-                    {t('noCollectionsToday', lang)}
-                  </div>
-                ) : (
-                  data?.loans
-                    .filter(l => {
-                      const d = parseThaiDate(l.dueDate);
-                      return d && d.getDate() === selectedCalDate.getDate() && d.getMonth() === selectedCalDate.getMonth() && d.getFullYear() === selectedCalDate.getFullYear();
-                    })
-                    .map(l => (
-                      <div
-                        key={l.id}
-                        onClick={() => setSelectedLoan(l)}
-                        className="flex justify-between items-center p-3 bg-white rounded-xl border border-slate-200 shadow-sm active:scale-[0.98] transition-all"
-                      >
-                        <div>
-                          <div className="font-bold text-slate-800 text-sm">{l.name}</div>
-                          <div className="text-[10px] text-slate-500">{l.id} • {l.status}</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-black text-emerald-600">{formatCurrency(l.totalExpected)}</div>
-                          <div className="text-[10px] text-slate-400">{l.borrowDate}</div>
-                        </div>
-                      </div>
-                    ))
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Analytics Tab Content: Charts & Insights */}
         <div className={activeMobileTab === 'analytics' ? 'block' : 'hidden md:block'}>
           <h2 className="text-base font-bold mb-3 text-slate-800">{t('portfolioAnalytics', lang)}</h2>
@@ -797,222 +728,300 @@ export default function App() {
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex md:hidden z-40 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
         <button
           onClick={() => { setShowNewLoanModal(false); setShowWithdrawModal(false); setActiveMobileTab('dashboard'); }}
-          className={`flex-1 flex flex-col items-center py-2 gap-1 text-[10px] font-bold transition-all active:scale-90 ${
+          className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold transition-colors ${
             activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'
           }`}
         >
-          <Home className={`w-6 h-6 ${activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          <Home className={`w-5 h-5 ${activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'}`} />
           {t('navDashboard', lang)}
         </button>
         <button
-          onClick={() => { setActiveMobileTab('calendar'); }}
-          className={`flex-1 flex flex-col items-center py-2 gap-1 text-[10px] font-bold transition-all active:scale-90 ${
-            activeMobileTab === 'calendar' ? 'text-emerald-600' : 'text-slate-400'
-          }`}
-        >
-          <Calendar className={`w-6 h-6 ${activeMobileTab === 'calendar' ? 'text-emerald-600' : 'text-slate-400'}`} />
-          {t('navCalendar', lang)}
-        </button>
-        <button
-          onClick={() => { setNewLoanModalMode('loan'); setShowNewLoanModal(true); }}
-          className="flex-1 flex flex-col items-center justify-center -mt-8"
-        >
-          <div className="w-14 h-14 bg-emerald-600 rounded-2xl flex items-center justify-center shadow-xl shadow-emerald-200 border-4 border-white active:scale-95 transition-transform">
-            <Activity className="w-7 h-7 text-white" />
-          </div>
-        </button>
-        <button
           onClick={() => { setActiveMobileTab('loans'); }}
-          className={`flex-1 flex flex-col items-center py-2 gap-1 text-[10px] font-bold transition-all active:scale-90 ${
+          className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold transition-colors ${
             activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'
           }`}
         >
-          <List className={`w-6 h-6 ${activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          <List className={`w-5 h-5 ${activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'}`} />
           {t('navLoans', lang)}
         </button>
         <button
+          onClick={() => setShowNewLoanModal(true)}
+          className="flex-1 flex flex-col items-center py-2.5 gap-0.5"
+        >
+          <div className="w-11 h-11 -mt-5 bg-emerald-600 rounded-full flex items-center justify-center shadow-lg shadow-emerald-300">
+            <Activity className="w-5 h-5 text-white" />
+          </div>
+        </button>
+        <button
+          onClick={() => setShowWithdrawModal(true)}
+          className="flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold text-slate-400 hover:text-rose-600 transition-colors"
+        >
+          <Wallet className="w-5 h-5" />
+          {t('withdraw', lang)}
+        </button>
+        <button
           onClick={() => setActiveMobileTab('analytics')}
-          className={`flex-1 flex flex-col items-center py-2 gap-1 text-[10px] font-bold transition-all active:scale-90 ${
+          className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold transition-colors ${
             activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'
           }`}
         >
-          <BarChart2 className={`w-6 h-6 ${activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          <BarChart2 className={`w-5 h-5 ${activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'}`} />
           {t('navAnalytics', lang)}
         </button>
       </div>
 
-      {/* Consolidated Action Modal (Loan & Withdraw) */}
-      {showNewLoanModal && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowNewLoanModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-[slideIn_0.2s_ease-out]" onClick={e => e.stopPropagation()}>
-            <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col gap-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
-                  {newLoanModalMode === 'loan' ? <Activity className="text-indigo-600" /> : <Wallet className="text-rose-600" />}
-                  {newLoanModalMode === 'loan' ? t('issueNewLoan', lang) : t('newPayout', lang)}
-                </h3>
-                <button onClick={() => setShowNewLoanModal(false)} className="text-slate-400 hover:text-slate-700 p-1.5 rounded-full hover:bg-slate-200"><X size={20} /></button>
+      {/* Loan Details & Action Modal */}
+      {selectedLoan && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          onClick={() => setSelectedLoan(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh]"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
+              <div>
+                <h2 className="text-2xl font-extrabold text-slate-800 flex items-center gap-2">
+                  {selectedLoan.name}
+                  <button
+                    onClick={() => setIsEditingLoan(!isEditingLoan)}
+                    className={`text-xs px-2.5 py-1 rounded-full font-bold transition-colors ml-2 ${isEditingLoan ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                  >
+                    {isEditingLoan ? t('cancelEdit', lang) : t('editDetails', lang)}
+                  </button>
+                </h2>
+                <div className="flex items-center gap-3 mt-1">
+                  <span className="text-sm font-mono text-slate-500">ID: {selectedLoan.id}</span>
+                  {selectedLoan.isScam ? (
+                    <span className="inline-flex px-2 py-0.5 rounded bg-rose-500 text-white text-xs font-black uppercase shadow-sm">💀 Defaulted</span>
+                  ) : selectedLoan.isWithdrawn ? (
+                    <span className="inline-flex px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-xs font-bold uppercase shadow-sm">Payout</span>
+                  ) : selectedLoan.isPaid ? (
+                    <span className="inline-flex px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 text-xs font-bold uppercase">Paid</span>
+                  ) : selectedLoan.isRenewed ? (
+                    <span className="inline-flex px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 text-xs font-bold uppercase">Renewed</span>
+                  ) : selectedLoan.isOverdue ? (
+                    <span className="inline-flex px-2 py-0.5 rounded bg-rose-100 text-rose-700 text-xs font-bold uppercase">Overdue</span>
+                  ) : (
+                    <span className="inline-flex px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-xs font-bold uppercase">Active</span>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedLoan(null)}
+                className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-200 transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-6 bg-white">
+              {/* Financials Section */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Financial Details</h3>
+
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                  {isEditingLoan ? (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">Principal</label>
+                        <input
+                          type="number"
+                          value={editLoanForm.principal}
+                          onChange={e => setEditLoanForm({ ...editLoanForm, principal: e.target.value })}
+                          className="w-full border border-slate-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">Interest Rate (%)</label>
+                        <input
+                          type="number"
+                          value={editLoanForm.interestRate}
+                          onChange={e => setEditLoanForm({ ...editLoanForm, interestRate: Number(e.target.value) })}
+                          className="w-full border border-slate-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div className="flex justify-between items-center mt-4 pt-4 border-t border-slate-200">
+                        <span className="text-slate-700 font-bold">New Expected</span>
+                        <span className="font-black text-xl text-indigo-600">
+                          {formatCurrency(parseFloat(editLoanForm.principal) + ((parseFloat(editLoanForm.principal) * editLoanForm.interestRate) / 100))}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-slate-500 text-sm">Principal</span>
+                        <span className="font-semibold text-slate-800">{formatCurrency(selectedLoan.principal)}</span>
+                      </div>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-slate-500 text-sm">Interest Rate</span>
+                        <span className="font-semibold text-slate-800">{selectedLoan.interestRate}%</span>
+                      </div>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-slate-500 text-sm">Expected Interest</span>
+                        <span className="font-semibold text-emerald-600">+{formatCurrency(selectedLoan.expectedInterest)}</span>
+                      </div>
+                      <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-200">
+                        <span className="text-slate-500 text-sm">Penalty Fee</span>
+                        <span className="font-semibold text-amber-600">+{formatCurrency(selectedLoan.penalty)}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-700 font-bold">Total Expected</span>
+                        <span className="font-black text-xl text-slate-900">{formatCurrency(selectedLoan.totalExpected)}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
-              {/* Mode Selector Tabs */}
-              <div className="flex p-1 bg-slate-200/50 rounded-xl">
-                <button
-                  onClick={() => setNewLoanModalMode('loan')}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${newLoanModalMode === 'loan' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500'}`}
-                >
-                  {t('modalModeLoan', lang)}
-                </button>
-                <button
-                  onClick={() => setNewLoanModalMode('withdraw')}
-                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${newLoanModalMode === 'withdraw' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500'}`}
-                >
-                  {t('modalModeWithdraw', lang)}
-                </button>
+              {/* Payments Section */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Payments & Dates</h3>
+
+                <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-emerald-700 text-sm">Total Paid</span>
+                    <span className="font-bold text-emerald-700">{formatCurrency(selectedLoan.paidAmount)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs text-emerald-600/80 pl-2 border-l-2 border-emerald-200 ml-1">
+                    <span>Principal Paid</span>
+                    <span>{formatCurrency(selectedLoan.paidPrincipal)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs text-emerald-600/80 pl-2 border-l-2 border-emerald-200 ml-1 mt-1">
+                    <span>Interest Paid</span>
+                    <span>{formatCurrency(selectedLoan.paidInterest)}</span>
+                  </div>
+                </div>
+
+                {selectedLoan.historicalRenewalCount > 0 && (
+                  <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 mb-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-indigo-800 text-sm font-semibold">{t('renewalHistory', lang)}</span>
+                      <span className="bg-indigo-200 text-indigo-800 text-xs px-2 py-0.5 rounded-full font-bold">{selectedLoan.historicalRenewalCount} {t('times', lang)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-indigo-600">{t('totalInterestAccumulated', lang)}</span>
+                      <span className="font-black text-indigo-700">{formatCurrency(selectedLoan.historicalRenewalInterest)}</span>
+                    </div>
+                    <p className="text-[10px] text-indigo-500 mt-2 leading-tight">These are the historical interest payments made by this customer to extend this specific loan sequence before paying off the principal.</p>
+                  </div>
+                )}
+
+                {selectedLoan.penaltyHistory && selectedLoan.penaltyHistory.length > 0 && (
+                  <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 mb-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-amber-800 text-sm font-semibold">{t('penaltyHistory', lang)}</span>
+                      <span className="bg-amber-200 text-amber-800 text-xs px-2 py-0.5 rounded-full font-bold">{selectedLoan.penaltyHistory.length} {t('times', lang)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm mb-3 border-b border-amber-200/50 pb-2">
+                      <span className="text-amber-700">{t('totalPenaltyPaid', lang)}</span>
+                      <span className="font-black text-amber-700">
+                        {formatCurrency(selectedLoan.penaltyHistory.reduce((sum, p) => sum + p.amount, 0))}
+                      </span>
+                    </div>
+                    <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
+                      {selectedLoan.penaltyHistory.map((p, idx) => (
+                        <div key={idx} className="flex justify-between items-center text-xs bg-white/60 p-2 rounded border border-amber-100/50 shadow-sm">
+                          <span className="text-amber-600 font-medium">{t('round', lang)} {idx + 1} <span className="text-amber-500/80 font-normal ml-1">({p.date})</span></span>
+                          <span className="text-amber-800 font-bold">{formatCurrency(p.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                    <div className="text-xs text-slate-500 mb-1">{t('issueDate', lang)}</div>
+                    <div className="font-semibold text-slate-800">{selectedLoan.borrowDate}</div>
+                  </div>
+                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                    {isEditingLoan ? (
+                      <>
+                        <div className="text-xs font-bold text-slate-500 mb-1">{t('dueDateLabel', lang)}</div>
+                        <DatePicker
+                          selected={editLoanForm.dueDate}
+                          onChange={handleEditDueDateChange}
+                          dateFormat="dd/MM/yyyy"
+                          className="w-full border border-slate-300 rounded p-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
+                        />
+                        <div className="text-xs font-bold text-slate-500 mt-2 mb-1">{t('days', lang)}</div>
+                        <input
+                          type="number"
+                          min="1"
+                          value={editLoanForm.daysBorrowed}
+                          onChange={e => handleEditDaysChange(Number(e.target.value))}
+                          className="w-full border border-slate-300 rounded p-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-xs text-slate-500 mb-1">{t('dueDateLabel', lang)}</div>
+                        <div className={`font-semibold ${selectedLoan.isOverdue ? 'text-rose-600' : 'text-slate-800'}`}>
+                          {selectedLoan.dueDate}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {selectedLoan.daysLate > 0 && (
+                  <div className="flex items-center gap-2 mt-2 p-3 bg-rose-50 rounded-lg text-rose-700 text-sm border border-rose-100">
+                    <AlertCircle className="w-4 h-4" />
+                    <span className="font-medium">{lang === 'th' ? 'ค้างชำระ' : 'Currently'} {selectedLoan.daysLate} {t('daysOverdueText', lang)}</span>
+                  </div>
+                )}
               </div>
             </div>
 
-            {newLoanModalMode === 'loan' ? (
-              <form onSubmit={handleCreateNewLoan} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('borrowerName', lang)}</label>
-                  <input
-                    type="text"
-                    required
-                    value={newLoanForm.name}
-                    onChange={e => setNewLoanForm({ ...newLoanForm, name: e.target.value })}
-                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="e.g. John Doe"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('principalAmount', lang)}</label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    value={newLoanForm.principal}
-                    onChange={e => setNewLoanForm({ ...newLoanForm, principal: e.target.value })}
-                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-2"
-                    placeholder="฿"
-                  />
-                  <div className="flex flex-wrap gap-2">
-                    {[500, 1000, 1500, 2000, 2500, 3000].map(amt => (
-                      <button
-                        key={amt} type="button"
-                        onClick={() => setNewLoanForm({ ...newLoanForm, principal: amt.toString() })}
-                        className="px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-100"
-                      >
-                        {formatNumber(amt)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('borrowDate', lang)}</label>
-                    <DatePicker
-                      selected={newLoanForm.borrowDate}
-                      onChange={handleBorrowDateChange}
-                      dateFormat="dd/MM/yyyy"
-                      className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('dueDateLabel', lang)}</label>
-                    <DatePicker
-                      selected={newLoanForm.dueDate}
-                      onChange={handleDueDateChange}
-                      dateFormat="dd/MM/yyyy"
-                      className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('daysBorrowed', lang)}</label>
-                    <input
-                      type="number"
-                      value={newLoanForm.daysBorrowed}
-                      onChange={e => handleDaysChange(parseInt(e.target.value))}
-                      className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('interestRateLabel', lang)}</label>
-                    <input
-                      type="number"
-                      value={newLoanForm.interestRate}
-                      onChange={e => setNewLoanForm({ ...newLoanForm, interestRate: parseInt(e.target.value) })}
-                      className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-4 border-t border-slate-100 mt-6 flex justify-end gap-3">
-                  <button type="button" onClick={() => setShowNewLoanModal(false)} className="px-5 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-lg transition-colors">{t('cancel', lang)}</button>
-                  <button type="submit" disabled={isSyncing} className="px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50">
-                    {isSyncing ? t('saving', lang) : t('addLoan', lang)}
+            {/* Action Buttons Section */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50">
+              {isEditingLoan ? (
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={isSyncing}
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50 w-full justify-center"
+                  >
+                    {isSyncing ? t('saving', lang) : t('saveChanges', lang)}
                   </button>
                 </div>
-              </form>
-            ) : (
-              <form onSubmit={handleWithdrawSubmit} className="p-6 space-y-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('payoutAmount', lang)}</label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    value={withdrawForm.principal}
-                    onChange={e => setWithdrawForm({ ...withdrawForm, principal: e.target.value })}
-                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
-                    placeholder="฿"
-                  />
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {[500, 1000, 1500, 2000, 2500, 3000].map(amt => (
-                      <button
-                        key={amt} type="button"
-                        onClick={() => setWithdrawForm({ ...withdrawForm, principal: amt.toString() })}
-                        className="px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors border border-rose-100"
-                      >
-                        {formatNumber(amt)}
-                      </button>
-                    ))}
+              ) : (
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-3">
+                    <label className="text-sm font-bold text-slate-600 whitespace-nowrap">{t('actionDate', lang)}</label>
+                    <DatePicker
+                      selected={actionDate}
+                      onChange={(date) => date && setActionDate(date)}
+                      dateFormat="dd/MM/yyyy"
+                      className="border border-slate-300 rounded p-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white w-32"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-3 flex-wrap">
+                    <button
+                      onClick={() => handleUpdateStatus('ชำระแล้ว')}
+                      className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle2 className="w-4 h-4" /> {t('markPaid', lang)}
+                    </button>
+                    <button
+                      onClick={() => handleUpdateStatus('ต่อดอก')}
+                      className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Activity className="w-4 h-4" /> {t('renew', lang)}
+                    </button>
+                    <button
+                      onClick={() => handleUpdateStatus('โดนบิด')}
+                      className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
+                    >
+                      <UserX className="w-4 h-4" /> {t('default', lang)}
+                    </button>
                   </div>
                 </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('withdrawalDate', lang)}</label>
-                  <DatePicker
-                    selected={withdrawForm.date}
-                    onChange={(date: Date) => setWithdrawForm({ ...withdrawForm, date: date || new Date() })}
-                    dateFormat="dd/MM/yyyy"
-                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('withdrawalName', lang)}</label>
-                  <input
-                    type="text"
-                    value={withdrawForm.name}
-                    onChange={e => setWithdrawForm({ ...withdrawForm, name: e.target.value })}
-                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
-                    placeholder="เบิก (default)"
-                  />
-                </div>
-
-                <div className="pt-4 border-t border-slate-100 mt-6 flex justify-end gap-3">
-                  <button type="button" onClick={() => setShowNewLoanModal(false)} className="px-5 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-lg transition-colors">{t('cancel', lang)}</button>
-                  <button type="submit" disabled={isSyncing} className="px-5 py-2.5 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700 transition-colors shadow-sm disabled:opacity-50">
-                    {isSyncing ? t('saving', lang) : t('confirmPayout', lang)}
-                  </button>
-                </div>
-              </form>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1116,7 +1125,7 @@ export default function App() {
 
                     {/* Received */}
                     <div>
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2 text-emerald-600"><CheckCircle2 className="w-4 h-4" /> {t('actualPaymentsReceived', lang)}</h3>
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2 text-emerald-600"><CheckCircle2 className="w-4 h-4" /> Actually Received</h3>
                       <div className="space-y-2">
                         {data.loans.filter(l => l.actualDate && l.actualDate.startsWith(insightDate) && l.paidInterest > 0).map(l => (
                           <div key={'rec-' + l.id} className="flex justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-200 shadow-sm hover:border-emerald-400 transition-colors">
@@ -1216,6 +1225,166 @@ export default function App() {
         </div>
       )}
 
+      {/* Withdraw Modal */}
+      {showWithdrawModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowWithdrawModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-[slideIn_0.2s_ease-out]" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+              <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Wallet className="text-rose-600" /> {t('newPayout', lang)}</h3>
+              <button onClick={() => setShowWithdrawModal(false)} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
+            </div>
+
+            <form onSubmit={handleWithdrawSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('payoutAmount', lang)}</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  value={withdrawForm.principal}
+                  onChange={e => setWithdrawForm({ ...withdrawForm, principal: e.target.value })}
+                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  placeholder="ระบุจำนวนเงิน"
+                />
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {[500, 1000, 1500, 2000, 2500, 3000].map(amt => (
+                    <button
+                      key={amt} type="button"
+                      onClick={() => setWithdrawForm({ ...withdrawForm, principal: amt.toString() })}
+                      className="px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors border border-rose-100"
+                    >
+                      {formatNumber(amt)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('withdrawalDate', lang)}</label>
+                <DatePicker
+                  selected={withdrawForm.date}
+                  onChange={(date: Date) => setWithdrawForm({ ...withdrawForm, date: date || new Date() })}
+                  dateFormat="dd/MM/yyyy"
+                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('withdrawalName', lang)}</label>
+                <input
+                  type="text"
+                  value={withdrawForm.name}
+                  onChange={e => setWithdrawForm({ ...withdrawForm, name: e.target.value })}
+                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  placeholder="Withdrawal (default)"
+                />
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 mt-6 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowWithdrawModal(false)} className="px-5 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-lg transition-colors">{t('cancel', lang)}</button>
+                <button type="submit" disabled={isSyncing} className="px-5 py-2.5 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700 transition-colors shadow-sm disabled:opacity-50">
+                  {isSyncing ? t('saving', lang) : t('confirmPayout', lang)}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* New Loan Modal */}
+      {showNewLoanModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowNewLoanModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-[slideIn_0.2s_ease-out]" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+              <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Activity className="text-indigo-600" /> {t('issueNewLoan', lang)}</h3>
+              <button onClick={() => setShowNewLoanModal(false)} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
+            </div>
+
+            <form onSubmit={handleCreateNewLoan} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('borrowerName', lang)}</label>
+                <input
+                  type="text"
+                  required
+                  value={newLoanForm.name}
+                  onChange={e => setNewLoanForm({ ...newLoanForm, name: e.target.value })}
+                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g. John Doe"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('principalAmount', lang)}</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  value={newLoanForm.principal}
+                  onChange={e => setNewLoanForm({ ...newLoanForm, principal: e.target.value })}
+                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-2"
+                  placeholder="฿"
+                />
+                <div className="flex flex-wrap gap-2">
+                  {[500, 1000, 1500, 2000, 2500, 3000].map(amt => (
+                    <button
+                      key={amt} type="button"
+                      onClick={() => setNewLoanForm({ ...newLoanForm, principal: amt.toString() })}
+                      className="px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-100"
+                    >
+                      {formatNumber(amt)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 relative">
+                <div className="flex flex-col relative z-20">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('borrowDate', lang)}</label>
+                  <DatePicker
+                    selected={newLoanForm.borrowDate}
+                    onChange={handleBorrowDateChange}
+                    dateFormat="dd/MM/yyyy"
+                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
+                  />
+                </div>
+                <div className="flex flex-col relative z-20">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('dueDateLabel', lang)}</label>
+                  <DatePicker
+                    selected={newLoanForm.dueDate}
+                    onChange={handleDueDateChange}
+                    dateFormat="dd/MM/yyyy"
+                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('daysBorrowed', lang)}</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={newLoanForm.daysBorrowed}
+                    onChange={e => handleDaysChange(Number(e.target.value))}
+                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('interestRateLabel', lang)}</label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={newLoanForm.interestRate}
+                    onChange={e => setNewLoanForm({ ...newLoanForm, interestRate: Number(e.target.value) })}
+                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 mt-6 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowNewLoanModal(false)} className="px-5 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-lg transition-colors">{t('cancel', lang)}</button>
                 <button type="submit" disabled={isSyncing} className="px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50">
                   {isSyncing ? t('saving', lang) : t('addLoan', lang)}
                 </button>
