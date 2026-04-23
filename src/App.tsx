@@ -657,73 +657,123 @@ export default function App() {
 
 
         {/* Analytics Tab Content: Charts & Insights */}
+        {/* Analytics Tab Content: Charts & Insights (Desktop) / Portfolio Progress (Mobile) */}
         <div className={activeMobileTab === 'analytics' ? 'block' : 'hidden md:block'}>
-          <h2 className="text-base font-bold mb-3 text-slate-800">{t('portfolioAnalytics', lang)}</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-base font-black text-slate-800">{t('portfolioAnalytics', lang)}</h2>
+            {/* Mobile-only date indicator */}
+            <span className="md:hidden text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-full uppercase tracking-wider border border-slate-200">
+              {new Date().toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { month: 'short', year: 'numeric' })}
+            </span>
+          </div>
+
+          {/* Desktop Only: Charts Row */}
+          <div className="hidden md:grid md:grid-cols-2 gap-6 mb-8">
             <div
-              className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm flex flex-col items-center cursor-pointer group hover:border-emerald-300 hover:shadow-md transition-all relative overflow-hidden"
+              className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center cursor-pointer group hover:border-emerald-300 hover:shadow-md transition-all relative overflow-hidden"
               onClick={() => setShowPortfolioProgressModal(true)}
             >
               <div className="w-full flex justify-between items-center mb-6">
-                <h3 className="text-sm font-bold text-slate-500">{t('portfolioProgress', lang)}</h3>
-                <span className="text-xs text-emerald-500 bg-emerald-50 px-2 py-1 rounded-md font-medium border border-emerald-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickForInsights', lang)}</span>
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">{t('portfolioProgress', lang)}</h3>
+                <span className="text-xs text-emerald-500 bg-emerald-50 px-3 py-1 rounded-full font-bold border border-emerald-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickForInsights', lang)}</span>
               </div>
-
-              <div className="h-[140px] w-full relative">
+              <div className="h-[180px] w-full relative">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie
-                      data={progressData}
-                      cx="50%"
-                      cy="100%"
-                      startAngle={180}
-                      endAngle={0}
-                      innerRadius={80}
-                      outerRadius={110}
-                      dataKey="value"
-                      stroke="none"
-                    >
+                    <Pie data={progressData} cx="50%" cy="100%" startAngle={180} endAngle={0} innerRadius={80} outerRadius={110} dataKey="value" stroke="none">
                       {progressData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
                     </Pie>
-                    <RechartsTooltip formatter={(val: number) => [formatCurrency(val), 'Amount']} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                    <RechartsTooltip formatter={(val: number) => [formatCurrency(val), 'Amount']} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="absolute bottom-0 left-0 right-0 text-center flex flex-col items-center justify-end pb-2">
-                  <span className="text-3xl font-black text-slate-800">{progressPct}%</span>
-                  <span className="text-xs font-bold text-emerald-600">{t('collected', lang)}</span>
-                </div>
-              </div>
-              <div className="w-full mt-6 grid grid-cols-2 gap-4 text-center">
-                <div className="bg-emerald-50/50 p-2 rounded border border-emerald-100">
-                  <div className="text-[10px] font-bold text-emerald-600 uppercase mb-1">{t('collected', lang)}</div>
-                  <div className="font-bold text-slate-800 text-sm">{formatCurrency(s.totalPaid)}</div>
-                </div>
-                <div className="bg-slate-50 p-2 rounded border border-slate-100">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">{t('remaining', lang)}</div>
-                  <div className="font-bold text-slate-800 text-sm">{formatCurrency(s.totalUnpaid)}</div>
+                  <span className="text-4xl font-black text-slate-800">{progressPct}%</span>
+                  <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">{t('collected', lang)}</span>
                 </div>
               </div>
             </div>
 
             <div
-              className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm flex flex-col cursor-pointer group hover:border-indigo-300 hover:shadow-md transition-all"
+              className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col cursor-pointer group hover:border-indigo-300 hover:shadow-md transition-all"
               onClick={() => setShowExpandedTrend(true)}
             >
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-sm font-bold text-slate-500">{t('cashflowTrend', lang)}</h3>
-                <span className="text-xs text-indigo-500 bg-indigo-50 px-2 py-1 rounded-md font-medium border border-indigo-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickToExpand', lang)}</span>
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">{t('cashflowTrend', lang)}</h3>
+                <span className="text-xs text-indigo-500 bg-indigo-50 px-3 py-1 rounded-full font-bold border border-indigo-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickToExpand', lang)}</span>
               </div>
-              <div className="h-[250px] w-full mt-auto">
+              <div className="h-[180px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={trendData14} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
-                    <RechartsTooltip cursor={{ fill: '#F1F5F9' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Bar dataKey="Expected" barSize={16} fill="#94A3B8" radius={[4, 4, 0, 0]} />
-                    <Line type="monotone" dataKey="Received" stroke="#10B981" strokeWidth={3} dot={{ r: 4, fill: '#10B981', strokeWidth: 0 }} />
+                  <ComposedChart data={trendData14}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94A3B8' }} />
+                    <YAxis axisLine={false} tickLine={false} hide />
+                    <Bar dataKey="Expected" barSize={12} fill="#CBD5E1" radius={[4, 4, 0, 0]} />
+                    <Line type="monotone" dataKey="Received" stroke="#10B981" strokeWidth={3} dot={false} />
                   </ComposedChart>
                 </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          {/* Mobile and Detailed Insights (Desktop) */}
+          <div className="space-y-4">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
+                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{t('totalExpectedValue', lang)}</div>
+                <div className="text-xl font-black text-slate-800">{formatCurrency(s.totalExpected)}</div>
+              </div>
+              <div className="bg-emerald-600 p-4 rounded-2xl border border-emerald-500 shadow-lg shadow-emerald-100 flex flex-col items-center text-center">
+                <div className="text-[10px] font-black text-emerald-100 uppercase tracking-widest mb-2">{t('totalCollected', lang)}</div>
+                <div className="text-xl font-black text-white">{formatCurrency(s.totalPaid)}</div>
+              </div>
+            </div>
+
+            {/* Principal Breakdown Card */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>
+                {t('principalBreakdown', lang)}
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-slate-600">{t('principalLentOut', lang)}</span>
+                  <span className="text-sm font-black text-slate-800">{formatCurrency(s.totalBorrowed)}</span>
+                </div>
+                <div className="flex justify-between items-center pl-3 border-l-2 border-emerald-400">
+                  <span className="text-xs font-bold text-emerald-600">{t('principalCollected', lang)}</span>
+                  <span className="text-sm font-black text-emerald-700">{formatCurrency(s.paidPrincipal)}</span>
+                </div>
+                <div className="flex justify-between items-center pl-3 border-l-2 border-amber-400">
+                  <span className="text-xs font-bold text-amber-600">{t('principalRemaining', lang)}</span>
+                  <span className="text-sm font-black text-amber-700">{formatCurrency(s.unpaidPrincipal)}</span>
+                </div>
+                <div className="flex justify-between items-center pl-3 border-l-2 border-rose-400">
+                  <span className="text-xs font-bold text-rose-600">{t('principalLost', lang)}</span>
+                  <span className="text-sm font-black text-rose-700">{formatCurrency(s.scamPrincipal)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Interest Breakdown Card */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
+                {t('interestBreakdown', lang)}
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-slate-600">{t('interestExpected', lang)}</span>
+                  <span className="text-sm font-black text-slate-800">{formatCurrency(s.totalInterest)}</span>
+                </div>
+                <div className="flex justify-between items-center pl-3 border-l-2 border-emerald-400">
+                  <span className="text-xs font-bold text-emerald-600">{t('interestCollected', lang)}</span>
+                  <span className="text-sm font-black text-emerald-700">{formatCurrency(s.paidInterest)}</span>
+                </div>
+                <div className="flex justify-between items-center pl-3 border-l-2 border-amber-400">
+                  <span className="text-xs font-bold text-amber-600">{t('interestRemaining', lang)}</span>
+                  <span className="text-sm font-black text-amber-700">{formatCurrency(s.unpaidInterest)}</span>
+                </div>
               </div>
             </div>
           </div>
