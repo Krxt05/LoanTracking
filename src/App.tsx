@@ -804,6 +804,7 @@ export default function App() {
 
       {/* Mobile Bottom Navigation - Premium Floating Style */}
       <div className="fixed bottom-6 left-4 right-4 h-16 bg-white/90 backdrop-blur-xl border border-slate-200/50 flex md:hidden z-40 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.15)] rounded-2xl px-2 items-center">
+        {/* 1. Dashboard */}
         <button
           onClick={() => { setShowNewLoanModal(false); setShowWithdrawModal(false); setActiveMobileTab('dashboard'); }}
           className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all active:scale-90 ${activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'}`}
@@ -812,6 +813,16 @@ export default function App() {
           <span className="text-[9px] font-black uppercase tracking-tighter">{t('navDashboard', lang)}</span>
         </button>
 
+        {/* 2. Analytics */}
+        <button
+          onClick={() => setActiveMobileTab('analytics')}
+          className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all active:scale-90 ${activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'}`}
+        >
+          <BarChart2 className={`w-6 h-6 ${activeMobileTab === 'analytics' ? 'stroke-[2.5px]' : 'stroke-2'}`} />
+          <span className="text-[9px] font-black uppercase tracking-tighter">{t('navAnalytics', lang)}</span>
+        </button>
+
+        {/* 3. New Loan (Activity) */}
         <button
           onClick={() => setShowNewLoanModal(true)}
           className="flex-1 flex flex-col items-center justify-center"
@@ -821,14 +832,7 @@ export default function App() {
           </div>
         </button>
 
-        <button
-          onClick={() => { setActiveMobileTab('loans'); }}
-          className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all active:scale-90 ${activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'}`}
-        >
-          <List className={`w-6 h-6 ${activeMobileTab === 'loans' ? 'stroke-[2.5px]' : 'stroke-2'}`} />
-          <span className="text-[9px] font-black uppercase tracking-tighter">{t('navLoans', lang)}</span>
-        </button>
-
+        {/* 4. Withdraw (Wallet) */}
         <button
           onClick={() => setShowWithdrawModal(true)}
           className="flex-1 flex flex-col items-center justify-center"
@@ -838,12 +842,13 @@ export default function App() {
           </div>
         </button>
 
+        {/* 5. Loans List */}
         <button
-          onClick={() => setActiveMobileTab('analytics')}
-          className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all active:scale-90 ${activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'}`}
+          onClick={() => { setActiveMobileTab('loans'); }}
+          className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all active:scale-90 ${activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'}`}
         >
-          <BarChart2 className={`w-6 h-6 ${activeMobileTab === 'analytics' ? 'stroke-[2.5px]' : 'stroke-2'}`} />
-          <span className="text-[9px] font-black uppercase tracking-tighter">{t('navAnalytics', lang)}</span>
+          <List className={`w-6 h-6 ${activeMobileTab === 'loans' ? 'stroke-[2.5px]' : 'stroke-2'}`} />
+          <span className="text-[9px] font-black uppercase tracking-tighter">{t('navLoans', lang)}</span>
         </button>
       </div>
 
