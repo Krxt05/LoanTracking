@@ -3,10 +3,11 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { fetchAppData, AppData, LoanRecord, updateLoanStatus, createNewLoan, editExistingLoan } from './services/dataService';
 import { formatCurrency, formatNumber, parseThaiDate } from './lib/utils';
-import { TrendingUp, TrendingDown, AlertCircle, CalendarClock, Activity, FileSpreadsheet, List, X, CheckCircle2, UserX, Wallet, RefreshCcw, LineChart, Bell, BellOff } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertCircle, CalendarClock, Activity, FileSpreadsheet, List, X, CheckCircle2, UserX, Wallet, RefreshCcw, LineChart, Bell, BellOff, Home, BarChart2, Languages } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, getNotificationPermission, sendTestNotification } from './services/pushService';
+import { t, Lang } from './lib/i18n';
 
 export default function App() {
   const [data, setData] = useState<AppData | null>(null);
@@ -25,6 +26,12 @@ export default function App() {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [showNotifModal, setShowNotifModal] = useState(false);
   const [isSendingTestNotif, setIsSendingTestNotif] = useState(false);
+  const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('lang') as Lang) || 'th');
+  const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'alerts' | 'loans' | 'analytics'>('dashboard');
+
+  const toggleLang = () => {
+    setLang(l => { const next = l === 'th' ? 'en' : 'th'; localStorage.setItem('lang', next); return next; });
+  };
   const [withdrawForm, setWithdrawForm] = useState({
     name: '',
     principal: '',
@@ -50,7 +57,7 @@ export default function App() {
       setEditLoanForm({
         principal: selectedLoan.principal.toString(),
         dueDate: dDate,
-        daysBorrowed: parseInt(selectedLoan.daysBorrowed) || 7,
+        daysBorrowed: selectedLoan.daysBorrowed || 7,
         interestRate: selectedLoan.interestRate || 20
       });
     }
@@ -154,7 +161,7 @@ export default function App() {
       });
 
       if (res.success) {
-        showToast(`New loan added successfully!`, 'success');
+        showToast(t('loanAddedSuccess', lang), 'success');
         setShowNewLoanModal(false);
         setNewLoanForm({ ...newLoanForm, name: '', principal: '500' });
         setTimeout(() => loadData(true), 2500);
@@ -163,7 +170,7 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
-      showToast("Failed to add new loan.", 'error');
+      showToast(t('loanAddedFailed', lang), 'error');
     } finally {
       setIsSyncing(false);
     }
@@ -175,7 +182,7 @@ export default function App() {
 
     setIsSyncing(true);
     const pValue = parseFloat(withdrawForm.principal);
-    const name = withdrawForm.name.trim() || "ถอน";
+    const name = withdrawForm.name.trim() || "เบิก";
 
     try {
       const res = await createNewLoan({
@@ -189,7 +196,7 @@ export default function App() {
       });
 
       if (res.success) {
-        showToast(`Withdrawal recorded successfully!`, 'success');
+        showToast(t('withdrawalSuccess', lang), 'success');
         setShowWithdrawModal(false);
         setWithdrawForm({ name: '', principal: '', date: new Date() });
         setTimeout(() => loadData(true), 2500);
@@ -198,7 +205,7 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
-      showToast("Failed to record withdrawal.", 'error');
+      showToast(t('withdrawalFailed', lang), 'error');
     } finally {
       setIsSyncing(false);
     }
@@ -300,7 +307,7 @@ export default function App() {
             ...updatedLoans[loanIndex],
             principal: parseFloat(editLoanForm.principal),
             dueDate: formatToThaiStr(editLoanForm.dueDate),
-            daysBorrowed: editLoanForm.daysBorrowed.toString(),
+            daysBorrowed: editLoanForm.daysBorrowed,
             interestRate: editLoanForm.interestRate,
             expectedInterest: (parseFloat(editLoanForm.principal) * editLoanForm.interestRate) / 100,
             totalExpected: parseFloat(editLoanForm.principal) + ((parseFloat(editLoanForm.principal) * editLoanForm.interestRate) / 100)
@@ -415,116 +422,126 @@ export default function App() {
   const renderStatusBadge = (status: string) => {
     const s = status.toLowerCase();
     if (s.includes('ชำระแล้ว') || s.includes('paid') || s.includes('ปิดยอด')) {
-      return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">Paid</span>;
+      return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">{t('statusPaid', lang)}</span>;
     }
     if (s.includes('ต่อดอก') || s.includes('renew')) {
-      return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-wider border border-indigo-200">Renewed</span>;
+      return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-wider border border-indigo-200">{t('statusRenewed', lang)}</span>;
     }
     if (s.includes('บิด') || s.includes('default')) {
-      return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-black uppercase tracking-wider border border-rose-200">Defaulted</span>;
+      return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-black uppercase tracking-wider border border-rose-200">{t('statusDefaulted', lang)}</span>;
     }
     if (s.includes('เบิก') || s.includes('withdraw') || s.includes('payout')) {
-      return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black uppercase tracking-wider border border-amber-200">Payout</span>;
+      return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black uppercase tracking-wider border border-amber-200">{t('statusPayout', lang)}</span>;
     }
-    return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-wider border border-slate-200">Active</span>;
+    return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-wider border border-slate-200">{t('statusActive', lang)}</span>;
   };
 
   const MetricRow = () => (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-      <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
-        <div className="text-slate-500 text-sm font-medium mb-1">Total Portfolio Size</div>
-        <div className="text-2xl font-bold text-slate-800">{formatCurrency(s.totalLimit)}</div>
-        <div className="text-xs text-emerald-600 mt-2 flex items-center font-medium">
-          <TrendingUp className="w-3 h-3 mr-1" /> Active Limit
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="text-slate-500 text-xs font-medium mb-1">{t('totalPortfolio', lang)}</div>
+        <div className="text-xl font-bold text-slate-800">{formatCurrency(s.totalLimit)}</div>
+        <div className="text-xs text-emerald-600 mt-1 flex items-center font-medium">
+          <TrendingUp className="w-3 h-3 mr-1" /> {t('activeLimit', lang)}
         </div>
       </div>
-      <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
-        <div className="text-slate-500 text-sm font-medium mb-1">Net Profit</div>
-        <div className="text-2xl font-bold text-slate-800">{formatCurrency(s.netProfit)}</div>
-        <div className="text-xs text-emerald-600 mt-2 flex items-center font-medium">
-          <TrendingUp className="w-3 h-3 mr-1" /> {s.profitPct}% Margin
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="text-slate-500 text-xs font-medium mb-1">{t('netProfit', lang)}</div>
+        <div className="text-xl font-bold text-slate-800">{formatCurrency(s.netProfit)}</div>
+        <div className="text-xs text-emerald-600 mt-1 flex items-center font-medium">
+          <TrendingUp className="w-3 h-3 mr-1" /> {s.profitPct}% {t('margin', lang)}
         </div>
       </div>
-      <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
-        <div className="text-slate-500 text-sm font-medium mb-1">NPL Ratio / Bad Debt</div>
-        <div className="text-2xl font-bold text-slate-800">{((s.scamPrincipal / Math.max(1, s.totalBorrowed)) * 100).toFixed(1)}%</div>
-        <div className="text-xs text-rose-600 mt-2 flex items-center font-medium">
-          <TrendingDown className="w-3 h-3 mr-1" /> {formatCurrency(s.scamPrincipal)} Lost
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="text-slate-500 text-xs font-medium mb-1">{t('nplRatio', lang)}</div>
+        <div className="text-xl font-bold text-slate-800">{((s.scamPrincipal / Math.max(1, s.totalBorrowed)) * 100).toFixed(1)}%</div>
+        <div className="text-xs text-rose-600 mt-1 flex items-center font-medium">
+          <TrendingDown className="w-3 h-3 mr-1" /> {formatCurrency(s.scamPrincipal)} {t('lost', lang)}
         </div>
       </div>
-      <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm">
-        <div className="text-slate-500 text-sm font-medium mb-1">Available Balance</div>
-        <div className="text-2xl font-bold text-slate-800">{formatCurrency(s.available)}</div>
-        <div className="text-xs text-slate-500 mt-2 flex items-center font-medium">
-          Ready to lend
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div className="text-slate-500 text-xs font-medium mb-1">{t('availableBalance', lang)}</div>
+        <div className="text-xl font-bold text-slate-800">{formatCurrency(s.available)}</div>
+        <div className="text-xs text-slate-500 mt-1 flex items-center font-medium">
+          {t('readyToLend', lang)}
         </div>
       </div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 font-sans p-4 md:p-8">
-      <div className="max-w-[1400px] mx-auto">
-        <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-slate-200 pb-4">
+    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 font-sans">
+      <div className="max-w-[1400px] mx-auto px-3 py-4 md:px-8 md:py-8 pb-24 md:pb-8">
+        {/* Header */}
+        <header className="mb-5 flex justify-between items-center border-b border-slate-200 pb-4">
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
-              <Activity className="w-8 h-8 text-emerald-600" />
-              Loan Tracking
+            <h1 className="text-xl md:text-3xl font-extrabold tracking-tight flex items-center gap-2">
+              <Activity className="w-6 h-6 md:w-8 md:h-8 text-emerald-600" />
+              {t('appTitle', lang)}
             </h1>
-            <p className="text-slate-500 mt-1">Professional financial dashboard & analytics</p>
+            <p className="text-slate-500 mt-0.5 text-xs md:text-sm hidden md:block">{t('appSubtitle', lang)}</p>
           </div>
-          <div className="flex items-center gap-3">
-            {/* Notification Bell Button */}
+          <div className="flex items-center gap-2">
+            {/* Language Toggle */}
+            <button
+              onClick={toggleLang}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-xs font-bold transition-colors shadow-sm"
+            >
+              <Languages className="w-3.5 h-3.5" />
+              {lang === 'th' ? 'EN' : 'TH'}
+            </button>
+            {/* Notification Bell */}
             <button
               onClick={() => setShowNotifModal(true)}
-              className={`relative flex items-center gap-2 p-2 rounded-full transition-colors ${isSubscribed
-                  ? 'text-emerald-600 hover:bg-emerald-50'
-                  : 'text-slate-400 hover:bg-slate-200'
-                }`}
-              title={isSubscribed ? 'การแจ้งเตือนเปิดอยู่' : 'เปิดการแจ้งเตือน'}
+              className={`relative p-2 rounded-full transition-colors ${
+                isSubscribed ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-400 hover:bg-slate-200'
+              }`}
             >
               {isSubscribed ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
-              {isSubscribed && (
-                <span className="absolute top-0.5 right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white"></span>
-              )}
+              {isSubscribed && <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-emerald-500 rounded-full border-2 border-white"></span>}
             </button>
+            {/* Desktop action buttons */}
             <button
               onClick={() => setShowWithdrawModal(true)}
-              className="flex items-center gap-2 px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-lg shadow-sm transition-all"
+              className="hidden md:flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-lg shadow-sm transition-all"
             >
-              <Wallet className="w-4 h-4" /> Withdraw
+              <Wallet className="w-4 h-4" /> {t('withdraw', lang)}
             </button>
             <button
               onClick={() => setShowNewLoanModal(true)}
-              className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg shadow-sm transition-all"
+              className="hidden md:flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg shadow-sm transition-all"
             >
-              <Activity className="w-4 h-4" /> New Loan
+              <Activity className="w-4 h-4" /> {t('newLoan', lang)}
             </button>
             {isSyncing ? (
-              <span className="flex items-center gap-2 text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
-                <RefreshCcw className="w-4 h-4 animate-spin" /> Syncing data...
+              <span className="flex items-center gap-1.5 text-emerald-600 bg-emerald-50 px-2.5 py-1.5 rounded-full border border-emerald-100 text-xs">
+                <RefreshCcw className="w-3.5 h-3.5 animate-spin" />
+                <span className="hidden md:inline">{t('syncingData', lang)}</span>
               </span>
             ) : (
-              <button onClick={() => loadData()} className="flex items-center gap-2 text-slate-500 hover:text-slate-700 p-2 rounded-full hover:bg-slate-200 transition-colors">
+              <button onClick={() => loadData()} className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-200 transition-colors">
                 <RefreshCcw className="w-4 h-4" />
               </button>
             )}
           </div>
         </header>
 
-        <MetricRow />
+        {/* Mobile: section visibility by active tab */}
+        {/* Dashboard Tab Content: Metrics & Alerts */}
+        <div className={activeMobileTab === 'dashboard' ? 'block' : 'hidden md:block'}>
+          <MetricRow />
 
-        {/* Section 2: Action & Alerts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <div className="bg-amber-50 rounded-lg border border-amber-200 flex flex-col">
-            <div className="p-4 border-b border-amber-200 bg-amber-100/50 flex font-bold text-amber-800 items-center gap-2">
-              <CalendarClock className="w-5 h-5" /> DUE TODAY ({dueTodayLoans.length})
+          {/* Section 2: Action & Alerts */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div className="bg-amber-50 rounded-xl border border-amber-200 flex flex-col">
+            <div className="p-3 border-b border-amber-200 bg-amber-100/50 flex font-bold text-amber-800 items-center gap-2 text-sm">
+              <CalendarClock className="w-4 h-4" /> {t('dueToday', lang)} ({dueTodayLoans.length})
             </div>
-            <div className="p-4 max-h-[200px] overflow-y-auto">
+            <div className="p-3 max-h-[200px] overflow-y-auto">
               {dueTodayLoans.length === 0 ? (
-                <p className="text-sm border-l-2 border-amber-300 pl-3 text-amber-700 py-1">No collections scheduled for today.</p>
+                <p className="text-sm border-l-2 border-amber-300 pl-3 text-amber-700 py-1">{t('noCollectionsToday', lang)}</p>
               ) : (
-                <div className="space-y-3" ref={dueListRef}>
+                <div className="space-y-2" ref={dueListRef}>
                   {dueTodayLoans.map(l => (
                     <div
                       key={l.id}
@@ -540,13 +557,13 @@ export default function App() {
             </div>
           </div>
 
-          <div className="bg-rose-50 rounded-lg border border-rose-200 flex flex-col">
-            <div className="p-4 border-b border-rose-200 bg-rose-100/50 flex font-bold text-rose-800 items-center gap-2">
-              <AlertCircle className="w-5 h-5" /> OVERDUE ALERTS ({overdueLoans.length})
+          <div className="bg-rose-50 rounded-xl border border-rose-200 flex flex-col">
+            <div className="p-3 border-b border-rose-200 bg-rose-100/50 flex font-bold text-rose-800 items-center gap-2 text-sm">
+              <AlertCircle className="w-4 h-4" /> {t('overdueAlerts', lang)} ({overdueLoans.length})
             </div>
-            <div className="p-4 max-h-[200px] overflow-y-auto">
+            <div className="p-3 max-h-[200px] overflow-y-auto">
               {overdueLoans.length === 0 ? (
-                <p className="text-sm border-l-2 border-slate-300 pl-3 text-slate-500 py-1">No overdue accounts.</p>
+                <p className="text-sm border-l-2 border-slate-300 pl-3 text-slate-500 py-1">{t('noOverdueAccounts', lang)}</p>
               ) : (
                 <div className="space-y-3" ref={overdueListRef}>
                   {overdueLoans.sort((a, b) => b.daysLate - a.daysLate).map(l => (
@@ -557,7 +574,7 @@ export default function App() {
                     >
                       <div>
                         <div className="font-semibold">{l.name}</div>
-                        <div className="text-xs text-rose-600 font-medium">{l.daysLate} Days Overdue</div>
+                        <div className="text-xs text-rose-600 font-medium">{l.daysLate} {t('daysOverdue', lang)}</div>
                       </div>
                       <div className="text-right">
                         <div className="font-bold text-rose-700">{formatCurrency(l.totalExpected)}</div>
@@ -569,18 +586,20 @@ export default function App() {
               )}
             </div>
           </div>
+          </div>
         </div>
 
-        {/* Section 3: Visualizations */}
-        <h2 className="text-lg font-bold mb-4 text-slate-800">Portfolio Analytics</h2>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        {/* Analytics Tab Content: Charts & Insights */}
+        <div className={activeMobileTab === 'analytics' ? 'block' : 'hidden md:block'}>
+          <h2 className="text-base font-bold mb-3 text-slate-800">{t('portfolioAnalytics', lang)}</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
           <div
             className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm flex flex-col items-center cursor-pointer group hover:border-emerald-300 hover:shadow-md transition-all relative overflow-hidden"
             onClick={() => setShowPortfolioProgressModal(true)}
           >
             <div className="w-full flex justify-between items-center mb-6">
-              <h3 className="text-sm font-bold text-slate-500">Portfolio Progress</h3>
-              <span className="text-xs text-emerald-500 bg-emerald-50 px-2 py-1 rounded-md font-medium border border-emerald-100 opacity-0 group-hover:opacity-100 transition-opacity">Click for Insights</span>
+              <h3 className="text-sm font-bold text-slate-500">{t('portfolioProgress', lang)}</h3>
+              <span className="text-xs text-emerald-500 bg-emerald-50 px-2 py-1 rounded-md font-medium border border-emerald-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickForInsights', lang)}</span>
             </div>
 
             <div className="h-[140px] w-full relative">
@@ -604,16 +623,16 @@ export default function App() {
               </ResponsiveContainer>
               <div className="absolute bottom-0 left-0 right-0 text-center flex flex-col items-center justify-end pb-2">
                 <span className="text-3xl font-black text-slate-800">{progressPct}%</span>
-                <span className="text-xs font-bold text-emerald-600">Collected</span>
+                <span className="text-xs font-bold text-emerald-600">{t('collected', lang)}</span>
               </div>
             </div>
             <div className="w-full mt-6 grid grid-cols-2 gap-4 text-center">
               <div className="bg-emerald-50/50 p-2 rounded border border-emerald-100">
-                <div className="text-[10px] font-bold text-emerald-600 uppercase mb-1">Collected</div>
+                <div className="text-[10px] font-bold text-emerald-600 uppercase mb-1">{t('collected', lang)}</div>
                 <div className="font-bold text-slate-800 text-sm">{formatCurrency(s.totalPaid)}</div>
               </div>
               <div className="bg-slate-50 p-2 rounded border border-slate-100">
-                <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">Remaining</div>
+                <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">{t('remaining', lang)}</div>
                 <div className="font-bold text-slate-800 text-sm">{formatCurrency(s.totalUnpaid)}</div>
               </div>
             </div>
@@ -624,8 +643,8 @@ export default function App() {
             onClick={() => setShowExpandedTrend(true)}
           >
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-sm font-bold text-slate-500">Cashflow Trend (14 Days)</h3>
-              <span className="text-xs text-indigo-500 bg-indigo-50 px-2 py-1 rounded-md font-medium border border-indigo-100 opacity-0 group-hover:opacity-100 transition-opacity">Click to Expand</span>
+              <h3 className="text-sm font-bold text-slate-500">{t('cashflowTrend', lang)}</h3>
+              <span className="text-xs text-indigo-500 bg-indigo-50 px-2 py-1 rounded-md font-medium border border-indigo-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickToExpand', lang)}</span>
             </div>
             <div className="h-[250px] w-full mt-auto">
               <ResponsiveContainer width="100%" height="100%">
@@ -640,19 +659,26 @@ export default function App() {
               </ResponsiveContainer>
             </div>
           </div>
+          </div>
         </div>
 
-        {/* Section 4: Data Management & History */}
-        <h2 className="text-lg font-bold mb-4 text-slate-800">Data Management</h2>
-        <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden mb-12">
-          <div className="flex border-b border-slate-200 bg-slate-50/50">
-            {['all', 'renewals', 'paid', 'defaulted', 'withdrawn', 'raw'].map(tab => (
+        {/* Loans Tab Content: Data Management Table */}
+        <div className={activeMobileTab === 'loans' ? 'block' : 'hidden md:block'}>
+          <h2 className="text-base font-bold mb-3 text-slate-800">{t('dataManagement', lang)}</h2>
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+          <div className="flex border-b border-slate-200 bg-slate-50/50 overflow-x-auto">
+            {(['all', 'renewals', 'paid', 'defaulted', 'withdrawn', 'raw'] as const).map(tab => (
               <button
                 key={tab}
-                className={`px-6 py-3 text-sm font-semibold capitalize border-b-2 transition-colors ${activeTab === tab ? 'border-emerald-500 text-emerald-700 bg-white' : 'border-transparent text-slate-500'}`}
-                onClick={() => setActiveTab(tab as any)}
+                className={`px-4 py-3 text-xs font-semibold capitalize border-b-2 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-emerald-500 text-emerald-700 bg-white' : 'border-transparent text-slate-500'}`}
+                onClick={() => setActiveTab(tab)}
               >
-                {tab}
+                {tab === 'all' ? t('tabAll', lang) :
+                 tab === 'renewals' ? t('tabRenewals', lang) :
+                 tab === 'paid' ? t('tabPaid', lang) :
+                 tab === 'defaulted' ? t('tabDefaulted', lang) :
+                 tab === 'withdrawn' ? t('tabWithdrawn', lang) :
+                 t('tabRaw', lang)}
               </button>
             ))}
           </div>
@@ -661,13 +687,13 @@ export default function App() {
             <table className="w-full text-left whitespace-nowrap text-sm">
               <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase sticky top-0 z-10 shadow-[0_1px_0_#E2E8F0]">
                 <tr>
-                  <th className="px-5 py-3">Customer ID</th>
-                  <th className="px-5 py-3">Name</th>
-                  <th className="px-5 py-3 text-right">Principal</th>
-                  <th className="px-5 py-3 text-right">Interest Rate</th>
-                  <th className="px-5 py-3 text-center">Issue Date</th>
-                  <th className="px-5 py-3 text-center">Due Date</th>
-                  <th className="px-5 py-3">Status</th>
+                  <th className="px-4 py-3 text-left">{t('customerId', lang)}</th>
+                  <th className="px-4 py-3 text-left">{t('name', lang)}</th>
+                  <th className="px-4 py-3 text-right">{t('principal', lang)}</th>
+                  <th className="px-4 py-3 text-right hidden md:table-cell">{t('interestRate', lang)}</th>
+                  <th className="px-4 py-3 text-center hidden md:table-cell">{t('issueDate', lang)}</th>
+                  <th className="px-4 py-3 text-center">{t('dueDate', lang)}</th>
+                  <th className="px-4 py-3 text-left">{t('status', lang)}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100" ref={tableRef}>
@@ -681,20 +707,67 @@ export default function App() {
                     return true;
                   })
                   .map((l, i) => (
-                    <tr key={i} onClick={() => setSelectedLoan(l)} className="cursor-pointer hover:bg-slate-100 transition-colors">
-                      <td className="px-5 py-3 font-mono text-slate-400 text-xs">{l.id}</td>
-                      <td className="px-5 py-3 font-semibold text-slate-800">{l.name}</td>
-                      <td className="px-5 py-3 text-right font-medium">{formatNumber(l.principal)}</td>
-                      <td className="px-5 py-3 text-right text-slate-500">{l.interestRate}%</td>
-                      <td className="px-5 py-3 text-center text-slate-500">{l.borrowDate}</td>
-                      <td className="px-5 py-3 text-center text-slate-500">{l.dueDate}</td>
-                      <td className="px-5 py-3">{renderStatusBadge(l.status)}</td>
+                    <tr key={i} onClick={() => setSelectedLoan(l)} className="cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition-colors">
+                      <td className="px-4 py-3 font-mono text-slate-400 text-xs">{l.id}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-800">{l.name}</td>
+                      <td className="px-4 py-3 text-right font-medium text-sm">{formatNumber(l.principal)}</td>
+                      <td className="px-4 py-3 text-right text-slate-500 hidden md:table-cell">{l.interestRate}%</td>
+                      <td className="px-4 py-3 text-center text-slate-500 hidden md:table-cell">{l.borrowDate}</td>
+                      <td className="px-4 py-3 text-center text-slate-500 text-sm">{l.dueDate}</td>
+                      <td className="px-4 py-3">{renderStatusBadge(l.status)}</td>
                     </tr>
                   ))}
               </tbody>
             </table>
           </div>
+          </div>
         </div>
+      </div>
+
+      {/* Mobile Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex md:hidden z-40 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+        <button
+          onClick={() => { setShowNewLoanModal(false); setShowWithdrawModal(false); setActiveMobileTab('dashboard'); }}
+          className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold transition-colors ${
+            activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'
+          }`}
+        >
+          <Home className={`w-5 h-5 ${activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          {t('navDashboard', lang)}
+        </button>
+        <button
+          onClick={() => { setActiveMobileTab('loans'); }}
+          className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold transition-colors ${
+            activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'
+          }`}
+        >
+          <List className={`w-5 h-5 ${activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          {t('navLoans', lang)}
+        </button>
+        <button
+          onClick={() => setShowNewLoanModal(true)}
+          className="flex-1 flex flex-col items-center py-2.5 gap-0.5"
+        >
+          <div className="w-11 h-11 -mt-5 bg-emerald-600 rounded-full flex items-center justify-center shadow-lg shadow-emerald-300">
+            <Activity className="w-5 h-5 text-white" />
+          </div>
+        </button>
+        <button
+          onClick={() => setShowWithdrawModal(true)}
+          className="flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold text-slate-400 hover:text-rose-600 transition-colors"
+        >
+          <Wallet className="w-5 h-5" />
+          {t('withdraw', lang)}
+        </button>
+        <button
+          onClick={() => setActiveMobileTab('analytics')}
+          className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold transition-colors ${
+            activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'
+          }`}
+        >
+          <BarChart2 className={`w-5 h-5 ${activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          {t('navAnalytics', lang)}
+        </button>
       </div>
 
       {/* Loan Details & Action Modal */}
@@ -704,7 +777,7 @@ export default function App() {
           onClick={() => setSelectedLoan(null)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh]"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
@@ -715,7 +788,7 @@ export default function App() {
                     onClick={() => setIsEditingLoan(!isEditingLoan)}
                     className={`text-xs px-2.5 py-1 rounded-full font-bold transition-colors ml-2 ${isEditingLoan ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                   >
-                    {isEditingLoan ? 'Cancel Edit' : '✏️ Edit Details'}
+                    {isEditingLoan ? t('cancelEdit', lang) : t('editDetails', lang)}
                   </button>
                 </h2>
                 <div className="flex items-center gap-3 mt-1">
@@ -825,11 +898,11 @@ export default function App() {
                 {selectedLoan.historicalRenewalCount > 0 && (
                   <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 mb-4">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-indigo-800 text-sm font-semibold">Renewal History (Current Cycle)</span>
-                      <span className="bg-indigo-200 text-indigo-800 text-xs px-2 py-0.5 rounded-full font-bold">{selectedLoan.historicalRenewalCount} Times</span>
+                      <span className="text-indigo-800 text-sm font-semibold">{t('renewalHistory', lang)}</span>
+                      <span className="bg-indigo-200 text-indigo-800 text-xs px-2 py-0.5 rounded-full font-bold">{selectedLoan.historicalRenewalCount} {t('times', lang)}</span>
                     </div>
                     <div className="flex justify-between items-center text-sm">
-                      <span className="text-indigo-600">Total Interest Accumulated</span>
+                      <span className="text-indigo-600">{t('totalInterestAccumulated', lang)}</span>
                       <span className="font-black text-indigo-700">{formatCurrency(selectedLoan.historicalRenewalInterest)}</span>
                     </div>
                     <p className="text-[10px] text-indigo-500 mt-2 leading-tight">These are the historical interest payments made by this customer to extend this specific loan sequence before paying off the principal.</p>
@@ -839,11 +912,11 @@ export default function App() {
                 {selectedLoan.penaltyHistory && selectedLoan.penaltyHistory.length > 0 && (
                   <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 mb-4">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-amber-800 text-sm font-semibold">Penalty Payment History</span>
-                      <span className="bg-amber-200 text-amber-800 text-xs px-2 py-0.5 rounded-full font-bold">{selectedLoan.penaltyHistory.length} Times</span>
+                      <span className="text-amber-800 text-sm font-semibold">{t('penaltyHistory', lang)}</span>
+                      <span className="bg-amber-200 text-amber-800 text-xs px-2 py-0.5 rounded-full font-bold">{selectedLoan.penaltyHistory.length} {t('times', lang)}</span>
                     </div>
                     <div className="flex justify-between items-center text-sm mb-3 border-b border-amber-200/50 pb-2">
-                      <span className="text-amber-700">Total Penalty Paid</span>
+                      <span className="text-amber-700">{t('totalPenaltyPaid', lang)}</span>
                       <span className="font-black text-amber-700">
                         {formatCurrency(selectedLoan.penaltyHistory.reduce((sum, p) => sum + p.amount, 0))}
                       </span>
@@ -851,7 +924,7 @@ export default function App() {
                     <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
                       {selectedLoan.penaltyHistory.map((p, idx) => (
                         <div key={idx} className="flex justify-between items-center text-xs bg-white/60 p-2 rounded border border-amber-100/50 shadow-sm">
-                          <span className="text-amber-600 font-medium">Round {idx + 1} <span className="text-amber-500/80 font-normal ml-1">({p.date})</span></span>
+                          <span className="text-amber-600 font-medium">{t('round', lang)} {idx + 1} <span className="text-amber-500/80 font-normal ml-1">({p.date})</span></span>
                           <span className="text-amber-800 font-bold">{formatCurrency(p.amount)}</span>
                         </div>
                       ))}
@@ -861,20 +934,20 @@ export default function App() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                    <div className="text-xs text-slate-500 mb-1">Issue Date</div>
+                    <div className="text-xs text-slate-500 mb-1">{t('issueDate', lang)}</div>
                     <div className="font-semibold text-slate-800">{selectedLoan.borrowDate}</div>
                   </div>
                   <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
                     {isEditingLoan ? (
                       <>
-                        <div className="text-xs font-bold text-slate-500 mb-1">Due Date</div>
+                        <div className="text-xs font-bold text-slate-500 mb-1">{t('dueDateLabel', lang)}</div>
                         <DatePicker
                           selected={editLoanForm.dueDate}
                           onChange={handleEditDueDateChange}
                           dateFormat="dd/MM/yyyy"
                           className="w-full border border-slate-300 rounded p-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
                         />
-                        <div className="text-xs font-bold text-slate-500 mt-2 mb-1">Days</div>
+                        <div className="text-xs font-bold text-slate-500 mt-2 mb-1">{t('days', lang)}</div>
                         <input
                           type="number"
                           min="1"
@@ -885,7 +958,7 @@ export default function App() {
                       </>
                     ) : (
                       <>
-                        <div className="text-xs text-slate-500 mb-1">Due Date</div>
+                        <div className="text-xs text-slate-500 mb-1">{t('dueDateLabel', lang)}</div>
                         <div className={`font-semibold ${selectedLoan.isOverdue ? 'text-rose-600' : 'text-slate-800'}`}>
                           {selectedLoan.dueDate}
                         </div>
@@ -897,7 +970,7 @@ export default function App() {
                 {selectedLoan.daysLate > 0 && (
                   <div className="flex items-center gap-2 mt-2 p-3 bg-rose-50 rounded-lg text-rose-700 text-sm border border-rose-100">
                     <AlertCircle className="w-4 h-4" />
-                    <span className="font-medium">Currently {selectedLoan.daysLate} days overdue</span>
+                    <span className="font-medium">{lang === 'th' ? 'ค้างชำระ' : 'Currently'} {selectedLoan.daysLate} {t('daysOverdueText', lang)}</span>
                   </div>
                 )}
               </div>
@@ -912,13 +985,13 @@ export default function App() {
                     disabled={isSyncing}
                     className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50 w-full justify-center"
                   >
-                    {isSyncing ? 'Saving...' : '💾 Save Changes'}
+                    {isSyncing ? t('saving', lang) : t('saveChanges', lang)}
                   </button>
                 </div>
               ) : (
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-3">
-                    <label className="text-sm font-bold text-slate-600 whitespace-nowrap">Action Date:</label>
+                    <label className="text-sm font-bold text-slate-600 whitespace-nowrap">{t('actionDate', lang)}</label>
                     <DatePicker
                       selected={actionDate}
                       onChange={(date) => date && setActionDate(date)}
@@ -931,19 +1004,19 @@ export default function App() {
                       onClick={() => handleUpdateStatus('ชำระแล้ว')}
                       className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
                     >
-                      <CheckCircle2 className="w-4 h-4" /> Paid
+                      <CheckCircle2 className="w-4 h-4" /> {t('markPaid', lang)}
                     </button>
                     <button
                       onClick={() => handleUpdateStatus('ต่อดอก')}
                       className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
                     >
-                      <Activity className="w-4 h-4" /> Renew
+                      <Activity className="w-4 h-4" /> {t('renew', lang)}
                     </button>
                     <button
                       onClick={() => handleUpdateStatus('โดนบิด')}
                       className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
                     >
-                      <UserX className="w-4 h-4" /> Default
+                      <UserX className="w-4 h-4" /> {t('default', lang)}
                     </button>
                   </div>
                 </div>
@@ -980,8 +1053,8 @@ export default function App() {
               {/* Left: Big Chart */}
               <div className="w-full lg:w-2/3 p-6 flex flex-col bg-white border-r border-slate-200 shadow-[2px_0_10px_rgba(0,0,0,0.02)] z-10">
                 <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">30-Day Trend</h3>
-                  <span className="text-xs text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full font-bold border border-indigo-100 animate-pulse">Click any bar to view details</span>
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">{t('trend30day', lang)}</h3>
+                  <span className="text-xs text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full font-bold border border-indigo-100 animate-pulse">{t('clickBarToViewDetails', lang)}</span>
                 </div>
                 <div className="flex-1 w-full min-h-[250px] cursor-pointer">
                   <ResponsiveContainer width="100%" height="100%">
@@ -1013,8 +1086,8 @@ export default function App() {
                     <div className="w-20 h-20 bg-indigo-100 text-indigo-500 rounded-full flex items-center justify-center mb-4">
                       <Activity className="w-10 h-10" />
                     </div>
-                    <p className="font-extrabold text-lg text-slate-700">No Date Selected</p>
-                    <p className="text-sm text-slate-500 mt-2 leading-relaxed">Select a specific date on the graph to drill down into the detailed loan collections and expected payments for that day.</p>
+                    <p className="font-extrabold text-lg text-slate-700">{t('noDateSelected', lang)}</p>
+                    <p className="text-sm text-slate-500 mt-2 leading-relaxed">{t('selectDateOnGraph', lang)}</p>
                   </div>
                 ) : (
                   <div className="p-6 space-y-6 animate-[fadeIn_0.2s_ease-out]">
@@ -1022,13 +1095,13 @@ export default function App() {
                       <div className="bg-indigo-600 text-white p-2 rounded-lg"><CalendarClock className="w-5 h-5" /></div>
                       <div>
                         <h2 className="text-xl font-black text-slate-800">{insightDate}</h2>
-                        <p className="text-xs font-bold text-indigo-600 uppercase">Daily Insight Report</p>
+                        <p className="text-xs font-bold text-indigo-600 uppercase">{t('dailyInsightReport', lang)}</p>
                       </div>
                     </div>
 
                     {/* Expected */}
                     <div>
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">Expected Interest (Due)</h3>
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">{t('expectedInterestDue', lang)}</h3>
                       <div className="space-y-2">
                         {data.loans.filter(l => l.dueDate && l.dueDate.startsWith(insightDate)).map(l => (
                           <div key={'exp-' + l.id} className="flex justify-between p-3 bg-white rounded-lg border border-slate-200 shadow-sm hover:border-indigo-300 transition-colors">
@@ -1045,14 +1118,14 @@ export default function App() {
                           </div>
                         ))}
                         {data.loans.filter(l => l.dueDate && l.dueDate.startsWith(insightDate)).length === 0 && (
-                          <div className="p-4 bg-white rounded-lg text-sm text-slate-400 italic text-center border border-slate-200 border-dashed">No expected interest for this date.</div>
+                          <div className="p-4 bg-white rounded-lg text-sm text-slate-400 italic text-center border border-slate-200 border-dashed">{t('noExpectedForDate', lang)}</div>
                         )}
                       </div>
                     </div>
 
                     {/* Received */}
                     <div>
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2 text-emerald-600"><CheckCircle2 className="w-4 h-4" /> Actually Received</h3>
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2 text-emerald-600"><CheckCircle2 className="w-4 h-4" /> {t('actualPaymentsReceived', lang)}</h3>
                       <div className="space-y-2">
                         {data.loans.filter(l => l.actualDate && l.actualDate.startsWith(insightDate) && l.paidInterest > 0).map(l => (
                           <div key={'rec-' + l.id} className="flex justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-200 shadow-sm hover:border-emerald-400 transition-colors">
@@ -1066,7 +1139,7 @@ export default function App() {
                           </div>
                         ))}
                         {data.loans.filter(l => l.actualDate && l.actualDate.startsWith(insightDate) && l.paidInterest > 0).length === 0 && (
-                          <div className="p-4 bg-white rounded-lg text-sm text-slate-400 italic text-center border border-slate-200 border-dashed">No received interest on this date.</div>
+                          <div className="p-4 bg-white rounded-lg text-sm text-slate-400 italic text-center border border-slate-200 border-dashed">{t('noPaymentsForDate', lang)}</div>
                         )}
                       </div>
                     </div>
@@ -1086,9 +1159,9 @@ export default function App() {
               <div>
                 <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
                   <Activity className="w-6 h-6 text-emerald-600" />
-                  Portfolio Progress Insights
+                  {t('portfolioInsights', lang)}
                 </h2>
-                <p className="text-sm text-slate-500 mt-1">Detailed breakdown of expected vs. collected returns.</p>
+                <p className="text-sm text-slate-500 mt-1">{t('portfolioInsightsDesc', lang)}</p>
               </div>
               <button onClick={() => setShowPortfolioProgressModal(false)} className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-200 transition-colors">
                 <X size={24} />
@@ -1097,51 +1170,51 @@ export default function App() {
             <div className="p-6 overflow-y-auto bg-slate-50">
               <div className="grid grid-cols-2 gap-4 mb-6">
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center">
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Total Expected Value</div>
+                  <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">{t('totalExpectedValue', lang)}</div>
                   <div className="text-3xl font-black text-slate-800">{formatCurrency(s.totalExpected)}</div>
                 </div>
                 <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-200 shadow-sm flex flex-col justify-center items-center text-center">
-                  <div className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-2">Total Collected</div>
+                  <div className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-2">{t('totalCollected', lang)}</div>
                   <div className="text-3xl font-black text-emerald-700">{formatCurrency(s.totalPaid)}</div>
                 </div>
               </div>
 
               <div className="space-y-4">
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 bg-slate-100/50 border-b border-slate-200 text-sm font-bold text-slate-600 uppercase">Principal Breakdown</div>
+                  <div className="px-4 py-3 bg-slate-100/50 border-b border-slate-200 text-sm font-bold text-slate-600 uppercase">{t('principalBreakdown', lang)}</div>
                   <div className="p-4 flex flex-col gap-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-600 font-medium">Total Principal Lent Out</span>
+                      <span className="text-slate-600 font-medium">{t('principalLentOut', lang)}</span>
                       <span className="font-bold text-slate-800">{formatCurrency(s.totalBorrowed)}</span>
                     </div>
                     <div className="flex justify-between items-center pl-4 border-l-2 border-emerald-300">
-                      <span className="text-emerald-700 text-sm">Principal Collected</span>
+                      <span className="text-emerald-700 text-sm">{t('principalCollected', lang)}</span>
                       <span className="font-bold text-emerald-700">{formatCurrency(s.paidPrincipal)}</span>
                     </div>
                     <div className="flex justify-between items-center pl-4 border-l-2 border-amber-300">
-                      <span className="text-amber-700 text-sm">Principal Remaining / Active</span>
+                      <span className="text-amber-700 text-sm">{t('principalRemaining', lang)}</span>
                       <span className="font-bold text-amber-700">{formatCurrency(s.unpaidPrincipal)}</span>
                     </div>
                     <div className="flex justify-between items-center pl-4 border-l-2 border-rose-300">
-                      <span className="text-rose-700 text-sm">Principal Defaulted (Lost)</span>
+                      <span className="text-rose-700 text-sm">{t('principalLost', lang)}</span>
                       <span className="font-bold text-rose-700">{formatCurrency(s.scamPrincipal)}</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 bg-slate-100/50 border-b border-slate-200 text-sm font-bold text-slate-600 uppercase">Interest Breakdown</div>
+                  <div className="px-4 py-3 bg-slate-100/50 border-b border-slate-200 text-sm font-bold text-slate-600 uppercase">{t('interestBreakdown', lang)}</div>
                   <div className="p-4 flex flex-col gap-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-slate-600 font-medium">Total Interest Expected</span>
+                      <span className="text-slate-600 font-medium">{t('interestExpected', lang)}</span>
                       <span className="font-bold text-slate-800">{formatCurrency(s.totalInterest)}</span>
                     </div>
                     <div className="flex justify-between items-center pl-4 border-l-2 border-emerald-300">
-                      <span className="text-emerald-700 text-sm">Interest Collected</span>
+                      <span className="text-emerald-700 text-sm">{t('interestCollected', lang)}</span>
                       <span className="font-bold text-emerald-700">{formatCurrency(s.paidInterest)}</span>
                     </div>
                     <div className="flex justify-between items-center pl-4 border-l-2 border-amber-300">
-                      <span className="text-amber-700 text-sm">Interest Remaining / Active</span>
+                      <span className="text-amber-700 text-sm">{t('interestRemaining', lang)}</span>
                       <span className="font-bold text-amber-700">{formatCurrency(s.unpaidInterest)}</span>
                     </div>
                   </div>
@@ -1157,13 +1230,13 @@ export default function App() {
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowWithdrawModal(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-[slideIn_0.2s_ease-out]" onClick={e => e.stopPropagation()}>
             <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-              <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Wallet className="text-rose-600" /> New Payout (Withdrawal)</h3>
+              <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Wallet className="text-rose-600" /> {t('newPayout', lang)}</h3>
               <button onClick={() => setShowWithdrawModal(false)} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
             </div>
 
             <form onSubmit={handleWithdrawSubmit} className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Payout Amount</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('payoutAmount', lang)}</label>
                 <input
                   type="number"
                   required
@@ -1187,7 +1260,7 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Withdrawal Date</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('withdrawalDate', lang)}</label>
                 <DatePicker
                   selected={withdrawForm.date}
                   onChange={(date: Date) => setWithdrawForm({ ...withdrawForm, date: date || new Date() })}
@@ -1197,7 +1270,7 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Reference / Description</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('withdrawalName', lang)}</label>
                 <input
                   type="text"
                   value={withdrawForm.name}
@@ -1208,9 +1281,9 @@ export default function App() {
               </div>
 
               <div className="pt-4 border-t border-slate-100 mt-6 flex justify-end gap-3">
-                <button type="button" onClick={() => setShowWithdrawModal(false)} className="px-5 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-lg transition-colors">Cancel</button>
+                <button type="button" onClick={() => setShowWithdrawModal(false)} className="px-5 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-lg transition-colors">{t('cancel', lang)}</button>
                 <button type="submit" disabled={isSyncing} className="px-5 py-2.5 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700 transition-colors shadow-sm disabled:opacity-50">
-                  {isSyncing ? 'Saving...' : 'Confirm Payout'}
+                  {isSyncing ? t('saving', lang) : t('confirmPayout', lang)}
                 </button>
               </div>
             </form>
@@ -1223,13 +1296,13 @@ export default function App() {
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowNewLoanModal(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-[slideIn_0.2s_ease-out]" onClick={e => e.stopPropagation()}>
             <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-              <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Activity className="text-indigo-600" /> Issue New Loan</h3>
+              <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Activity className="text-indigo-600" /> {t('issueNewLoan', lang)}</h3>
               <button onClick={() => setShowNewLoanModal(false)} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
             </div>
 
             <form onSubmit={handleCreateNewLoan} className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Borrower Name</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('borrowerName', lang)}</label>
                 <input
                   type="text"
                   required
@@ -1241,7 +1314,7 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Principal Amount</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('principalAmount', lang)}</label>
                 <input
                   type="number"
                   required
@@ -1266,7 +1339,7 @@ export default function App() {
 
               <div className="grid grid-cols-2 gap-4 relative">
                 <div className="flex flex-col relative z-20">
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Borrow Date</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('borrowDate', lang)}</label>
                   <DatePicker
                     selected={newLoanForm.borrowDate}
                     onChange={handleBorrowDateChange}
@@ -1275,7 +1348,7 @@ export default function App() {
                   />
                 </div>
                 <div className="flex flex-col relative z-20">
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Due Date</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('dueDateLabel', lang)}</label>
                   <DatePicker
                     selected={newLoanForm.dueDate}
                     onChange={handleDueDateChange}
@@ -1287,7 +1360,7 @@ export default function App() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Days Borrowed</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('daysBorrowed', lang)}</label>
                   <input
                     type="number"
                     required
@@ -1298,7 +1371,7 @@ export default function App() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Interest Rate (%)</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('interestRateLabel', lang)}</label>
                   <input
                     type="number"
                     required
@@ -1311,9 +1384,9 @@ export default function App() {
               </div>
 
               <div className="pt-4 border-t border-slate-100 mt-6 flex justify-end gap-3">
-                <button type="button" onClick={() => setShowNewLoanModal(false)} className="px-5 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-lg transition-colors">Cancel</button>
+                <button type="button" onClick={() => setShowNewLoanModal(false)} className="px-5 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-lg transition-colors">{t('cancel', lang)}</button>
                 <button type="submit" disabled={isSyncing} className="px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50">
-                  {isSyncing ? 'Saving...' : 'Add Loan'}
+                  {isSyncing ? t('saving', lang) : t('addLoan', lang)}
                 </button>
               </div>
             </form>
@@ -1337,7 +1410,7 @@ export default function App() {
                   <Bell className="w-5 h-5 text-emerald-600" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-extrabold text-slate-800">การแจ้งเตือน</h2>
+                  <h2 className="text-xl font-extrabold text-slate-800">{t('notifTitle', lang)}</h2>
                   <p className="text-xs text-slate-500">Notification Settings</p>
                 </div>
               </div>
@@ -1354,10 +1427,10 @@ export default function App() {
                 }`}></div>
                 <div>
                   <p className={`text-sm font-bold ${isSubscribed ? 'text-emerald-800' : notifPermission === 'denied' ? 'text-rose-700' : 'text-slate-600'}`}>
-                    {isSubscribed ? '✅ การแจ้งเตือนเปิดใช้งานอยู่' : notifPermission === 'denied' ? '🚫 ถูกบล็อคโดยระบบ' : '⭕ ยังไม่ได้เปิดการแจ้งเตือน'}
+                    {isSubscribed ? t('notifEnabled', lang) : notifPermission === 'denied' ? t('notifBlocked', lang) : t('notifDisabled', lang)}
                   </p>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    {isSubscribed ? 'คุณจะได้รับแจ้งเตือนที่ 06:00 และ 16:00 น. ทุกวัน' : notifPermission === 'denied' ? 'กรุณาเปิดสิทธิ์ใน Settings > Safari > Notifications' : 'กดปุ่มด้านล่างเพื่อเริ่มรับการแจ้งเตือน'}
+                    {isSubscribed ? t('notifEnabledDesc', lang) : notifPermission === 'denied' ? t('notifBlockedDesc', lang) : t('notifDisabledDesc', lang)}
                   </p>
                 </div>
               </div>
@@ -1365,12 +1438,12 @@ export default function App() {
                 <div className="bg-amber-50 p-3 rounded-xl border border-amber-100 text-center">
                   <div className="text-2xl mb-1">🌅</div>
                   <div className="text-sm font-bold text-amber-800">06:00 น.</div>
-                  <div className="text-xs text-amber-600 mt-1">สรุปยอดนัดชำระและยอดค้างชำระ</div>
+                  <div className="text-xs text-amber-600 mt-1">{t('morningAlert', lang)}</div>
                 </div>
                 <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 text-center">
                   <div className="text-2xl mb-1">🔔</div>
                   <div className="text-sm font-bold text-indigo-800">16:00 น.</div>
-                  <div className="text-xs text-indigo-600 mt-1">แจ้งเตือนทวงยอดที่ยังไม่ชำระวันนี้</div>
+                  <div className="text-xs text-indigo-600 mt-1">{t('afternoonAlert', lang)}</div>
                 </div>
               </div>
               <div className="space-y-3">
@@ -1378,24 +1451,24 @@ export default function App() {
                   <button
                     onClick={async () => {
                       const sub = await subscribeToPush();
-                      if (sub) { setIsSubscribed(true); setNotifPermission('granted'); showToast('เปิดการแจ้งเตือนสำเร็จ! 🔔', 'success'); setShowNotifModal(false); }
-                      else showToast('ไม่สามารถเปิดการแจ้งเตือนได้ ตรวจสอบสิทธิ์ใน Settings', 'error');
+                      if (sub) { setIsSubscribed(true); setNotifPermission('granted'); showToast(t('notifSuccess', lang), 'success'); setShowNotifModal(false); }
+                      else showToast(t('notifFailed', lang), 'error');
                     }}
                     disabled={notifPermission === 'denied'}
                     className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Bell className="w-4 h-4" /> เปิดรับการแจ้งเตือน
+                    <Bell className="w-4 h-4" /> {t('enableNotif', lang)}
                   </button>
                 ) : (
                   <button
-                    onClick={async () => { await unsubscribeFromPush(); setIsSubscribed(false); showToast('ปิดการแจ้งเตือนแล้ว', 'success'); setShowNotifModal(false); }}
+                    onClick={async () => { await unsubscribeFromPush(); setIsSubscribed(false); showToast(t('notifDisabledToast', lang), 'success'); setShowNotifModal(false); }}
                     className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
                   >
-                    <BellOff className="w-4 h-4" /> ปิดการแจ้งเตือน
+                    <BellOff className="w-4 h-4" /> {t('disableNotif', lang)}
                   </button>
                 )}
                 <div className="border-t border-slate-100 pt-3">
-                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">ทดสอบการแจ้งเตือน</p>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">{t('testNotif', lang)}</p>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       disabled={!isSubscribed || isSendingTestNotif}
