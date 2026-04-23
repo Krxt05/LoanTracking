@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { fetchAppData, AppData, LoanRecord, updateLoanStatus, createNewLoan, editExistingLoan } from './services/dataService';
 import { formatCurrency, formatNumber, parseThaiDate } from './lib/utils';
-import { TrendingUp, TrendingDown, AlertCircle, CalendarClock, Activity, FileSpreadsheet, List, X, CheckCircle2, UserX, Wallet, RefreshCcw, LineChart } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertCircle, CalendarClock, Activity, FileSpreadsheet, List, X, CheckCircle2, UserX, Wallet, RefreshCcw, LineChart, Bell, BellOff } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
+import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, getNotificationPermission, sendTestNotification } from './services/pushService';
 
 export default function App() {
   const [data, setData] = useState<AppData | null>(null);
@@ -20,6 +21,10 @@ export default function App() {
   const [showNewLoanModal, setShowNewLoanModal] = useState(false);
   const [showPortfolioProgressModal, setShowPortfolioProgressModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [showNotifModal, setShowNotifModal] = useState(false);
+  const [isSendingTestNotif, setIsSendingTestNotif] = useState(false);
   const [withdrawForm, setWithdrawForm] = useState({
     name: '',
     principal: '',
@@ -325,6 +330,14 @@ export default function App() {
         setError(true);
       })
       .finally(() => setLoading(false));
+
+    // Initialize Service Worker & check notification status
+    registerServiceWorker().then(async (reg) => {
+      if (!reg) return;
+      setNotifPermission(getNotificationPermission());
+      const sub = await reg.pushManager.getSubscription();
+      setIsSubscribed(!!sub);
+    });
   }, []);
 
   if (loading) {
@@ -456,11 +469,25 @@ export default function App() {
           <div>
             <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
               <Activity className="w-8 h-8 text-emerald-600" />
-              Loan Portfolio Management
+              Loan Tracking
             </h1>
             <p className="text-slate-500 mt-1">Professional financial dashboard & analytics</p>
           </div>
           <div className="flex items-center gap-3">
+            {/* Notification Bell Button */}
+            <button
+              onClick={() => setShowNotifModal(true)}
+              className={`relative flex items-center gap-2 p-2 rounded-full transition-colors ${isSubscribed
+                  ? 'text-emerald-600 hover:bg-emerald-50'
+                  : 'text-slate-400 hover:bg-slate-200'
+                }`}
+              title={isSubscribed ? 'การแจ้งเตือนเปิดอยู่' : 'เปิดการแจ้งเตือน'}
+            >
+              {isSubscribed ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
+              {isSubscribed && (
+                <span className="absolute top-0.5 right-0.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white"></span>
+              )}
+            </button>
             <button
               onClick={() => setShowWithdrawModal(true)}
               className="flex items-center gap-2 px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-lg shadow-sm transition-all"
@@ -1148,9 +1175,9 @@ export default function App() {
                 />
                 <div className="flex flex-wrap gap-2 mt-2">
                   {[500, 1000, 1500, 2000, 2500, 3000].map(amt => (
-                    <button 
-                      key={amt} type="button" 
-                      onClick={() => setWithdrawForm({...withdrawForm, principal: amt.toString()})}
+                    <button
+                      key={amt} type="button"
+                      onClick={() => setWithdrawForm({ ...withdrawForm, principal: amt.toString() })}
                       className="px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors border border-rose-100"
                     >
                       {formatNumber(amt)}
@@ -1294,7 +1321,118 @@ export default function App() {
         </div>
       )}
 
-      {/* Toast Notification */}
+      {/* Notification Settings Modal */}
+      {showNotifModal && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          onClick={() => setShowNotifModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center">
+                  <Bell className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-extrabold text-slate-800">การแจ้งเตือน</h2>
+                  <p className="text-xs text-slate-500">Notification Settings</p>
+                </div>
+              </div>
+              <button onClick={() => setShowNotifModal(false)} className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-5">
+              <div className={`flex items-center gap-3 p-4 rounded-xl border ${
+                isSubscribed ? 'bg-emerald-50 border-emerald-200' : notifPermission === 'denied' ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'
+              }`}>
+                <div className={`w-3 h-3 rounded-full ${
+                  isSubscribed ? 'bg-emerald-500 animate-pulse' : notifPermission === 'denied' ? 'bg-rose-500' : 'bg-slate-300'
+                }`}></div>
+                <div>
+                  <p className={`text-sm font-bold ${isSubscribed ? 'text-emerald-800' : notifPermission === 'denied' ? 'text-rose-700' : 'text-slate-600'}`}>
+                    {isSubscribed ? '✅ การแจ้งเตือนเปิดใช้งานอยู่' : notifPermission === 'denied' ? '🚫 ถูกบล็อคโดยระบบ' : '⭕ ยังไม่ได้เปิดการแจ้งเตือน'}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {isSubscribed ? 'คุณจะได้รับแจ้งเตือนที่ 06:00 และ 16:00 น. ทุกวัน' : notifPermission === 'denied' ? 'กรุณาเปิดสิทธิ์ใน Settings > Safari > Notifications' : 'กดปุ่มด้านล่างเพื่อเริ่มรับการแจ้งเตือน'}
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-amber-50 p-3 rounded-xl border border-amber-100 text-center">
+                  <div className="text-2xl mb-1">🌅</div>
+                  <div className="text-sm font-bold text-amber-800">06:00 น.</div>
+                  <div className="text-xs text-amber-600 mt-1">สรุปยอดนัดชำระและยอดค้างชำระ</div>
+                </div>
+                <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 text-center">
+                  <div className="text-2xl mb-1">🔔</div>
+                  <div className="text-sm font-bold text-indigo-800">16:00 น.</div>
+                  <div className="text-xs text-indigo-600 mt-1">แจ้งเตือนทวงยอดที่ยังไม่ชำระวันนี้</div>
+                </div>
+              </div>
+              <div className="space-y-3">
+                {!isSubscribed ? (
+                  <button
+                    onClick={async () => {
+                      const sub = await subscribeToPush();
+                      if (sub) { setIsSubscribed(true); setNotifPermission('granted'); showToast('เปิดการแจ้งเตือนสำเร็จ! 🔔', 'success'); setShowNotifModal(false); }
+                      else showToast('ไม่สามารถเปิดการแจ้งเตือนได้ ตรวจสอบสิทธิ์ใน Settings', 'error');
+                    }}
+                    disabled={notifPermission === 'denied'}
+                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Bell className="w-4 h-4" /> เปิดรับการแจ้งเตือน
+                  </button>
+                ) : (
+                  <button
+                    onClick={async () => { await unsubscribeFromPush(); setIsSubscribed(false); showToast('ปิดการแจ้งเตือนแล้ว', 'success'); setShowNotifModal(false); }}
+                    className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+                  >
+                    <BellOff className="w-4 h-4" /> ปิดการแจ้งเตือน
+                  </button>
+                )}
+                <div className="border-t border-slate-100 pt-3">
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">ทดสอบการแจ้งเตือน</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      disabled={!isSubscribed || isSendingTestNotif}
+                      onClick={async () => {
+                        setIsSendingTestNotif(true);
+                        const t = new Date(); t.setHours(0,0,0,0);
+                        const dueCount = data ? data.loans.filter(l => { if(l.isPaid||l.isScam||l.isRenewed||l.isWithdrawn) return false; const d=parseThaiDate(l.dueDate); return d&&d.getTime()===t.getTime(); }).length : 0;
+                        const overdueCount = data ? data.loans.filter(l => l.isOverdue&&!l.isPaid&&!l.isScam&&!l.isRenewed&&!l.isWithdrawn).length : 0;
+                        await sendTestNotification('🌅 LoanTrack - สรุปยอดวันนี้', `📋 นัดชำระวันนี้: ${dueCount} ราย | ⚠️ ค้างชำระ: ${overdueCount} ราย`);
+                        setIsSendingTestNotif(false);
+                      }}
+                      className="py-2 px-3 text-xs font-bold bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      🌅 ทดสอบ 06:00
+                    </button>
+                    <button
+                      disabled={!isSubscribed || isSendingTestNotif}
+                      onClick={async () => {
+                        setIsSendingTestNotif(true);
+                        const t = new Date(); t.setHours(0,0,0,0);
+                        const unpaid = data ? data.loans.filter(l => { if(l.isPaid||l.isScam||l.isRenewed||l.isWithdrawn) return false; const d=parseThaiDate(l.dueDate); return d&&d.getTime()===t.getTime(); }).length : 0;
+                        await sendTestNotification('🔔 LoanTrack - ต้องทวงวันนี้!', unpaid > 0 ? `💬 ยังมี ${unpaid} ราย ที่ยังไม่ชำระในวันนี้ รีบตามทวงด่วน!` : '✅ ยอดทั้งหมดของวันนี้ชำระแล้ว!');
+                        setIsSendingTestNotif(false);
+                      }}
+                      className="py-2 px-3 text-xs font-bold bg-indigo-100 text-indigo-800 rounded-lg hover:bg-indigo-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      🔔 ทดสอบ 16:00
+                    </button>
+                  </div>
+                  {!isSubscribed && <p className="text-xs text-slate-400 text-center mt-2">เปิดการแจ้งเตือนก่อนเพื่อทดสอบ</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 animate-[bounce_0.5s_ease-in-out]">
           <div className={`px-6 py-4 rounded-xl shadow-lg flex items-center gap-3 text-white font-bold ${toastMessage.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
