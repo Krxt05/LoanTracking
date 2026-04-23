@@ -793,56 +793,49 @@ export default function App() {
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex md:hidden z-40 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex md:hidden z-40 shadow-[0_-8px_20px_rgba(0,0,0,0.08)] pb-[env(safe-area-inset-bottom,24px)] pt-2 px-2">
         <button
           onClick={() => { setShowNewLoanModal(false); setShowWithdrawModal(false); setActiveMobileTab('dashboard'); }}
-          className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold transition-colors ${
+          className={`flex-1 flex flex-col items-center py-2 gap-1 text-[10px] font-bold transition-all active:scale-90 ${
             activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'
           }`}
         >
-          <Home className={`w-5 h-5 ${activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          <Home className={`w-6 h-6 ${activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'}`} />
           {t('navDashboard', lang)}
         </button>
         <button
           onClick={() => { setActiveMobileTab('calendar'); }}
-          className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold transition-colors ${
+          className={`flex-1 flex flex-col items-center py-2 gap-1 text-[10px] font-bold transition-all active:scale-90 ${
             activeMobileTab === 'calendar' ? 'text-emerald-600' : 'text-slate-400'
           }`}
         >
-          <Calendar className={`w-5 h-5 ${activeMobileTab === 'calendar' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          <Calendar className={`w-6 h-6 ${activeMobileTab === 'calendar' ? 'text-emerald-600' : 'text-slate-400'}`} />
           {t('navCalendar', lang)}
         </button>
         <button
-          onClick={() => { setActiveMobileTab('loans'); }}
-          className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold transition-colors ${
-            activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'
-          }`}
-        >
-          <List className={`w-5 h-5 ${activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'}`} />
-          {t('navLoans', lang)}
-        </button>
-        <button
           onClick={() => setShowNewLoanModal(true)}
-          className="flex-1 flex flex-col items-center py-2.5 gap-0.5"
+          className="flex-1 flex flex-col items-center justify-center -mt-8"
         >
-          <div className="w-11 h-11 -mt-5 bg-emerald-600 rounded-full flex items-center justify-center shadow-lg shadow-emerald-300">
-            <Activity className="w-5 h-5 text-white" />
+          <div className="w-14 h-14 bg-emerald-600 rounded-2xl flex items-center justify-center shadow-xl shadow-emerald-200 border-4 border-white active:scale-95 transition-transform">
+            <Activity className="w-7 h-7 text-white" />
           </div>
         </button>
         <button
-          onClick={() => setShowWithdrawModal(true)}
-          className="flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold text-slate-400 hover:text-rose-600 transition-colors"
+          onClick={() => { setActiveMobileTab('loans'); }}
+          className={`flex-1 flex flex-col items-center py-2 gap-1 text-[10px] font-bold transition-all active:scale-90 ${
+            activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'
+          }`}
         >
-          <Wallet className="w-5 h-5" />
-          {t('withdraw', lang)}
+          <List className={`w-6 h-6 ${activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          {t('navLoans', lang)}
         </button>
         <button
           onClick={() => setActiveMobileTab('analytics')}
-          className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold transition-colors ${
+          className={`flex-1 flex flex-col items-center py-2 gap-1 text-[10px] font-bold transition-all active:scale-90 ${
             activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'
           }`}
         >
-          <BarChart2 className={`w-5 h-5 ${activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          <BarChart2 className={`w-6 h-6 ${activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'}`} />
           {t('navAnalytics', lang)}
         </button>
       </div>
