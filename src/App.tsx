@@ -349,10 +349,31 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans">
-        <div className="flex flex-col items-center">
-          <div className="w-10 h-10 border-4 border-slate-300 border-t-slate-800 rounded-full animate-spin mb-4"></div>
-          <p className="text-slate-600 font-medium">Initialize Data Model...</p>
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center font-sans relative overflow-hidden">
+        {/* Animated Background Accents */}
+        <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-500/20 rounded-full blur-[120px] animate-pulse"></div>
+        <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500/20 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '1s' }}></div>
+
+        <div className="flex flex-col items-center relative z-10">
+          <div className="relative mb-8">
+            <div className="w-24 h-24 bg-white/10 backdrop-blur-md rounded-3xl flex items-center justify-center border border-white/20 shadow-2xl animate-[bounce_2s_infinite_ease-in-out]">
+              <Activity className="w-12 h-12 text-emerald-400 stroke-[2.5px]" />
+            </div>
+            {/* Spinning ring */}
+            <div className="absolute -inset-4 border-2 border-dashed border-emerald-500/30 rounded-full animate-[spin_10s_linear_infinite]"></div>
+          </div>
+
+          <h1 className="text-3xl font-black tracking-tight text-white mb-2 flex items-center gap-2">
+            <span className="bg-gradient-to-r from-emerald-400 to-indigo-400 bg-clip-text text-transparent">{t('appTitle', lang)}</span>
+          </h1>
+          <div className="flex flex-col items-center gap-3">
+            <div className="flex gap-1">
+              <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
+              <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+              <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            </div>
+            <p className="text-slate-400 text-xs font-bold uppercase tracking-[0.2em]">{t('syncingData', lang)}</p>
+          </div>
         </div>
       </div>
     );
