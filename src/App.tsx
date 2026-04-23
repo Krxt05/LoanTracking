@@ -379,31 +379,32 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center font-sans relative overflow-hidden">
-        {/* Animated Background Accents */}
-        <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-emerald-500/20 rounded-full blur-[120px] animate-pulse"></div>
-        <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500/20 rounded-full blur-[120px] animate-pulse" style={{ animationDelay: '1s' }}></div>
+      <div className="min-h-screen flex items-center justify-center font-sans relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f2027 100%)' }}>
+        {/* Ambient glow orbs */}
+        <div className="absolute top-[-15%] right-[-10%] w-[50%] h-[50%] rounded-full blur-[100px] opacity-30" style={{ background: 'radial-gradient(circle, #10b981, transparent)' }} />
+        <div className="absolute bottom-[-15%] left-[-10%] w-[50%] h-[50%] rounded-full blur-[100px] opacity-20" style={{ background: 'radial-gradient(circle, #6366f1, transparent)', animationDelay: '1s' }} />
 
-        <div className="flex flex-col items-center relative z-10">
-          <div className="relative mb-8">
-            <div className="w-24 h-24 bg-white/10 backdrop-blur-md rounded-3xl flex items-center justify-center border border-white/20 shadow-2xl animate-[bounce_2s_infinite_ease-in-out]">
+        <div className="flex flex-col items-center relative z-10 px-8 text-center">
+          {/* Logo */}
+          <div className="relative mb-10">
+            <div className="w-24 h-24 rounded-3xl flex items-center justify-center shadow-2xl border border-white/10" style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.2), rgba(99,102,241,0.2))', backdropFilter: 'blur(16px)' }}>
               <Activity className="w-12 h-12 text-emerald-400 stroke-[2.5px]" />
             </div>
-            {/* Spinning ring */}
-            <div className="absolute -inset-4 border-2 border-dashed border-emerald-500/30 rounded-full animate-[spin_10s_linear_infinite]"></div>
+            {/* Pulse rings */}
+            <div className="absolute inset-0 rounded-3xl border-2 border-emerald-500/30 animate-ping" style={{ animationDuration: '2s' }} />
           </div>
 
-          <h1 className="text-3xl font-black tracking-tight text-white mb-2 flex items-center gap-2">
-            <span className="bg-gradient-to-r from-emerald-400 to-indigo-400 bg-clip-text text-transparent">{t('appTitle', lang)}</span>
+          <h1 className="text-3xl font-black tracking-tight text-white mb-1">
+            <span style={{ background: 'linear-gradient(90deg, #34d399, #818cf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{t('appTitle', lang)}</span>
           </h1>
-          <div className="flex flex-col items-center gap-3">
-            <div className="flex gap-1">
-              <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
-              <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-              <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-            </div>
-            <p className="text-slate-400 text-xs font-bold uppercase tracking-[0.2em]">{t('syncingData', lang)}</p>
+          <p className="text-slate-500 text-sm font-medium mb-8">{t('appSubtitle', lang)}</p>
+
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '120ms' }} />
+            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '240ms' }} />
           </div>
+          <p className="text-slate-500 text-xs font-semibold uppercase tracking-[0.2em] mt-3">{t('syncingData', lang)}</p>
         </div>
       </div>
     );
@@ -411,10 +412,14 @@ export default function App() {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans">
-        <div className="bg-white p-8 rounded-xl shadow-sm border border-red-200 text-center">
-          <p className="text-red-600 font-bold mb-2 flex justify-center items-center gap-2"><AlertCircle className="w-5 h-5" /> Data Connection Failed</p>
-          <p className="text-slate-500 text-sm">Failed to sync with the central database.</p>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans p-6">
+        <div className="bg-white p-8 rounded-2xl shadow-xl border border-rose-100 text-center max-w-sm w-full">
+          <div className="w-14 h-14 bg-rose-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-7 h-7 text-rose-500" />
+          </div>
+          <h2 className="text-lg font-black text-slate-800 mb-1">ไม่สามารถเชื่อมต่อได้</h2>
+          <p className="text-slate-500 text-sm">Failed to sync with the central database. Please check your connection.</p>
+          <button onClick={() => window.location.reload()} className="mt-6 w-full py-3 bg-rose-600 text-white font-bold rounded-xl text-sm hover:bg-rose-700 transition-colors">ลองใหม่</button>
         </div>
       </div>
     );
@@ -487,77 +492,112 @@ export default function App() {
     return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-wider border border-slate-200">{t('statusActive', lang)}</span>;
   };
 
+  const MetricCard = ({ label, value, sub, subColor = 'emerald', icon: Icon, iconBg }: { label: string; value: string; sub: React.ReactNode; subColor?: string; icon: React.ElementType; iconBg: string }) => (
+    <div className="min-w-[158px] flex-shrink-0 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm md:min-w-0 card-lift overflow-hidden relative">
+      <div className="flex justify-between items-start mb-3">
+        <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider leading-tight">{label}</div>
+        <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+          <Icon className="w-4 h-4" />
+        </div>
+      </div>
+      <div className="text-xl font-black text-slate-800 leading-none mb-1.5">{value}</div>
+      <div className={`text-[10px] font-semibold flex items-center gap-0.5 text-${subColor}-600`}>{sub}</div>
+    </div>
+  );
+
   const MetricRow = () => (
-    <div className="flex overflow-x-auto pb-4 mb-2 gap-3 md:grid md:grid-cols-4 md:pb-0 md:mb-6 no-scrollbar">
-      <div className="min-w-[160px] flex-shrink-0 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm md:min-w-0">
-        <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">{t('totalPortfolio', lang)}</div>
-        <div className="text-xl font-black text-slate-800">{formatCurrency(s.totalLimit)}</div>
-        <div className="text-[10px] text-emerald-600 mt-1 flex items-center font-bold">
-          <TrendingUp className="w-3 h-3 mr-1" /> {t('activeLimit', lang)}
-        </div>
-      </div>
-      <div className="min-w-[160px] flex-shrink-0 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm md:min-w-0">
-        <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">{t('netProfit', lang)}</div>
-        <div className="text-xl font-black text-slate-800">{formatCurrency(s.netProfit)}</div>
-        <div className="text-[10px] text-emerald-600 mt-1 flex items-center font-bold">
-          <TrendingUp className="w-3 h-3 mr-1" /> {s.profitPct}% {t('margin', lang)}
-        </div>
-      </div>
-      <div className="min-w-[160px] flex-shrink-0 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm md:min-w-0">
-        <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">{t('nplRatio', lang)}</div>
-        <div className="text-xl font-black text-slate-800">{((s.scamPrincipal / Math.max(1, s.totalBorrowed)) * 100).toFixed(1)}%</div>
-        <div className="text-[10px] text-rose-600 mt-1 flex items-center font-bold">
-          <TrendingDown className="w-3 h-3 mr-1" /> {formatCurrency(s.scamPrincipal)} {t('lost', lang)}
-        </div>
-      </div>
-      <div className="min-w-[160px] flex-shrink-0 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm md:min-w-0">
-        <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider mb-1">{t('availableBalance', lang)}</div>
-        <div className="text-xl font-black text-slate-800">{formatCurrency(s.available)}</div>
-        <div className="text-[10px] text-slate-500 mt-1 flex items-center font-bold">
-          {t('readyToLend', lang)}
-        </div>
-      </div>
+    <div className="flex overflow-x-auto pb-3 mb-4 gap-3 md:grid md:grid-cols-4 md:pb-0 md:mb-6 no-scrollbar">
+      <MetricCard
+        label={t('totalPortfolio', lang)}
+        value={formatCurrency(s.totalLimit)}
+        sub={<><TrendingUp className="w-3 h-3" /> {t('activeLimit', lang)}</>}
+        subColor="emerald"
+        icon={TrendingUp}
+        iconBg="bg-emerald-100 text-emerald-600"
+      />
+      <MetricCard
+        label={t('netProfit', lang)}
+        value={formatCurrency(s.netProfit)}
+        sub={<><TrendingUp className="w-3 h-3" /> {s.profitPct}% {t('margin', lang)}</>}
+        subColor="emerald"
+        icon={LineChart}
+        iconBg="bg-indigo-100 text-indigo-600"
+      />
+      <MetricCard
+        label={t('nplRatio', lang)}
+        value={((s.scamPrincipal / Math.max(1, s.totalBorrowed)) * 100).toFixed(1) + '%'}
+        sub={<><TrendingDown className="w-3 h-3" /> {formatCurrency(s.scamPrincipal)} {t('lost', lang)}</>}
+        subColor="rose"
+        icon={TrendingDown}
+        iconBg="bg-rose-100 text-rose-600"
+      />
+      <MetricCard
+        label={t('availableBalance', lang)}
+        value={formatCurrency(s.available)}
+        sub={t('readyToLend', lang)}
+        subColor="slate"
+        icon={Wallet}
+        iconBg="bg-amber-100 text-amber-600"
+      />
     </div>
   );
 
   return (
     <div
-      className="min-h-screen bg-[#F8FAFC] text-slate-800 font-sans pb-24 md:pb-8"
+      className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-28 md:pb-8"
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
       {/* Sticky Mobile Header */}
-      <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 py-3 md:hidden flex justify-between items-center shadow-sm">
-        <div className="flex items-center gap-2">
-          <div className="bg-emerald-600 p-1.5 rounded-lg shadow-sm shadow-emerald-200">
-            <Activity className="w-5 h-5 text-white" />
+      <header className="sticky top-0 z-30 md:hidden" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' }}>
+        <div className="flex justify-between items-center px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
+              <Activity className="w-4.5 h-4.5 text-white" style={{ width: '18px', height: '18px' }} />
+            </div>
+            <h1 className="text-base font-black tracking-tight text-white">
+              {t('appTitle', lang)}
+            </h1>
           </div>
-          <h1 className="text-lg font-black tracking-tight text-slate-800">
-            {t('appTitle', lang)}
-          </h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={toggleLang}
-            className="w-8 h-8 flex items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 text-[10px] font-black transition-colors"
-          >
-            {lang === 'th' ? 'EN' : 'TH'}
-          </button>
-          <button
-            onClick={() => setShowNotifModal(true)}
-            className={`relative w-8 h-8 flex items-center justify-center rounded-full transition-colors ${isSubscribed ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400'}`}
-          >
-            {isSubscribed ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
-            {isSubscribed && <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-emerald-500 rounded-full border border-white"></span>}
-          </button>
-          {isSyncing ? (
-            <RefreshCcw className="w-4 h-4 text-emerald-600 animate-spin" />
-          ) : (
-            <button onClick={() => loadData()} className="p-1.5 text-slate-400">
-              <RefreshCcw className="w-4 h-4" />
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={toggleLang}
+              className="w-8 h-8 flex items-center justify-center rounded-full border border-white/10 bg-white/10 text-white/80 text-[10px] font-black transition-colors"
+            >
+              {lang === 'th' ? 'EN' : 'TH'}
             </button>
-          )}
+            <button
+              onClick={() => setShowNotifModal(true)}
+              className={`relative w-8 h-8 flex items-center justify-center rounded-full transition-colors ${isSubscribed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-white/50'}`}
+            >
+              {isSubscribed ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+              {isSubscribed && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-emerald-400 rounded-full border border-slate-900"></span>}
+            </button>
+            {isSyncing ? (
+              <div className="w-8 h-8 flex items-center justify-center">
+                <RefreshCcw className="w-4 h-4 text-emerald-400 animate-spin" />
+              </div>
+            ) : (
+              <button onClick={() => loadData()} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-white/60">
+                <RefreshCcw className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+        {/* Active tab indicator bar */}
+        <div className="flex border-t border-white/5">
+          {(['dashboard', 'analytics', 'loans'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveMobileTab(tab)}
+              className={`flex-1 py-2 text-[10px] font-black uppercase tracking-widest transition-colors ${
+                activeMobileTab === tab ? 'text-emerald-400 border-b-2 border-emerald-400' : 'text-white/30'
+              }`}
+            >
+              {tab === 'dashboard' ? t('navDashboard', lang) : tab === 'analytics' ? t('navAnalytics', lang) : t('navLoans', lang)}
+            </button>
+          ))}
         </div>
       </header>
 
@@ -619,32 +659,45 @@ export default function App() {
           <MetricRow />
 
           {/* Section 2: Action & Alerts */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            {/* Due Today */}
             <div className="bg-white rounded-2xl border border-amber-100 flex flex-col shadow-sm overflow-hidden">
-              <div className="p-4 bg-amber-50/50 flex font-black text-amber-800 items-center justify-between border-b border-amber-100">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-wider">
-                  <CalendarClock className="w-4 h-4" /> {t('dueToday', lang)}
+              <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #fffbeb, #fef3c7)' }}>
+                <div className="flex items-center gap-2 text-amber-800 font-black text-xs uppercase tracking-wider">
+                  <div className="w-6 h-6 bg-amber-500 rounded-lg flex items-center justify-center">
+                    <CalendarClock className="w-3.5 h-3.5 text-white" />
+                  </div>
+                  {t('dueToday', lang)}
                 </div>
-                <span className="bg-amber-200 text-amber-900 text-[10px] px-2 py-0.5 rounded-full">{dueTodayLoans.length}</span>
+                <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">{dueTodayLoans.length}</span>
               </div>
-              <div className="p-3 max-h-[220px] overflow-y-auto no-scrollbar">
+              <div className="divide-y divide-slate-50 max-h-[220px] overflow-y-auto no-scrollbar">
                 {dueTodayLoans.length === 0 ? (
-                  <div className="py-6 text-center">
-                    <p className="text-xs font-bold text-amber-400 uppercase tracking-widest">{t('noCollectionsToday', lang)}</p>
+                  <div className="py-8 text-center">
+                    <div className="text-2xl mb-1">✅</div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('noCollectionsToday', lang)}</p>
                   </div>
                 ) : (
-                  <div className="space-y-2.5" ref={dueListRef}>
+                  <div ref={dueListRef}>
                     {dueTodayLoans.map(l => (
                       <div
                         key={l.id}
                         onClick={() => setSelectedLoan(l)}
-                        className="flex justify-between items-center p-3.5 bg-white rounded-xl border border-slate-100 shadow-sm active:scale-[0.98] transition-all"
+                        className="flex justify-between items-center px-4 py-3 hover:bg-amber-50/50 active:bg-amber-50 transition-colors cursor-pointer border-l-[3px] border-amber-400"
                       >
-                        <div className="flex flex-col">
-                          <span className="font-black text-slate-800 text-sm">{l.name}</span>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">{l.id}</span>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                            <span className="text-amber-700 text-xs font-black">{l.name.charAt(0).toUpperCase()}</span>
+                          </div>
+                          <div>
+                            <div className="font-bold text-slate-800 text-sm leading-tight">{l.name}</div>
+                            <div className="text-[10px] font-medium text-slate-400">{l.id}</div>
+                          </div>
                         </div>
-                        <span className="font-black text-amber-600">{formatCurrency(l.totalExpected)}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-amber-600 text-sm">{formatCurrency(l.totalExpected)}</span>
+                          <span className="text-slate-300">›</span>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -652,33 +705,46 @@ export default function App() {
               </div>
             </div>
 
+            {/* Overdue Alerts */}
             <div className="bg-white rounded-2xl border border-rose-100 flex flex-col shadow-sm overflow-hidden">
-              <div className="p-4 bg-rose-50/50 flex font-black text-rose-800 items-center justify-between border-b border-rose-100">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-wider">
-                  <AlertCircle className="w-4 h-4" /> {t('overdueAlerts', lang)}
+              <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #fff1f2, #ffe4e6)' }}>
+                <div className="flex items-center gap-2 text-rose-800 font-black text-xs uppercase tracking-wider">
+                  <div className="w-6 h-6 bg-rose-500 rounded-lg flex items-center justify-center">
+                    <AlertCircle className="w-3.5 h-3.5 text-white" />
+                  </div>
+                  {t('overdueAlerts', lang)}
                 </div>
-                <span className="bg-rose-200 text-rose-900 text-[10px] px-2 py-0.5 rounded-full">{overdueLoans.length}</span>
+                <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">{overdueLoans.length}</span>
               </div>
-              <div className="p-3 max-h-[220px] overflow-y-auto no-scrollbar">
+              <div className="divide-y divide-slate-50 max-h-[220px] overflow-y-auto no-scrollbar">
                 {overdueLoans.length === 0 ? (
-                  <div className="py-6 text-center">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('noOverdueAccounts', lang)}</p>
+                  <div className="py-8 text-center">
+                    <div className="text-2xl mb-1">🎉</div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('noOverdueAccounts', lang)}</p>
                   </div>
                 ) : (
-                  <div className="space-y-3" ref={overdueListRef}>
+                  <div ref={overdueListRef}>
                     {overdueLoans.sort((a, b) => b.daysLate - a.daysLate).map(l => (
                       <div
                         key={l.id}
                         onClick={() => setSelectedLoan(l)}
-                        className="flex justify-between items-center p-3.5 bg-white rounded-xl border border-slate-100 shadow-sm active:scale-[0.98] transition-all"
+                        className="flex justify-between items-center px-4 py-3 hover:bg-rose-50/50 active:bg-rose-50 transition-colors cursor-pointer border-l-[3px] border-rose-500"
                       >
-                        <div>
-                          <div className="font-black text-slate-800 text-sm">{l.name}</div>
-                          <div className="text-[10px] text-rose-600 font-bold uppercase tracking-tighter">{l.daysLate} {t('daysOverdue', lang)}</div>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center flex-shrink-0">
+                            <span className="text-rose-700 text-xs font-black">{l.name.charAt(0).toUpperCase()}</span>
+                          </div>
+                          <div>
+                            <div className="font-bold text-slate-800 text-sm leading-tight">{l.name}</div>
+                            <div className="text-[10px] font-bold text-rose-600">{l.daysLate} {t('daysOverdue', lang)}</div>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <div className="font-black text-rose-600">{formatCurrency(l.totalExpected)}</div>
-                          <div className="text-[9px] font-bold text-slate-400 uppercase">Due {l.dueDate}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-right">
+                            <div className="font-black text-rose-600 text-sm">{formatCurrency(l.totalExpected)}</div>
+                            <div className="text-[9px] text-slate-400">{l.dueDate}</div>
+                          </div>
+                          <span className="text-slate-300">›</span>
                         </div>
                       </div>
                     ))}
@@ -874,7 +940,7 @@ export default function App() {
               </table>
 
               {/* Mobile Card View */}
-              <div className="md:hidden divide-y divide-slate-100" ref={tableRef as any}>
+              <div className="md:hidden" ref={tableRef as any}>
                 {data.loans
                   .filter(l => {
                     if (activeTab === 'all') return !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn;
@@ -884,24 +950,38 @@ export default function App() {
                     if (activeTab === 'withdrawn') return l.isWithdrawn;
                     return true;
                   })
-                  .map((l, i) => (
-                    <div
-                      key={i}
-                      onClick={() => setSelectedLoan(l)}
-                      className="p-4 active:bg-slate-50 flex items-center justify-between"
-                    >
-                      <div className="flex flex-col gap-0.5">
-                        <div className="text-sm font-black text-slate-800">{l.name}</div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                          {l.id} • {l.dueDate}
+                  .map((l, i) => {
+                    const stripeClass = l.isScam ? 'border-l-[3px] border-rose-500'
+                      : l.isPaid ? 'border-l-[3px] border-cyan-400'
+                      : l.isRenewed ? 'border-l-[3px] border-indigo-500'
+                      : l.isWithdrawn ? 'border-l-[3px] border-amber-400'
+                      : l.isOverdue ? 'border-l-[3px] border-red-500'
+                      : 'border-l-[3px] border-emerald-500';
+                    const avatarBg = l.isScam ? 'bg-rose-100 text-rose-700'
+                      : l.isPaid ? 'bg-cyan-100 text-cyan-700'
+                      : l.isRenewed ? 'bg-indigo-100 text-indigo-700'
+                      : l.isOverdue ? 'bg-red-100 text-red-700'
+                      : 'bg-emerald-100 text-emerald-700';
+                    return (
+                      <div
+                        key={i}
+                        onClick={() => setSelectedLoan(l)}
+                        className={`flex items-center gap-3 px-4 py-3.5 border-b border-slate-100 last:border-0 active:bg-slate-50 cursor-pointer ${stripeClass}`}
+                      >
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-black text-sm ${avatarBg}`}>
+                          {l.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-bold text-slate-800 text-sm truncate">{l.name}</div>
+                          <div className="text-[10px] text-slate-400 font-medium">{l.id} · {l.dueDate}</div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <div className="font-black text-slate-900 text-sm">{formatCurrency(l.principal)}</div>
+                          {renderStatusBadge(l.status)}
                         </div>
                       </div>
-                      <div className="text-right flex flex-col items-end gap-1">
-                        <div className="text-sm font-black text-slate-900">{formatNumber(l.principal)}</div>
-                        {renderStatusBadge(l.status)}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
               </div>
             </div>
           </div>
@@ -909,98 +989,120 @@ export default function App() {
       </div>
 
       {/* Mobile Bottom Navigation - Premium Floating Style */}
-      <div className="fixed bottom-6 left-4 right-4 h-16 bg-white/90 backdrop-blur-xl border border-slate-200/50 flex md:hidden z-40 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.15)] rounded-2xl px-2 items-center">
-        {/* 1. Dashboard */}
-        <button
-          onClick={() => { setShowNewLoanModal(false); setShowWithdrawModal(false); setActiveMobileTab('dashboard'); }}
-          className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all active:scale-90 ${activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'}`}
-        >
-          <Home className={`w-6 h-6 ${activeMobileTab === 'dashboard' ? 'stroke-[2.5px]' : 'stroke-2'}`} />
-          <span className="text-[9px] font-black uppercase tracking-tighter">{t('navDashboard', lang)}</span>
-        </button>
+      <div className="fixed bottom-0 left-0 right-0 md:hidden z-40 pb-safe" style={{ background: 'linear-gradient(180deg, transparent 0%, rgba(15,23,42,0.02) 100%)' }}>
+        <div className="mx-3 mb-3 h-[60px] bg-white border border-slate-200/80 flex shadow-[0_8px_32px_-8px_rgba(0,0,0,0.18)] rounded-2xl px-1 items-center">
+          {/* 1. Dashboard */}
+          <button
+            onClick={() => { setShowNewLoanModal(false); setShowWithdrawModal(false); setActiveMobileTab('dashboard'); }}
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-1 rounded-xl transition-all ${
+              activeMobileTab === 'dashboard' ? 'bg-emerald-50' : ''
+            }`}
+          >
+            <Home className={`w-5 h-5 transition-colors ${ activeMobileTab === 'dashboard' ? 'text-emerald-600 stroke-[2.5px]' : 'text-slate-400'}`} />
+            <span className={`text-[9px] font-black uppercase tracking-tight ${ activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'}`}>{t('navDashboard', lang)}</span>
+          </button>
 
-        {/* 2. Analytics */}
-        <button
-          onClick={() => setActiveMobileTab('analytics')}
-          className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all active:scale-90 ${activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'}`}
-        >
-          <BarChart2 className={`w-6 h-6 ${activeMobileTab === 'analytics' ? 'stroke-[2.5px]' : 'stroke-2'}`} />
-          <span className="text-[9px] font-black uppercase tracking-tighter">{t('navAnalytics', lang)}</span>
-        </button>
+          {/* 2. Analytics */}
+          <button
+            onClick={() => setActiveMobileTab('analytics')}
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-1 rounded-xl transition-all ${
+              activeMobileTab === 'analytics' ? 'bg-emerald-50' : ''
+            }`}
+          >
+            <BarChart2 className={`w-5 h-5 transition-colors ${ activeMobileTab === 'analytics' ? 'text-emerald-600 stroke-[2.5px]' : 'text-slate-400'}`} />
+            <span className={`text-[9px] font-black uppercase tracking-tight ${ activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'}`}>{t('navAnalytics', lang)}</span>
+          </button>
 
-        {/* 3. New Loan (Activity) */}
-        <button
-          onClick={() => setShowNewLoanModal(true)}
-          className="flex-1 flex flex-col items-center justify-center"
-        >
-          <div className="w-12 h-12 bg-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-200 border-2 border-white active:scale-90 transition-transform">
-            <Activity className="w-6 h-6 text-white stroke-[3px]" />
-          </div>
-        </button>
+          {/* 3. New Loan — primary CTA */}
+          <button
+            onClick={() => setShowNewLoanModal(true)}
+            className="flex-1 flex flex-col items-center justify-center -mt-5"
+          >
+            <div className="w-13 h-13 flex items-center justify-center rounded-2xl shadow-lg shadow-emerald-200/60 border-4 border-white active:scale-90 transition-transform" style={{ width: '52px', height: '52px', background: 'linear-gradient(135deg, #10b981, #059669)' }}>
+              <Activity className="w-6 h-6 text-white stroke-[2.5px]" />
+            </div>
+          </button>
 
-        {/* 4. Withdraw (Wallet) */}
-        <button
-          onClick={() => setShowWithdrawModal(true)}
-          className="flex-1 flex flex-col items-center justify-center"
-        >
-          <div className="w-12 h-12 bg-rose-600 rounded-xl flex items-center justify-center shadow-lg shadow-rose-200 border-2 border-white active:scale-90 transition-transform">
-            <Wallet className="w-6 h-6 text-white stroke-[3px]" />
-          </div>
-        </button>
+          {/* 4. Withdraw */}
+          <button
+            onClick={() => setShowWithdrawModal(true)}
+            className="flex-1 flex flex-col items-center justify-center -mt-5"
+          >
+            <div className="w-13 h-13 flex items-center justify-center rounded-2xl shadow-lg shadow-rose-200/60 border-4 border-white active:scale-90 transition-transform" style={{ width: '52px', height: '52px', background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}>
+              <Wallet className="w-6 h-6 text-white stroke-[2.5px]" />
+            </div>
+          </button>
 
-        {/* 5. Loans List */}
-        <button
-          onClick={() => { setActiveMobileTab('loans'); }}
-          className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all active:scale-90 ${activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'}`}
-        >
-          <List className={`w-6 h-6 ${activeMobileTab === 'loans' ? 'stroke-[2.5px]' : 'stroke-2'}`} />
-          <span className="text-[9px] font-black uppercase tracking-tighter">{t('navLoans', lang)}</span>
-        </button>
+          {/* 5. Loans List */}
+          <button
+            onClick={() => setActiveMobileTab('loans')}
+            className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-1 rounded-xl transition-all ${
+              activeMobileTab === 'loans' ? 'bg-emerald-50' : ''
+            }`}
+          >
+            <List className={`w-5 h-5 transition-colors ${ activeMobileTab === 'loans' ? 'text-emerald-600 stroke-[2.5px]' : 'text-slate-400'}`} />
+            <span className={`text-[9px] font-black uppercase tracking-tight ${ activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'}`}>{t('navLoans', lang)}</span>
+          </button>
+        </div>
       </div>
 
       {/* Loan Details & Action Modal */}
       {selectedLoan && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm"
           onClick={() => setSelectedLoan(null)}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[92vh]"
+            className="bg-white w-full md:rounded-2xl md:max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh] rounded-t-3xl animate-sheet-up md:animate-slide-up"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
+            {/* Handle bar mobile */}
+            <div className="flex justify-center pt-3 pb-1 md:hidden">
+              <div className="w-10 h-1 bg-slate-200 rounded-full" />
+            </div>
+
+            {/* Status-aware gradient header */}
+            <div className={`flex justify-between items-start px-5 py-4 border-b border-slate-100 ${
+              selectedLoan.isScam ? 'bg-gradient-to-r from-rose-50 to-white'
+              : selectedLoan.isOverdue ? 'bg-gradient-to-r from-red-50 to-white'
+              : selectedLoan.isPaid ? 'bg-gradient-to-r from-cyan-50 to-white'
+              : selectedLoan.isRenewed ? 'bg-gradient-to-r from-indigo-50 to-white'
+              : 'bg-gradient-to-r from-emerald-50 to-white'
+            }`}>
               <div>
-                <h2 className="text-2xl font-extrabold text-slate-800 flex items-center gap-2">
+                <h2 className="text-xl font-black text-slate-800 flex items-center gap-2 flex-wrap">
                   {selectedLoan.name}
                   <button
                     onClick={() => setIsEditingLoan(!isEditingLoan)}
-                    className={`text-xs px-2.5 py-1 rounded-full font-bold transition-colors ml-2 ${isEditingLoan ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    className={`text-xs px-2.5 py-1 rounded-full font-bold transition-colors ${
+                      isEditingLoan ? 'bg-indigo-100 text-indigo-700' : 'bg-white/80 text-slate-500 border border-slate-200'
+                    }`}
                   >
                     {isEditingLoan ? t('cancelEdit', lang) : t('editDetails', lang)}
                   </button>
                 </h2>
-                <div className="flex items-center gap-3 mt-1">
-                  <span className="text-sm font-mono text-slate-500">ID: {selectedLoan.id}</span>
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                  <span className="text-xs font-mono text-slate-400">ID: {selectedLoan.id}</span>
                   {selectedLoan.isScam ? (
-                    <span className="inline-flex px-2 py-0.5 rounded bg-rose-500 text-white text-xs font-black uppercase shadow-sm">💀 Defaulted</span>
+                    <span className="inline-flex px-2 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black uppercase">💀 Defaulted</span>
                   ) : selectedLoan.isWithdrawn ? (
-                    <span className="inline-flex px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-xs font-bold uppercase shadow-sm">Payout</span>
+                    <span className="inline-flex px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold uppercase">Payout</span>
                   ) : selectedLoan.isPaid ? (
-                    <span className="inline-flex px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 text-xs font-bold uppercase">Paid</span>
+                    <span className="inline-flex px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700 text-[10px] font-bold uppercase">✓ Paid</span>
                   ) : selectedLoan.isRenewed ? (
-                    <span className="inline-flex px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 text-xs font-bold uppercase">Renewed</span>
+                    <span className="inline-flex px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold uppercase">Renewed</span>
                   ) : selectedLoan.isOverdue ? (
-                    <span className="inline-flex px-2 py-0.5 rounded bg-rose-100 text-rose-700 text-xs font-bold uppercase">Overdue</span>
+                    <span className="inline-flex px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-bold uppercase">⚠ Overdue</span>
                   ) : (
-                    <span className="inline-flex px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-xs font-bold uppercase">Active</span>
+                    <span className="inline-flex px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase">Active</span>
                   )}
                 </div>
               </div>
               <button
                 onClick={() => setSelectedLoan(null)}
-                className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-200 transition-colors"
+                className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition-colors flex-shrink-0 ml-2"
               >
-                <X size={24} />
+                <X size={20} />
               </button>
             </div>
 
@@ -1165,44 +1267,46 @@ export default function App() {
             </div>
 
             {/* Action Buttons Section */}
-            <div className="p-4 border-t border-slate-100 bg-slate-50">
+            <div className="p-4 border-t border-slate-100 bg-white">
               {isEditingLoan ? (
-                <div className="flex justify-end gap-3">
-                  <button
-                    onClick={handleSaveEdit}
-                    disabled={isSyncing}
-                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center gap-2 disabled:opacity-50 w-full justify-center"
-                  >
-                    {isSyncing ? t('saving', lang) : t('saveChanges', lang)}
-                  </button>
-                </div>
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={isSyncing}
+                  className="w-full py-3.5 font-bold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-white text-sm"
+                  style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
+                >
+                  {isSyncing ? t('saving', lang) : t('saveChanges', lang)}
+                </button>
               ) : (
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-3">
-                    <label className="text-sm font-bold text-slate-600 whitespace-nowrap">{t('actionDate', lang)}</label>
+                    <label className="text-xs font-bold text-slate-500 whitespace-nowrap">{t('actionDate', lang)}</label>
                     <DatePicker
                       selected={actionDate}
                       onChange={(date) => date && setActionDate(date)}
                       dateFormat="dd/MM/yyyy"
-                      className="border border-slate-300 rounded p-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white w-32"
+                      className="border border-slate-200 rounded-xl p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer bg-slate-50 w-32 font-medium"
                     />
                   </div>
-                  <div className="flex justify-end gap-3 flex-wrap">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       onClick={() => handleUpdateStatus('ชำระแล้ว')}
-                      className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
+                      className="py-3.5 font-bold rounded-xl text-white text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
+                      style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
                     >
                       <CheckCircle2 className="w-4 h-4" /> {t('markPaid', lang)}
                     </button>
                     <button
                       onClick={() => handleUpdateStatus('ต่อดอก')}
-                      className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
+                      className="py-3.5 font-bold rounded-xl text-white text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
+                      style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
                     >
                       <Activity className="w-4 h-4" /> {t('renew', lang)}
                     </button>
                     <button
                       onClick={() => handleUpdateStatus('โดนบิด')}
-                      className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2"
+                      className="py-3.5 font-bold rounded-xl text-white text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
+                      style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}
                     >
                       <UserX className="w-4 h-4" /> {t('default', lang)}
                     </button>
@@ -1413,13 +1517,19 @@ export default function App() {
         </div>
       )}
 
-      {/* Withdraw Modal */}
+      {/* Withdraw Modal — slide-up sheet on mobile */}
       {showWithdrawModal && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowWithdrawModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-[slideIn_0.2s_ease-out]" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-              <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Wallet className="text-rose-600" /> {t('newPayout', lang)}</h3>
-              <button onClick={() => setShowWithdrawModal(false)} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
+        <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowWithdrawModal(false)}>
+          <div className="bg-white w-full md:max-w-md md:rounded-2xl shadow-2xl overflow-hidden rounded-t-3xl animate-sheet-up md:animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-center pt-3 pb-1 md:hidden"><div className="w-10 h-1 bg-slate-200 rounded-full" /></div>
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}>
+                  <Wallet className="w-4.5 h-4.5 text-white" style={{ width: '18px', height: '18px' }} />
+                </div>
+                <h3 className="text-lg font-black text-slate-800">{t('newPayout', lang)}</h3>
+              </div>
+              <button onClick={() => setShowWithdrawModal(false)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100"><X size={20} /></button>
             </div>
 
             <form onSubmit={handleWithdrawSubmit} className="p-6 space-y-4">
@@ -1468,24 +1578,30 @@ export default function App() {
                 />
               </div>
 
-              <div className="pt-4 border-t border-slate-100 mt-6 flex justify-end gap-3">
-                <button type="button" onClick={() => setShowWithdrawModal(false)} className="px-5 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-lg transition-colors">{t('cancel', lang)}</button>
-                <button type="submit" disabled={isSyncing} className="px-5 py-2.5 bg-rose-600 text-white font-bold rounded-lg hover:bg-rose-700 transition-colors shadow-sm disabled:opacity-50">
-                  {isSyncing ? t('saving', lang) : t('confirmPayout', lang)}
-                </button>
-              </div>
+            <div className="pt-4 border-t border-slate-100 mt-2 px-5 pb-5 flex justify-end gap-3">
+              <button type="button" onClick={() => setShowWithdrawModal(false)} className="px-4 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors text-sm">{t('cancel', lang)}</button>
+              <button type="submit" disabled={isSyncing} className="px-5 py-2.5 text-white font-bold rounded-xl transition-colors shadow-sm disabled:opacity-50 text-sm" style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}>
+                {isSyncing ? t('saving', lang) : t('confirmPayout', lang)}
+              </button>
+            </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* New Loan Modal */}
+      {/* New Loan Modal — slide-up sheet on mobile */}
       {showNewLoanModal && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowNewLoanModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-[slideIn_0.2s_ease-out]" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-              <h3 className="text-lg font-black text-slate-800 flex items-center gap-2"><Activity className="text-indigo-600" /> {t('issueNewLoan', lang)}</h3>
-              <button onClick={() => setShowNewLoanModal(false)} className="text-slate-400 hover:text-slate-700"><X size={20} /></button>
+        <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowNewLoanModal(false)}>
+          <div className="bg-white w-full md:max-w-md md:rounded-2xl shadow-2xl overflow-hidden rounded-t-3xl animate-sheet-up md:animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-center pt-3 pb-1 md:hidden"><div className="w-10 h-1 bg-slate-200 rounded-full" /></div>
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}>
+                  <Activity className="w-4.5 h-4.5 text-white" style={{ width: '18px', height: '18px' }} />
+                </div>
+                <h3 className="text-lg font-black text-slate-800">{t('issueNewLoan', lang)}</h3>
+              </div>
+              <button onClick={() => setShowNewLoanModal(false)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100"><X size={20} /></button>
             </div>
 
             <form onSubmit={handleCreateNewLoan} className="p-6 space-y-4">
@@ -1571,12 +1687,12 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-100 mt-6 flex justify-end gap-3">
-                <button type="button" onClick={() => setShowNewLoanModal(false)} className="px-5 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-lg transition-colors">{t('cancel', lang)}</button>
-                <button type="submit" disabled={isSyncing} className="px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50">
-                  {isSyncing ? t('saving', lang) : t('addLoan', lang)}
-                </button>
-              </div>
+            <div className="pt-4 border-t border-slate-100 mt-2 px-5 pb-5 flex justify-end gap-3">
+              <button type="button" onClick={() => setShowNewLoanModal(false)} className="px-4 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors text-sm">{t('cancel', lang)}</button>
+              <button type="submit" disabled={isSyncing} className="px-5 py-2.5 text-white font-bold rounded-xl transition-colors shadow-sm disabled:opacity-50 text-sm" style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}>
+                {isSyncing ? t('saving', lang) : t('addLoan', lang)}
+              </button>
+            </div>
             </form>
           </div>
         </div>
@@ -1693,10 +1809,19 @@ export default function App() {
       )}
 
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 animate-[bounce_0.5s_ease-in-out]">
-          <div className={`px-6 py-4 rounded-xl shadow-lg flex items-center gap-3 text-white font-bold ${toastMessage.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
-            {toastMessage.type === 'success' ? <CheckCircle2 className="w-6 h-6" /> : <AlertCircle className="w-6 h-6" />}
-            {toastMessage.text}
+        <div className={`fixed z-[100] animate-slide-down pointer-events-none
+          top-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-sm
+          md:top-auto md:bottom-6 md:right-6 md:left-auto md:translate-x-0 md:w-auto
+        `}>
+          <div className={`px-5 py-3.5 rounded-2xl shadow-xl flex items-center gap-3 text-white font-bold text-sm ${
+            toastMessage.type === 'success'
+              ? 'bg-gradient-to-r from-emerald-600 to-emerald-500'
+              : 'bg-gradient-to-r from-rose-600 to-rose-500'
+          }`}>
+            {toastMessage.type === 'success'
+              ? <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+              : <AlertCircle className="w-5 h-5 flex-shrink-0" />}
+            <span>{toastMessage.text}</span>
           </div>
         </div>
       )}
