@@ -830,6 +830,15 @@ export default function App() {
         </button>
 
         <button
+          onClick={() => setShowWithdrawModal(true)}
+          className="flex-1 flex flex-col items-center justify-center"
+        >
+          <div className="w-12 h-12 bg-rose-600 rounded-xl flex items-center justify-center shadow-lg shadow-rose-200 border-2 border-white active:scale-90 transition-transform">
+            <Wallet className="w-6 h-6 text-white stroke-[3px]" />
+          </div>
+        </button>
+
+        <button
           onClick={() => setActiveMobileTab('analytics')}
           className={`flex-1 flex flex-col items-center justify-center gap-1 transition-all active:scale-90 ${activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'}`}
         >
