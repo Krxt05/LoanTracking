@@ -3,7 +3,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { fetchAppData, AppData, LoanRecord, updateLoanStatus, createNewLoan, editExistingLoan } from './services/dataService';
 import { formatCurrency, formatNumber, parseThaiDate } from './lib/utils';
-import { TrendingUp, TrendingDown, AlertCircle, CalendarClock, Activity, FileSpreadsheet, List, X, CheckCircle2, UserX, Wallet, RefreshCcw, LineChart, Bell, BellOff, Home, BarChart2, Languages } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertCircle, CalendarClock, Activity, FileSpreadsheet, List, X, CheckCircle2, UserX, Wallet, RefreshCcw, LineChart, Bell, BellOff, Home, BarChart2, Languages, Calendar } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, getNotificationPermission, sendTestNotification } from './services/pushService';
@@ -27,7 +27,7 @@ export default function App() {
   const [showNotifModal, setShowNotifModal] = useState(false);
   const [isSendingTestNotif, setIsSendingTestNotif] = useState(false);
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('lang') as Lang) || 'th');
-  const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'alerts' | 'loans' | 'analytics'>('dashboard');
+  const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'loans' | 'analytics'>('dashboard');
 
   const toggleLang = () => {
     setLang(l => { const next = l === 'th' ? 'en' : 'th'; localStorage.setItem('lang', next); return next; });
@@ -493,9 +493,8 @@ export default function App() {
             {/* Notification Bell */}
             <button
               onClick={() => setShowNotifModal(true)}
-              className={`relative p-2 rounded-full transition-colors ${
-                isSubscribed ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-400 hover:bg-slate-200'
-              }`}
+              className={`relative p-2 rounded-full transition-colors ${isSubscribed ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-400 hover:bg-slate-200'
+                }`}
             >
               {isSubscribed ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
               {isSubscribed && <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-emerald-500 rounded-full border-2 border-white"></span>}
@@ -533,132 +532,134 @@ export default function App() {
 
           {/* Section 2: Action & Alerts */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div className="bg-amber-50 rounded-xl border border-amber-200 flex flex-col">
-            <div className="p-3 border-b border-amber-200 bg-amber-100/50 flex font-bold text-amber-800 items-center gap-2 text-sm">
-              <CalendarClock className="w-4 h-4" /> {t('dueToday', lang)} ({dueTodayLoans.length})
+            <div className="bg-amber-50 rounded-xl border border-amber-200 flex flex-col">
+              <div className="p-3 border-b border-amber-200 bg-amber-100/50 flex font-bold text-amber-800 items-center gap-2 text-sm">
+                <CalendarClock className="w-4 h-4" /> {t('dueToday', lang)} ({dueTodayLoans.length})
+              </div>
+              <div className="p-3 max-h-[200px] overflow-y-auto">
+                {dueTodayLoans.length === 0 ? (
+                  <p className="text-sm border-l-2 border-amber-300 pl-3 text-amber-700 py-1">{t('noCollectionsToday', lang)}</p>
+                ) : (
+                  <div className="space-y-2" ref={dueListRef}>
+                    {dueTodayLoans.map(l => (
+                      <div
+                        key={l.id}
+                        onClick={() => setSelectedLoan(l)}
+                        className="flex justify-between items-center text-sm p-3 bg-white rounded border border-amber-100 shadow-sm cursor-pointer hover:border-amber-300 hover:bg-amber-50 transition-colors"
+                      >
+                        <span className="font-semibold">{l.name} <span className="text-xs text-slate-400 font-normal ml-1">({l.id})</span></span>
+                        <span className="font-bold text-amber-700">{formatCurrency(l.totalExpected)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="p-3 max-h-[200px] overflow-y-auto">
-              {dueTodayLoans.length === 0 ? (
-                <p className="text-sm border-l-2 border-amber-300 pl-3 text-amber-700 py-1">{t('noCollectionsToday', lang)}</p>
-              ) : (
-                <div className="space-y-2" ref={dueListRef}>
-                  {dueTodayLoans.map(l => (
-                    <div
-                      key={l.id}
-                      onClick={() => setSelectedLoan(l)}
-                      className="flex justify-between items-center text-sm p-3 bg-white rounded border border-amber-100 shadow-sm cursor-pointer hover:border-amber-300 hover:bg-amber-50 transition-colors"
-                    >
-                      <span className="font-semibold">{l.name} <span className="text-xs text-slate-400 font-normal ml-1">({l.id})</span></span>
-                      <span className="font-bold text-amber-700">{formatCurrency(l.totalExpected)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
 
-          <div className="bg-rose-50 rounded-xl border border-rose-200 flex flex-col">
-            <div className="p-3 border-b border-rose-200 bg-rose-100/50 flex font-bold text-rose-800 items-center gap-2 text-sm">
-              <AlertCircle className="w-4 h-4" /> {t('overdueAlerts', lang)} ({overdueLoans.length})
-            </div>
-            <div className="p-3 max-h-[200px] overflow-y-auto">
-              {overdueLoans.length === 0 ? (
-                <p className="text-sm border-l-2 border-slate-300 pl-3 text-slate-500 py-1">{t('noOverdueAccounts', lang)}</p>
-              ) : (
-                <div className="space-y-3" ref={overdueListRef}>
-                  {overdueLoans.sort((a, b) => b.daysLate - a.daysLate).map(l => (
-                    <div
-                      key={l.id}
-                      onClick={() => setSelectedLoan(l)}
-                      className="flex justify-between items-center text-sm p-3 bg-white rounded border border-rose-100 shadow-sm cursor-pointer hover:border-rose-300 hover:bg-rose-50 transition-colors"
-                    >
-                      <div>
-                        <div className="font-semibold">{l.name}</div>
-                        <div className="text-xs text-rose-600 font-medium">{l.daysLate} {t('daysOverdue', lang)}</div>
+            <div className="bg-rose-50 rounded-xl border border-rose-200 flex flex-col">
+              <div className="p-3 border-b border-rose-200 bg-rose-100/50 flex font-bold text-rose-800 items-center gap-2 text-sm">
+                <AlertCircle className="w-4 h-4" /> {t('overdueAlerts', lang)} ({overdueLoans.length})
+              </div>
+              <div className="p-3 max-h-[200px] overflow-y-auto">
+                {overdueLoans.length === 0 ? (
+                  <p className="text-sm border-l-2 border-slate-300 pl-3 text-slate-500 py-1">{t('noOverdueAccounts', lang)}</p>
+                ) : (
+                  <div className="space-y-3" ref={overdueListRef}>
+                    {overdueLoans.sort((a, b) => b.daysLate - a.daysLate).map(l => (
+                      <div
+                        key={l.id}
+                        onClick={() => setSelectedLoan(l)}
+                        className="flex justify-between items-center text-sm p-3 bg-white rounded border border-rose-100 shadow-sm cursor-pointer hover:border-rose-300 hover:bg-rose-50 transition-colors"
+                      >
+                        <div>
+                          <div className="font-semibold">{l.name}</div>
+                          <div className="text-xs text-rose-600 font-medium">{l.daysLate} {t('daysOverdue', lang)}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold text-rose-700">{formatCurrency(l.totalExpected)}</div>
+                          <div className="text-xs text-slate-400">Due {l.dueDate}</div>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <div className="font-bold text-rose-700">{formatCurrency(l.totalExpected)}</div>
-                        <div className="text-xs text-slate-400">Due {l.dueDate}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
           </div>
         </div>
+
+
 
         {/* Analytics Tab Content: Charts & Insights */}
         <div className={activeMobileTab === 'analytics' ? 'block' : 'hidden md:block'}>
           <h2 className="text-base font-bold mb-3 text-slate-800">{t('portfolioAnalytics', lang)}</h2>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-          <div
-            className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm flex flex-col items-center cursor-pointer group hover:border-emerald-300 hover:shadow-md transition-all relative overflow-hidden"
-            onClick={() => setShowPortfolioProgressModal(true)}
-          >
-            <div className="w-full flex justify-between items-center mb-6">
-              <h3 className="text-sm font-bold text-slate-500">{t('portfolioProgress', lang)}</h3>
-              <span className="text-xs text-emerald-500 bg-emerald-50 px-2 py-1 rounded-md font-medium border border-emerald-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickForInsights', lang)}</span>
+            <div
+              className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm flex flex-col items-center cursor-pointer group hover:border-emerald-300 hover:shadow-md transition-all relative overflow-hidden"
+              onClick={() => setShowPortfolioProgressModal(true)}
+            >
+              <div className="w-full flex justify-between items-center mb-6">
+                <h3 className="text-sm font-bold text-slate-500">{t('portfolioProgress', lang)}</h3>
+                <span className="text-xs text-emerald-500 bg-emerald-50 px-2 py-1 rounded-md font-medium border border-emerald-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickForInsights', lang)}</span>
+              </div>
+
+              <div className="h-[140px] w-full relative">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={progressData}
+                      cx="50%"
+                      cy="100%"
+                      startAngle={180}
+                      endAngle={0}
+                      innerRadius={80}
+                      outerRadius={110}
+                      dataKey="value"
+                      stroke="none"
+                    >
+                      {progressData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                    </Pie>
+                    <RechartsTooltip formatter={(val: number) => [formatCurrency(val), 'Amount']} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute bottom-0 left-0 right-0 text-center flex flex-col items-center justify-end pb-2">
+                  <span className="text-3xl font-black text-slate-800">{progressPct}%</span>
+                  <span className="text-xs font-bold text-emerald-600">{t('collected', lang)}</span>
+                </div>
+              </div>
+              <div className="w-full mt-6 grid grid-cols-2 gap-4 text-center">
+                <div className="bg-emerald-50/50 p-2 rounded border border-emerald-100">
+                  <div className="text-[10px] font-bold text-emerald-600 uppercase mb-1">{t('collected', lang)}</div>
+                  <div className="font-bold text-slate-800 text-sm">{formatCurrency(s.totalPaid)}</div>
+                </div>
+                <div className="bg-slate-50 p-2 rounded border border-slate-100">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">{t('remaining', lang)}</div>
+                  <div className="font-bold text-slate-800 text-sm">{formatCurrency(s.totalUnpaid)}</div>
+                </div>
+              </div>
             </div>
 
-            <div className="h-[140px] w-full relative">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={progressData}
-                    cx="50%"
-                    cy="100%"
-                    startAngle={180}
-                    endAngle={0}
-                    innerRadius={80}
-                    outerRadius={110}
-                    dataKey="value"
-                    stroke="none"
-                  >
-                    {progressData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                  </Pie>
-                  <RechartsTooltip formatter={(val: number) => [formatCurrency(val), 'Amount']} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute bottom-0 left-0 right-0 text-center flex flex-col items-center justify-end pb-2">
-                <span className="text-3xl font-black text-slate-800">{progressPct}%</span>
-                <span className="text-xs font-bold text-emerald-600">{t('collected', lang)}</span>
+            <div
+              className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm flex flex-col cursor-pointer group hover:border-indigo-300 hover:shadow-md transition-all"
+              onClick={() => setShowExpandedTrend(true)}
+            >
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-sm font-bold text-slate-500">{t('cashflowTrend', lang)}</h3>
+                <span className="text-xs text-indigo-500 bg-indigo-50 px-2 py-1 rounded-md font-medium border border-indigo-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickToExpand', lang)}</span>
+              </div>
+              <div className="h-[250px] w-full mt-auto">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={trendData14} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
+                    <RechartsTooltip cursor={{ fill: '#F1F5F9' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                    <Bar dataKey="Expected" barSize={16} fill="#94A3B8" radius={[4, 4, 0, 0]} />
+                    <Line type="monotone" dataKey="Received" stroke="#10B981" strokeWidth={3} dot={{ r: 4, fill: '#10B981', strokeWidth: 0 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
               </div>
             </div>
-            <div className="w-full mt-6 grid grid-cols-2 gap-4 text-center">
-              <div className="bg-emerald-50/50 p-2 rounded border border-emerald-100">
-                <div className="text-[10px] font-bold text-emerald-600 uppercase mb-1">{t('collected', lang)}</div>
-                <div className="font-bold text-slate-800 text-sm">{formatCurrency(s.totalPaid)}</div>
-              </div>
-              <div className="bg-slate-50 p-2 rounded border border-slate-100">
-                <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">{t('remaining', lang)}</div>
-                <div className="font-bold text-slate-800 text-sm">{formatCurrency(s.totalUnpaid)}</div>
-              </div>
-            </div>
-          </div>
-
-          <div
-            className="bg-white p-5 rounded-lg border border-slate-200 shadow-sm flex flex-col cursor-pointer group hover:border-indigo-300 hover:shadow-md transition-all"
-            onClick={() => setShowExpandedTrend(true)}
-          >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-sm font-bold text-slate-500">{t('cashflowTrend', lang)}</h3>
-              <span className="text-xs text-indigo-500 bg-indigo-50 px-2 py-1 rounded-md font-medium border border-indigo-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickToExpand', lang)}</span>
-            </div>
-            <div className="h-[250px] w-full mt-auto">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={trendData14} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
-                  <RechartsTooltip cursor={{ fill: '#F1F5F9' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  <Bar dataKey="Expected" barSize={16} fill="#94A3B8" radius={[4, 4, 0, 0]} />
-                  <Line type="monotone" dataKey="Received" stroke="#10B981" strokeWidth={3} dot={{ r: 4, fill: '#10B981', strokeWidth: 0 }} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
           </div>
         </div>
 
@@ -666,106 +667,97 @@ export default function App() {
         <div className={activeMobileTab === 'loans' ? 'block' : 'hidden md:block'}>
           <h2 className="text-base font-bold mb-3 text-slate-800">{t('dataManagement', lang)}</h2>
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
-          <div className="flex border-b border-slate-200 bg-slate-50/50 overflow-x-auto">
-            {(['all', 'renewals', 'paid', 'defaulted', 'withdrawn', 'raw'] as const).map(tab => (
-              <button
-                key={tab}
-                className={`px-4 py-3 text-xs font-semibold capitalize border-b-2 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-emerald-500 text-emerald-700 bg-white' : 'border-transparent text-slate-500'}`}
-                onClick={() => setActiveTab(tab)}
-              >
-                {tab === 'all' ? t('tabAll', lang) :
-                 tab === 'renewals' ? t('tabRenewals', lang) :
-                 tab === 'paid' ? t('tabPaid', lang) :
-                 tab === 'defaulted' ? t('tabDefaulted', lang) :
-                 tab === 'withdrawn' ? t('tabWithdrawn', lang) :
-                 t('tabRaw', lang)}
-              </button>
-            ))}
-          </div>
+            <div className="flex border-b border-slate-200 bg-slate-50/50 overflow-x-auto">
+              {(['all', 'renewals', 'paid', 'defaulted', 'withdrawn', 'raw'] as const).map(tab => (
+                <button
+                  key={tab}
+                  className={`px-4 py-3 text-xs font-semibold capitalize border-b-2 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-emerald-500 text-emerald-700 bg-white' : 'border-transparent text-slate-500'}`}
+                  onClick={() => setActiveTab(tab)}
+                >
+                  {tab === 'all' ? t('tabAll', lang) :
+                    tab === 'renewals' ? t('tabRenewals', lang) :
+                      tab === 'paid' ? t('tabPaid', lang) :
+                        tab === 'defaulted' ? t('tabDefaulted', lang) :
+                          tab === 'withdrawn' ? t('tabWithdrawn', lang) :
+                            t('tabRaw', lang)}
+                </button>
+              ))}
+            </div>
 
-          <div className="p-0 overflow-x-auto overflow-y-auto max-h-[500px] relative">
-            <table className="w-full text-left whitespace-nowrap text-sm">
-              <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase sticky top-0 z-10 shadow-[0_1px_0_#E2E8F0]">
-                <tr>
-                  <th className="px-4 py-3 text-left">{t('customerId', lang)}</th>
-                  <th className="px-4 py-3 text-left">{t('name', lang)}</th>
-                  <th className="px-4 py-3 text-right">{t('principal', lang)}</th>
-                  <th className="px-4 py-3 text-right hidden md:table-cell">{t('interestRate', lang)}</th>
-                  <th className="px-4 py-3 text-center hidden md:table-cell">{t('issueDate', lang)}</th>
-                  <th className="px-4 py-3 text-center">{t('dueDate', lang)}</th>
-                  <th className="px-4 py-3 text-left">{t('status', lang)}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100" ref={tableRef}>
-                {data.loans
-                  .filter(l => {
-                    if (activeTab === 'all') return !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn;
-                    if (activeTab === 'renewals') return l.isRenewed;
-                    if (activeTab === 'paid') return l.isPaid;
-                    if (activeTab === 'defaulted') return l.isScam;
-                    if (activeTab === 'withdrawn') return l.isWithdrawn;
-                    return true;
-                  })
-                  .map((l, i) => (
-                    <tr key={i} onClick={() => setSelectedLoan(l)} className="cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition-colors">
-                      <td className="px-4 py-3 font-mono text-slate-400 text-xs">{l.id}</td>
-                      <td className="px-4 py-3 font-semibold text-slate-800">{l.name}</td>
-                      <td className="px-4 py-3 text-right font-medium text-sm">{formatNumber(l.principal)}</td>
-                      <td className="px-4 py-3 text-right text-slate-500 hidden md:table-cell">{l.interestRate}%</td>
-                      <td className="px-4 py-3 text-center text-slate-500 hidden md:table-cell">{l.borrowDate}</td>
-                      <td className="px-4 py-3 text-center text-slate-500 text-sm">{l.dueDate}</td>
-                      <td className="px-4 py-3">{renderStatusBadge(l.status)}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
+            <div className="p-0 overflow-x-auto overflow-y-auto max-h-[500px] relative">
+              <table className="w-full text-left whitespace-nowrap text-sm">
+                <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase sticky top-0 z-10 shadow-[0_1px_0_#E2E8F0]">
+                  <tr>
+                    <th className="px-4 py-3 text-left">{t('customerId', lang)}</th>
+                    <th className="px-4 py-3 text-left">{t('name', lang)}</th>
+                    <th className="px-4 py-3 text-right">{t('principal', lang)}</th>
+                    <th className="px-4 py-3 text-right hidden md:table-cell">{t('interestRate', lang)}</th>
+                    <th className="px-4 py-3 text-center hidden md:table-cell">{t('issueDate', lang)}</th>
+                    <th className="px-4 py-3 text-center">{t('dueDate', lang)}</th>
+                    <th className="px-4 py-3 text-left">{t('status', lang)}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100" ref={tableRef}>
+                  {data.loans
+                    .filter(l => {
+                      if (activeTab === 'all') return !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn;
+                      if (activeTab === 'renewals') return l.isRenewed;
+                      if (activeTab === 'paid') return l.isPaid;
+                      if (activeTab === 'defaulted') return l.isScam;
+                      if (activeTab === 'withdrawn') return l.isWithdrawn;
+                      return true;
+                    })
+                    .map((l, i) => (
+                      <tr key={i} onClick={() => setSelectedLoan(l)} className="cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition-colors">
+                        <td className="px-4 py-3 font-mono text-slate-400 text-xs">{l.id}</td>
+                        <td className="px-4 py-3 font-semibold text-slate-800">{l.name}</td>
+                        <td className="px-4 py-3 text-right font-medium text-sm">{formatNumber(l.principal)}</td>
+                        <td className="px-4 py-3 text-right text-slate-500 hidden md:table-cell">{l.interestRate}%</td>
+                        <td className="px-4 py-3 text-center text-slate-500 hidden md:table-cell">{l.borrowDate}</td>
+                        <td className="px-4 py-3 text-center text-slate-500 text-sm">{l.dueDate}</td>
+                        <td className="px-4 py-3">{renderStatusBadge(l.status)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Mobile Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex md:hidden z-40 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex md:hidden z-40 shadow-[0_-8px_20px_rgba(0,0,0,0.08)] pb-[env(safe-area-inset-bottom,24px)] pt-2 px-2">
         <button
           onClick={() => { setShowNewLoanModal(false); setShowWithdrawModal(false); setActiveMobileTab('dashboard'); }}
-          className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold transition-colors ${
-            activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'
-          }`}
+          className={`flex-1 flex flex-col items-center py-2 gap-1 text-[10px] font-bold transition-all active:scale-90 ${activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'
+            }`}
         >
-          <Home className={`w-5 h-5 ${activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          <Home className={`w-6 h-6 ${activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'}`} />
           {t('navDashboard', lang)}
         </button>
-        <button
-          onClick={() => { setActiveMobileTab('loans'); }}
-          className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold transition-colors ${
-            activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'
-          }`}
-        >
-          <List className={`w-5 h-5 ${activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'}`} />
-          {t('navLoans', lang)}
-        </button>
+
         <button
           onClick={() => setShowNewLoanModal(true)}
-          className="flex-1 flex flex-col items-center py-2.5 gap-0.5"
+          className="flex-1 flex flex-col items-center justify-center -mt-8"
         >
-          <div className="w-11 h-11 -mt-5 bg-emerald-600 rounded-full flex items-center justify-center shadow-lg shadow-emerald-300">
-            <Activity className="w-5 h-5 text-white" />
+          <div className="w-14 h-14 bg-emerald-600 rounded-2xl flex items-center justify-center shadow-xl shadow-emerald-200 border-4 border-white active:scale-95 transition-transform">
+            <Activity className="w-7 h-7 text-white" />
           </div>
         </button>
         <button
-          onClick={() => setShowWithdrawModal(true)}
-          className="flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold text-slate-400 hover:text-rose-600 transition-colors"
+          onClick={() => { setActiveMobileTab('loans'); }}
+          className={`flex-1 flex flex-col items-center py-2 gap-1 text-[10px] font-bold transition-all active:scale-90 ${activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'
+            }`}
         >
-          <Wallet className="w-5 h-5" />
-          {t('withdraw', lang)}
+          <List className={`w-6 h-6 ${activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          {t('navLoans', lang)}
         </button>
         <button
           onClick={() => setActiveMobileTab('analytics')}
-          className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold transition-colors ${
-            activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'
-          }`}
+          className={`flex-1 flex flex-col items-center py-2 gap-1 text-[10px] font-bold transition-all active:scale-90 ${activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'
+            }`}
         >
-          <BarChart2 className={`w-5 h-5 ${activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          <BarChart2 className={`w-6 h-6 ${activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'}`} />
           {t('navAnalytics', lang)}
         </button>
       </div>
@@ -1125,7 +1117,7 @@ export default function App() {
 
                     {/* Received */}
                     <div>
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2 text-emerald-600"><CheckCircle2 className="w-4 h-4" /> Actually Received</h3>
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2 text-emerald-600"><CheckCircle2 className="w-4 h-4" /> {t('actualPaymentsReceived', lang)}</h3>
                       <div className="space-y-2">
                         {data.loans.filter(l => l.actualDate && l.actualDate.startsWith(insightDate) && l.paidInterest > 0).map(l => (
                           <div key={'rec-' + l.id} className="flex justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-200 shadow-sm hover:border-emerald-400 transition-colors">
@@ -1419,12 +1411,10 @@ export default function App() {
               </button>
             </div>
             <div className="p-6 space-y-5">
-              <div className={`flex items-center gap-3 p-4 rounded-xl border ${
-                isSubscribed ? 'bg-emerald-50 border-emerald-200' : notifPermission === 'denied' ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'
-              }`}>
-                <div className={`w-3 h-3 rounded-full ${
-                  isSubscribed ? 'bg-emerald-500 animate-pulse' : notifPermission === 'denied' ? 'bg-rose-500' : 'bg-slate-300'
-                }`}></div>
+              <div className={`flex items-center gap-3 p-4 rounded-xl border ${isSubscribed ? 'bg-emerald-50 border-emerald-200' : notifPermission === 'denied' ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'
+                }`}>
+                <div className={`w-3 h-3 rounded-full ${isSubscribed ? 'bg-emerald-500 animate-pulse' : notifPermission === 'denied' ? 'bg-rose-500' : 'bg-slate-300'
+                  }`}></div>
                 <div>
                   <p className={`text-sm font-bold ${isSubscribed ? 'text-emerald-800' : notifPermission === 'denied' ? 'text-rose-700' : 'text-slate-600'}`}>
                     {isSubscribed ? t('notifEnabled', lang) : notifPermission === 'denied' ? t('notifBlocked', lang) : t('notifDisabled', lang)}
@@ -1474,9 +1464,9 @@ export default function App() {
                       disabled={!isSubscribed || isSendingTestNotif}
                       onClick={async () => {
                         setIsSendingTestNotif(true);
-                        const t = new Date(); t.setHours(0,0,0,0);
-                        const dueCount = data ? data.loans.filter(l => { if(l.isPaid||l.isScam||l.isRenewed||l.isWithdrawn) return false; const d=parseThaiDate(l.dueDate); return d&&d.getTime()===t.getTime(); }).length : 0;
-                        const overdueCount = data ? data.loans.filter(l => l.isOverdue&&!l.isPaid&&!l.isScam&&!l.isRenewed&&!l.isWithdrawn).length : 0;
+                        const t = new Date(); t.setHours(0, 0, 0, 0);
+                        const dueCount = data ? data.loans.filter(l => { if (l.isPaid || l.isScam || l.isRenewed || l.isWithdrawn) return false; const d = parseThaiDate(l.dueDate); return d && d.getTime() === t.getTime(); }).length : 0;
+                        const overdueCount = data ? data.loans.filter(l => l.isOverdue && !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn).length : 0;
                         await sendTestNotification('🌅 LoanTrack - สรุปยอดวันนี้', `📋 นัดชำระวันนี้: ${dueCount} ราย | ⚠️ ค้างชำระ: ${overdueCount} ราย`);
                         setIsSendingTestNotif(false);
                       }}
@@ -1488,8 +1478,8 @@ export default function App() {
                       disabled={!isSubscribed || isSendingTestNotif}
                       onClick={async () => {
                         setIsSendingTestNotif(true);
-                        const t = new Date(); t.setHours(0,0,0,0);
-                        const unpaid = data ? data.loans.filter(l => { if(l.isPaid||l.isScam||l.isRenewed||l.isWithdrawn) return false; const d=parseThaiDate(l.dueDate); return d&&d.getTime()===t.getTime(); }).length : 0;
+                        const t = new Date(); t.setHours(0, 0, 0, 0);
+                        const unpaid = data ? data.loans.filter(l => { if (l.isPaid || l.isScam || l.isRenewed || l.isWithdrawn) return false; const d = parseThaiDate(l.dueDate); return d && d.getTime() === t.getTime(); }).length : 0;
                         await sendTestNotification('🔔 LoanTrack - ต้องทวงวันนี้!', unpaid > 0 ? `💬 ยังมี ${unpaid} ราย ที่ยังไม่ชำระในวันนี้ รีบตามทวงด่วน!` : '✅ ยอดทั้งหมดของวันนี้ชำระแล้ว!');
                         setIsSendingTestNotif(false);
                       }}
