@@ -28,6 +28,36 @@ export default function App() {
   const [isSendingTestNotif, setIsSendingTestNotif] = useState(false);
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('lang') as Lang) || 'th');
   const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'loans' | 'analytics'>('dashboard');
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+
+  const minSwipeDistance = 50;
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+
+    if (isLeftSwipe || isRightSwipe) {
+      const tabs: ('dashboard' | 'analytics' | 'loans')[] = ['dashboard', 'analytics', 'loans'];
+      const currentIndex = tabs.indexOf(activeMobileTab);
+
+      if (isLeftSwipe && currentIndex < tabs.length - 1) {
+        setActiveMobileTab(tabs[currentIndex + 1]);
+      }
+      if (isRightSwipe && currentIndex > 0) {
+        setActiveMobileTab(tabs[currentIndex - 1]);
+      }
+    }
+  };
 
   const toggleLang = () => {
     setLang(l => { const next = l === 'th' ? 'en' : 'th'; localStorage.setItem('lang', next); return next; });
@@ -491,7 +521,12 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 font-sans pb-24 md:pb-8">
+    <div
+      className="min-h-screen bg-[#F8FAFC] text-slate-800 font-sans pb-24 md:pb-8"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
       {/* Sticky Mobile Header */}
       <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 py-3 md:hidden flex justify-between items-center shadow-sm">
         <div className="flex items-center gap-2">
