@@ -158,6 +158,7 @@ export const translations = {
   // ===== MOBILE NAV =====
   navDashboard: { th: 'หน้าหลัก', en: 'Dashboard' },
   navAlerts: { th: 'แจ้งเตือน', en: 'Alerts' },
+  navCalendar: { th: 'ปฏิทิน', en: 'Calendar' },
   navLoans: { th: 'รายการ', en: 'Loans' },
   navAnalytics: { th: 'วิเคราะห์', en: 'Analytics' },
 

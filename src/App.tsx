@@ -3,7 +3,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { fetchAppData, AppData, LoanRecord, updateLoanStatus, createNewLoan, editExistingLoan } from './services/dataService';
 import { formatCurrency, formatNumber, parseThaiDate } from './lib/utils';
-import { TrendingUp, TrendingDown, AlertCircle, CalendarClock, Activity, FileSpreadsheet, List, X, CheckCircle2, UserX, Wallet, RefreshCcw, LineChart, Bell, BellOff, Home, BarChart2, Languages } from 'lucide-react';
+import { TrendingUp, TrendingDown, AlertCircle, CalendarClock, Activity, FileSpreadsheet, List, X, CheckCircle2, UserX, Wallet, RefreshCcw, LineChart, Bell, BellOff, Home, BarChart2, Languages, Calendar } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, getNotificationPermission, sendTestNotification } from './services/pushService';
@@ -27,7 +27,8 @@ export default function App() {
   const [showNotifModal, setShowNotifModal] = useState(false);
   const [isSendingTestNotif, setIsSendingTestNotif] = useState(false);
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('lang') as Lang) || 'th');
-  const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'alerts' | 'loans' | 'analytics'>('dashboard');
+  const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'calendar' | 'loans' | 'analytics'>('dashboard');
+  const [selectedCalDate, setSelectedCalDate] = useState<Date>(new Date());
 
   const toggleLang = () => {
     setLang(l => { const next = l === 'th' ? 'en' : 'th'; localStorage.setItem('lang', next); return next; });
@@ -589,6 +590,73 @@ export default function App() {
           </div>
         </div>
 
+        {/* Calendar Tab Content: Full Monthly Schedule */}
+        <div className={activeMobileTab === 'calendar' ? 'block' : 'hidden md:hidden'}>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+              <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-emerald-600" /> {t('navCalendar', lang)}
+              </h2>
+              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                {formatToThaiStr(selectedCalDate)}
+              </span>
+            </div>
+            <div className="p-4 flex flex-col items-center">
+              <DatePicker
+                selected={selectedCalDate}
+                onChange={(date) => date && setSelectedCalDate(date)}
+                inline
+                calendarClassName="mobile-full-calendar"
+                highlightDates={data?.loans.map(l => parseThaiDate(l.dueDate)).filter(d => d !== null) as Date[]}
+                dayClassName={(date) => {
+                  const hasLoans = data?.loans.some(l => {
+                    const d = parseThaiDate(l.dueDate);
+                    return d && d.getDate() === date.getDate() && d.getMonth() === date.getMonth() && d.getFullYear() === date.getFullYear();
+                  });
+                  return hasLoans ? "has-loan-dot" : "";
+                }}
+              />
+            </div>
+            <div className="bg-slate-50 p-4 border-t border-slate-100 min-h-[150px]">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+                {t('due', lang)}: {formatToThaiStr(selectedCalDate)}
+              </h3>
+              <div className="space-y-3">
+                {data?.loans.filter(l => {
+                  const d = parseThaiDate(l.dueDate);
+                  return d && d.getDate() === selectedCalDate.getDate() && d.getMonth() === selectedCalDate.getMonth() && d.getFullYear() === selectedCalDate.getFullYear();
+                }).length === 0 ? (
+                  <div className="py-8 text-center text-slate-400 text-sm italic">
+                    {t('noCollectionsToday', lang)}
+                  </div>
+                ) : (
+                  data?.loans
+                    .filter(l => {
+                      const d = parseThaiDate(l.dueDate);
+                      return d && d.getDate() === selectedCalDate.getDate() && d.getMonth() === selectedCalDate.getMonth() && d.getFullYear() === selectedCalDate.getFullYear();
+                    })
+                    .map(l => (
+                      <div
+                        key={l.id}
+                        onClick={() => setSelectedLoan(l)}
+                        className="flex justify-between items-center p-3 bg-white rounded-xl border border-slate-200 shadow-sm active:scale-[0.98] transition-all"
+                      >
+                        <div>
+                          <div className="font-bold text-slate-800 text-sm">{l.name}</div>
+                          <div className="text-[10px] text-slate-500">{l.id} • {l.status}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-black text-emerald-600">{formatCurrency(l.totalExpected)}</div>
+                          <div className="text-[10px] text-slate-400">{l.borrowDate}</div>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Analytics Tab Content: Charts & Insights */}
         <div className={activeMobileTab === 'analytics' ? 'block' : 'hidden md:block'}>
           <h2 className="text-base font-bold mb-3 text-slate-800">{t('portfolioAnalytics', lang)}</h2>
@@ -734,6 +802,15 @@ export default function App() {
         >
           <Home className={`w-5 h-5 ${activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'}`} />
           {t('navDashboard', lang)}
+        </button>
+        <button
+          onClick={() => { setActiveMobileTab('calendar'); }}
+          className={`flex-1 flex flex-col items-center py-2.5 gap-0.5 text-[10px] font-semibold transition-colors ${
+            activeMobileTab === 'calendar' ? 'text-emerald-600' : 'text-slate-400'
+          }`}
+        >
+          <Calendar className={`w-5 h-5 ${activeMobileTab === 'calendar' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          {t('navCalendar', lang)}
         </button>
         <button
           onClick={() => { setActiveMobileTab('loans'); }}
