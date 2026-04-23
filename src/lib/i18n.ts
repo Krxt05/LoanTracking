@@ -182,6 +182,8 @@ export const translations = {
   payoutAmount: { th: 'จำนวนเงินที่เบิก', en: 'Payout Amount' },
   confirmPayout: { th: 'ยืนยันการเบิก', en: 'Confirm Payout' },
   issueNewLoan: { th: 'ออกยอดใหม่', en: 'Issue New Loan' },
+  modalModeLoan: { th: 'ออกยอดใหม่', en: 'Issue New Loan' },
+  modalModeWithdraw: { th: 'เบิกเงิน', en: 'Withdrawal' },
 };
 
 export type TranslationKey = keyof typeof translations;

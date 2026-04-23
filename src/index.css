@@ -100,32 +100,55 @@
 /* Mobile Full Calendar */
 .mobile-full-calendar {
   width: 100% !important;
+  max-width: 340px !important;
   border: none !important;
   box-shadow: none !important;
+  background: transparent !important;
 }
 
 .mobile-full-calendar .react-datepicker__month-container {
   width: 100% !important;
+  float: none !important;
 }
 
 .mobile-full-calendar .react-datepicker__day {
-  width: 2.8rem !important;
-  line-height: 2.8rem !important;
-  margin: 0.2rem !important;
-  font-size: 0.9rem !important;
+  width: 2.5rem !important;
+  line-height: 2.5rem !important;
+  margin: 0.15rem !important;
+  font-size: 0.85rem !important;
   position: relative;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (max-width: 360px) {
+  .mobile-full-calendar .react-datepicker__day {
+    width: 2.2rem !important;
+    line-height: 2.2rem !important;
+    margin: 0.1rem !important;
+    font-size: 0.8rem !important;
+  }
 }
 
 .has-loan-dot::after {
   content: "";
   position: absolute;
-  bottom: 6px;
+  bottom: 4px;
   left: 50%;
   transform: translateX(-50%);
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
   background-color: #10B981;
   border-radius: 50%;
+  box-shadow: 0 0 4px rgba(16, 185, 129, 0.4);
+}
+
+.react-datepicker__day--selected.has-loan-dot::after {
+  background-color: white;
+  box-shadow: none;
+}
+
+.react-datepicker__month {
+  margin: 0.4rem !important;
 }
 
 .react-datepicker__day--selected.has-loan-dot::after {
