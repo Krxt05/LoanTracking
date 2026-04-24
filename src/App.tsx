@@ -493,7 +493,7 @@ export default function App() {
   };
 
   const MetricCard = ({ label, value, sub, subColor = 'emerald', icon: Icon, iconBg }: { label: string; value: string; sub: React.ReactNode; subColor?: string; icon: React.ElementType; iconBg: string }) => (
-    <div className="min-w-[158px] flex-shrink-0 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm md:min-w-0 card-lift overflow-hidden relative">
+    <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm card-lift overflow-hidden relative">
       <div className="flex justify-between items-start mb-3">
         <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider leading-tight">{label}</div>
         <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
@@ -506,7 +506,7 @@ export default function App() {
   );
 
   const MetricRow = () => (
-    <div className="flex overflow-x-auto pb-3 mb-4 gap-3 md:grid md:grid-cols-4 md:pb-0 md:mb-6 no-scrollbar">
+    <div className="grid grid-cols-2 mb-4 gap-3 md:grid-cols-4 md:mb-6">
       <MetricCard
         label={t('totalPortfolio', lang)}
         value={formatCurrency(s.totalLimit)}
