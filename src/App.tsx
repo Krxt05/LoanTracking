@@ -1384,40 +1384,93 @@ export default function App() {
         </div>
       )}
 
+      {/* Withdraw Modal — slide-up sheet on mobile */}
       {showWithdrawModal && (
         <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowWithdrawModal(false)}>
           <div className="bg-white w-full md:max-w-md md:rounded-2xl shadow-2xl overflow-hidden rounded-t-3xl animate-sheet-up md:animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-center pt-3 pb-1 md:hidden"><div className="w-10 h-1 bg-slate-200 rounded-full" /></div>
             <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="text-lg font-black text-slate-800">{t('newPayout', lang)}</h3>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}>
+                  <Wallet className="w-4.5 h-4.5 text-white" style={{ width: '18px', height: '18px' }} />
+                </div>
+                <h3 className="text-lg font-black text-slate-800">{t('newPayout', lang)}</h3>
+              </div>
               <button onClick={() => setShowWithdrawModal(false)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100"><X size={20} /></button>
             </div>
+
             <form onSubmit={handleWithdrawSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('payoutAmount', lang)}</label>
                 <input
                   type="number"
                   required
+                  min="1"
                   value={withdrawForm.principal}
                   onChange={e => setWithdrawForm({ ...withdrawForm, principal: e.target.value })}
-                  className="w-full border border-slate-200 rounded-lg p-3"
+                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  placeholder="ระบุจำนวนเงิน"
+                />
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {[500, 1000, 1500, 2000, 2500, 3000].map(amt => (
+                    <button
+                      key={amt} type="button"
+                      onClick={() => setWithdrawForm({ ...withdrawForm, principal: amt.toString() })}
+                      className="px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors border border-rose-100"
+                    >
+                      {formatNumber(amt)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('withdrawalDate', lang)}</label>
+                <DatePicker
+                  selected={withdrawForm.date}
+                  onChange={(date: Date) => setWithdrawForm({ ...withdrawForm, date: date || new Date() })}
+                  dateFormat="dd/MM/yyyy"
+                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer bg-white"
                 />
               </div>
-              <div className="pt-4 flex justify-end gap-3">
-                <button type="button" onClick={() => setShowWithdrawModal(false)} className="px-4 py-2 text-slate-600">{t('cancel', lang)}</button>
-                <button type="submit" className="px-6 py-2 bg-rose-600 text-white font-bold rounded-xl">{t('confirmPayout', lang)}</button>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('withdrawalName', lang)}</label>
+                <input
+                  type="text"
+                  value={withdrawForm.name}
+                  onChange={e => setWithdrawForm({ ...withdrawForm, name: e.target.value })}
+                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                  placeholder="Withdrawal (default)"
+                />
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 mt-2 px-0 pb-0 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowWithdrawModal(false)} className="px-4 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors text-sm">{t('cancel', lang)}</button>
+                <button type="submit" disabled={isSyncing} className="px-5 py-2.5 text-white font-bold rounded-xl transition-colors shadow-sm disabled:opacity-50 text-sm" style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}>
+                  {isSyncing ? t('saving', lang) : t('confirmPayout', lang)}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
+      {/* New Loan Modal — slide-up sheet on mobile */}
       {showNewLoanModal && (
         <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowNewLoanModal(false)}>
           <div className="bg-white w-full md:max-w-md md:rounded-2xl shadow-2xl overflow-hidden rounded-t-3xl animate-sheet-up md:animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-center pt-3 pb-1 md:hidden"><div className="w-10 h-1 bg-slate-200 rounded-full" /></div>
             <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="text-lg font-black text-slate-800">{t('issueNewLoan', lang)}</h3>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}>
+                  <Activity className="w-4.5 h-4.5 text-white" style={{ width: '18px', height: '18px' }} />
+                </div>
+                <h3 className="text-lg font-black text-slate-800">{t('issueNewLoan', lang)}</h3>
+              </div>
               <button onClick={() => setShowNewLoanModal(false)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100"><X size={20} /></button>
             </div>
+
             <form onSubmit={handleCreateNewLoan} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('borrowerName', lang)}</label>
@@ -1426,22 +1479,86 @@ export default function App() {
                   required
                   value={newLoanForm.name}
                   onChange={e => setNewLoanForm({ ...newLoanForm, name: e.target.value })}
-                  className="w-full border border-slate-200 rounded-lg p-3"
+                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g. John Doe"
                 />
               </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('principalAmount', lang)}</label>
                 <input
                   type="number"
                   required
+                  min="1"
                   value={newLoanForm.principal}
                   onChange={e => setNewLoanForm({ ...newLoanForm, principal: e.target.value })}
-                  className="w-full border border-slate-200 rounded-lg p-3"
+                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-2"
+                  placeholder="฿"
                 />
+                <div className="flex flex-wrap gap-2">
+                  {[500, 1000, 1500, 2000, 2500, 3000].map(amt => (
+                    <button
+                      key={amt} type="button"
+                      onClick={() => setNewLoanForm({ ...newLoanForm, principal: amt.toString() })}
+                      className="px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-100"
+                    >
+                      {formatNumber(amt)}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="pt-4 flex justify-end gap-3">
-                <button type="button" onClick={() => setShowNewLoanModal(false)} className="px-4 py-2 text-slate-600">{t('cancel', lang)}</button>
-                <button type="submit" className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl">{t('addLoan', lang)}</button>
+
+              <div className="grid grid-cols-2 gap-4 relative">
+                <div className="flex flex-col relative z-20">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('borrowDate', lang)}</label>
+                  <DatePicker
+                    selected={newLoanForm.borrowDate}
+                    onChange={handleBorrowDateChange}
+                    dateFormat="dd/MM/yyyy"
+                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
+                  />
+                </div>
+                <div className="flex flex-col relative z-20">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('dueDateLabel', lang)}</label>
+                  <DatePicker
+                    selected={newLoanForm.dueDate}
+                    onChange={handleDueDateChange}
+                    dateFormat="dd/MM/yyyy"
+                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('daysBorrowed', lang)}</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={newLoanForm.daysBorrowed}
+                    onChange={e => handleDaysChange(Number(e.target.value))}
+                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('interestRateLabel', lang)}</label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={newLoanForm.interestRate}
+                    onChange={e => setNewLoanForm({ ...newLoanForm, interestRate: Number(e.target.value) })}
+                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 mt-2 px-0 pb-0 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowNewLoanModal(false)} className="px-4 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors text-sm">{t('cancel', lang)}</button>
+                <button type="submit" disabled={isSyncing} className="px-5 py-2.5 text-white font-bold rounded-xl transition-colors shadow-sm disabled:opacity-50 text-sm" style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}>
+                  {isSyncing ? t('saving', lang) : t('addLoan', lang)}
+                </button>
               </div>
             </form>
           </div>
@@ -1453,7 +1570,7 @@ export default function App() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="p-6 border-b border-slate-100 flex justify-between items-center">
               <h2 className="text-xl font-extrabold text-slate-800">{t('notifTitle', lang)}</h2>
-              <button onClick={() => setShowNotifModal(false)} className="p-2 text-slate-400"><X size={20} /></button>
+              <button onClick={() => setShowNotifModal(false)} className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100"><X size={20} /></button>
             </div>
             <div className="p-6 text-center">
               <p className="text-slate-600 mb-6">Notification settings are managed by your browser.</p>
