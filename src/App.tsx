@@ -29,6 +29,7 @@ export default function App() {
   const [isSendingTestNotif, setIsSendingTestNotif] = useState(false);
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('lang') as Lang) || 'th');
   const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'loans' | 'analytics'>('dashboard');
+  const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
   const [isDesktop, setIsDesktop] = useState(true);
 
@@ -446,20 +447,12 @@ export default function App() {
   });
 
   const overdueLoans = data.loans.filter(l => l.isOverdue && !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn);
-  const scamLoans = data.loans.filter(l => l.isScam);
-  const renewedLoans = data.loans.filter(l => l.isRenewed);
-  const activeLoans = data.loans.filter(l => !l.isPaid && !l.isScam && !l.isOverdue && !l.isRenewed && !l.isWithdrawn);
-  const paidLoans = data.loans.filter(l => l.isPaid);
-  const withdrawnLoans = data.loans.filter(l => l.isWithdrawn);
-
-  // Portfolio Progress Data for Gauge Chart
   const progressData = [
     { name: 'Collected', value: s.totalPaid, color: '#10B981' },
     { name: 'Remaining', value: s.totalUnpaid, color: '#E2E8F0' }
   ];
   const progressPct = s.totalExpected > 0 ? ((s.totalPaid / s.totalExpected) * 100).toFixed(1) : '0.0';
 
-  // Derive Cashflow Trend (Interest Expected vs Received)
   const dateMap: Record<string, { expected: number, actual: number }> = {};
   const allDates = new Set<string>();
 
@@ -676,101 +669,101 @@ export default function App() {
 
               {/* Section 2: Action & Alerts */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            {/* Due Today */}
-            <div className="bg-white rounded-2xl border border-amber-100 flex flex-col shadow-sm overflow-hidden">
-              <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #fffbeb, #fef3c7)' }}>
-                <div className="flex items-center gap-2 text-amber-800 font-black text-xs uppercase tracking-wider">
-                  <div className="w-6 h-6 bg-amber-500 rounded-lg flex items-center justify-center">
-                    <CalendarClock className="w-3.5 h-3.5 text-white" />
-                  </div>
-                  {t('dueToday', lang)}
-                </div>
-                <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">{dueTodayLoans.length}</span>
-              </div>
-              <div className="divide-y divide-slate-50 max-h-[220px] overflow-y-auto no-scrollbar">
-                {dueTodayLoans.length === 0 ? (
-                  <div className="py-8 text-center">
-                    <div className="text-2xl mb-1">✅</div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('noCollectionsToday', lang)}</p>
-                  </div>
-                ) : (
-                  <div ref={dueListRef}>
-                    {dueTodayLoans.map(l => (
-                      <div
-                        key={l.id}
-                        onClick={() => setSelectedLoan(l)}
-                        className="flex justify-between items-center px-4 py-3 hover:bg-amber-50/50 active:bg-amber-50 transition-colors cursor-pointer border-l-[3px] border-amber-400"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-                            <span className="text-amber-700 text-xs font-black">{l.name.charAt(0).toUpperCase()}</span>
-                          </div>
-                          <div>
-                            <div className="font-bold text-slate-800 text-sm leading-tight">{l.name}</div>
-                            <div className="text-[10px] font-medium text-slate-400">{l.id}</div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-black text-amber-600 text-sm">{formatCurrency(l.totalExpected)}</span>
-                          <span className="text-slate-300">›</span>
-                        </div>
+                {/* Due Today */}
+                <div className="bg-white rounded-2xl border border-amber-100 flex flex-col shadow-sm overflow-hidden">
+                  <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #fffbeb, #fef3c7)' }}>
+                    <div className="flex items-center gap-2 text-amber-800 font-black text-xs uppercase tracking-wider">
+                      <div className="w-6 h-6 bg-amber-500 rounded-lg flex items-center justify-center">
+                        <CalendarClock className="w-3.5 h-3.5 text-white" />
                       </div>
-                    ))}
+                      {t('dueToday', lang)}
+                    </div>
+                    <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">{dueTodayLoans.length}</span>
                   </div>
-                )}
-              </div>
-            </div>
+                  <div className="divide-y divide-slate-50 max-h-[220px] overflow-y-auto no-scrollbar">
+                    {dueTodayLoans.length === 0 ? (
+                      <div className="py-8 text-center">
+                        <div className="text-2xl mb-1">✅</div>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('noCollectionsToday', lang)}</p>
+                      </div>
+                    ) : (
+                      <div ref={dueListRef}>
+                        {dueTodayLoans.map(l => (
+                          <div
+                            key={l.id}
+                            onClick={() => setSelectedLoan(l)}
+                            className="flex justify-between items-center px-4 py-3 hover:bg-amber-50/50 active:bg-amber-50 transition-colors cursor-pointer border-l-[3px] border-amber-400"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                                <span className="text-amber-700 text-xs font-black">{l.name.charAt(0).toUpperCase()}</span>
+                              </div>
+                              <div>
+                                <div className="font-bold text-slate-800 text-sm leading-tight">{l.name}</div>
+                                <div className="text-[10px] font-medium text-slate-400">{l.id}</div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-black text-amber-600 text-sm">{formatCurrency(l.totalExpected)}</span>
+                              <span className="text-slate-300">›</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-            {/* Overdue Alerts */}
-            <div className="bg-white rounded-2xl border border-rose-100 flex flex-col shadow-sm overflow-hidden">
-              <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #fff1f2, #ffe4e6)' }}>
-                <div className="flex items-center gap-2 text-rose-800 font-black text-xs uppercase tracking-wider">
-                  <div className="w-6 h-6 bg-rose-500 rounded-lg flex items-center justify-center">
-                    <AlertCircle className="w-3.5 h-3.5 text-white" />
-                  </div>
-                  {t('overdueAlerts', lang)}
-                </div>
-                <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">{overdueLoans.length}</span>
-              </div>
-              <div className="divide-y divide-slate-50 max-h-[220px] overflow-y-auto no-scrollbar">
-                {overdueLoans.length === 0 ? (
-                  <div className="py-8 text-center">
-                    <div className="text-2xl mb-1">🎉</div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('noOverdueAccounts', lang)}</p>
-                  </div>
-                ) : (
-                  <div ref={overdueListRef}>
-                    {overdueLoans.sort((a, b) => b.daysLate - a.daysLate).map(l => (
-                      <div
-                        key={l.id}
-                        onClick={() => setSelectedLoan(l)}
-                        className="flex justify-between items-center px-4 py-3 hover:bg-rose-50/50 active:bg-rose-50 transition-colors cursor-pointer border-l-[3px] border-rose-500"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center flex-shrink-0">
-                            <span className="text-rose-700 text-xs font-black">{l.name.charAt(0).toUpperCase()}</span>
-                          </div>
-                          <div>
-                            <div className="font-bold text-slate-800 text-sm leading-tight">{l.name}</div>
-                            <div className="text-[10px] font-bold text-rose-600">{l.daysLate} {t('daysOverdue', lang)}</div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="text-right">
-                            <div className="font-black text-rose-600 text-sm">{formatCurrency(l.totalExpected)}</div>
-                            <div className="text-[9px] text-slate-400">{l.dueDate}</div>
-                          </div>
-                          <span className="text-slate-300">›</span>
-                        </div>
+                {/* Overdue Alerts */}
+                <div className="bg-white rounded-2xl border border-rose-100 flex flex-col shadow-sm overflow-hidden">
+                  <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #fff1f2, #ffe4e6)' }}>
+                    <div className="flex items-center gap-2 text-rose-800 font-black text-xs uppercase tracking-wider">
+                      <div className="w-6 h-6 bg-rose-500 rounded-lg flex items-center justify-center">
+                        <AlertCircle className="w-3.5 h-3.5 text-white" />
                       </div>
-                    ))}
+                      {t('overdueAlerts', lang)}
+                    </div>
+                    <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">{overdueLoans.length}</span>
                   </div>
-                )}
+                  <div className="divide-y divide-slate-50 max-h-[220px] overflow-y-auto no-scrollbar">
+                    {overdueLoans.length === 0 ? (
+                      <div className="py-8 text-center">
+                        <div className="text-2xl mb-1">🎉</div>
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('noOverdueAccounts', lang)}</p>
+                      </div>
+                    ) : (
+                      <div ref={overdueListRef}>
+                        {overdueLoans.sort((a, b) => b.daysLate - a.daysLate).map(l => (
+                          <div
+                            key={l.id}
+                            onClick={() => setSelectedLoan(l)}
+                            className="flex justify-between items-center px-4 py-3 hover:bg-rose-50/50 active:bg-rose-50 transition-colors cursor-pointer border-l-[3px] border-rose-500"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center flex-shrink-0">
+                                <span className="text-rose-700 text-xs font-black">{l.name.charAt(0).toUpperCase()}</span>
+                              </div>
+                              <div>
+                                <div className="font-bold text-slate-800 text-sm leading-tight">{l.name}</div>
+                                <div className="text-[10px] font-bold text-rose-600">{l.daysLate} {t('daysOverdue', lang)}</div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-right">
+                                <div className="font-black text-rose-600 text-sm">{formatCurrency(l.totalExpected)}</div>
+                                <div className="text-[9px] text-slate-400">{l.dueDate}</div>
+                              </div>
+                              <span className="text-slate-300">›</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-          </div>
             </motion.div>
           )}
-
 
           {/* Analytics Content with Animation */}
           {(isDesktop || activeMobileTab === 'analytics') && (
@@ -782,126 +775,121 @@ export default function App() {
               transition={{ duration: 0.3, ease: "easeOut" }}
               className="md:block"
             >
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-base font-black text-slate-800">{t('portfolioAnalytics', lang)}</h2>
-            {/* Mobile-only date indicator */}
-            <span className="md:hidden text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-full uppercase tracking-wider border border-slate-200">
-              {new Date().toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { month: 'short', year: 'numeric' })}
-            </span>
-          </div>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-base font-black text-slate-800">{t('portfolioAnalytics', lang)}</h2>
+                <span className="md:hidden text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-full uppercase tracking-wider border border-slate-200">
+                  {new Date().toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { month: 'short', year: 'numeric' })}
+                </span>
+              </div>
 
-          {/* Desktop Only: Charts Row */}
-          <div className="hidden md:grid md:grid-cols-2 gap-6 mb-8">
-            <div
-              className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center cursor-pointer group hover:border-emerald-300 hover:shadow-md transition-all relative overflow-hidden"
-              onClick={() => setShowPortfolioProgressModal(true)}
-            >
-              <div className="w-full flex justify-between items-center mb-6">
-                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">{t('portfolioProgress', lang)}</h3>
-                <span className="text-xs text-emerald-500 bg-emerald-50 px-3 py-1 rounded-full font-bold border border-emerald-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickForInsights', lang)}</span>
-              </div>
-              <div className="h-[180px] w-full relative">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={progressData} cx="50%" cy="100%" startAngle={180} endAngle={0} innerRadius={80} outerRadius={110} dataKey="value" stroke="none">
-                      {progressData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                    </Pie>
-                    <RechartsTooltip formatter={(val: number) => [formatCurrency(val), 'Amount']} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="absolute bottom-0 left-0 right-0 text-center flex flex-col items-center justify-end pb-2">
-                  <span className="text-4xl font-black text-slate-800">{progressPct}%</span>
-                  <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">{t('collected', lang)}</span>
+              <div className="hidden md:grid md:grid-cols-2 gap-6 mb-8">
+                <div
+                  className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center cursor-pointer group hover:border-emerald-300 hover:shadow-md transition-all relative overflow-hidden"
+                  onClick={() => setShowPortfolioProgressModal(true)}
+                >
+                  <div className="w-full flex justify-between items-center mb-6">
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">{t('portfolioProgress', lang)}</h3>
+                    <span className="text-xs text-emerald-500 bg-emerald-50 px-3 py-1 rounded-full font-bold border border-emerald-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickForInsights', lang)}</span>
+                  </div>
+                  <div className="h-[180px] w-full relative">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={progressData} cx="50%" cy="100%" startAngle={180} endAngle={0} innerRadius={80} outerRadius={110} dataKey="value" stroke="none">
+                          {progressData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                        </Pie>
+                        <RechartsTooltip formatter={(val: number) => [formatCurrency(val), 'Amount']} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="absolute bottom-0 left-0 right-0 text-center flex flex-col items-center justify-end pb-2">
+                      <span className="text-4xl font-black text-slate-800">{progressPct}%</span>
+                      <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">{t('collected', lang)}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            <div
-              className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col cursor-pointer group hover:border-indigo-300 hover:shadow-md transition-all"
-              onClick={() => setShowExpandedTrend(true)}
-            >
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">{t('cashflowTrend', lang)}</h3>
-                <span className="text-xs text-indigo-500 bg-indigo-50 px-3 py-1 rounded-full font-bold border border-indigo-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickToExpand', lang)}</span>
+                <div
+                  className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col cursor-pointer group hover:border-indigo-300 hover:shadow-md transition-all"
+                  onClick={() => setShowExpandedTrend(true)}
+                >
+                  <div className="flex justify-between items-center mb-6">
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">{t('cashflowTrend', lang)}</h3>
+                    <span className="text-xs text-indigo-500 bg-indigo-50 px-3 py-1 rounded-full font-bold border border-indigo-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickToExpand', lang)}</span>
+                  </div>
+                  <div className="h-[180px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={trendData14}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                        <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94A3B8' }} />
+                        <YAxis axisLine={false} tickLine={false} hide />
+                        <Bar dataKey="Expected" barSize={12} fill="#CBD5E1" radius={[4, 4, 0, 0]} />
+                        <Line type="monotone" dataKey="Received" stroke="#10B981" strokeWidth={3} dot={false} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
               </div>
-              <div className="h-[180px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={trendData14}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94A3B8' }} />
-                    <YAxis axisLine={false} tickLine={false} hide />
-                    <Bar dataKey="Expected" barSize={12} fill="#CBD5E1" radius={[4, 4, 0, 0]} />
-                    <Line type="monotone" dataKey="Received" stroke="#10B981" strokeWidth={3} dot={false} />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
 
-          {/* Mobile and Detailed Insights (Desktop) */}
-          <div className="space-y-4">
-            {/* Summary Cards */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
-                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{t('totalExpectedValue', lang)}</div>
-                <div className="text-xl font-black text-slate-800">{formatCurrency(s.totalExpected)}</div>
-              </div>
-              <div className="bg-emerald-600 p-4 rounded-2xl border border-emerald-500 shadow-lg shadow-emerald-100 flex flex-col items-center text-center">
-                <div className="text-[10px] font-black text-emerald-100 uppercase tracking-widest mb-2">{t('totalCollected', lang)}</div>
-                <div className="text-xl font-black text-white">{formatCurrency(s.totalPaid)}</div>
-              </div>
-            </div>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{t('totalExpectedValue', lang)}</div>
+                    <div className="text-xl font-black text-slate-800">{formatCurrency(s.totalExpected)}</div>
+                  </div>
+                  <div className="bg-emerald-600 p-4 rounded-2xl border border-emerald-500 shadow-lg shadow-emerald-100 flex flex-col items-center text-center">
+                    <div className="text-[10px] font-black text-emerald-100 uppercase tracking-widest mb-2">{t('totalCollected', lang)}</div>
+                    <div className="text-xl font-black text-white">{formatCurrency(s.totalPaid)}</div>
+                  </div>
+                </div>
 
-            {/* Principal Breakdown Card */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>
-                {t('principalBreakdown', lang)}
-              </div>
-              <div className="p-4 space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-slate-600">{t('principalLentOut', lang)}</span>
-                  <span className="text-sm font-black text-slate-800">{formatCurrency(s.totalBorrowed)}</span>
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>
+                    {t('principalBreakdown', lang)}
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-slate-600">{t('principalLentOut', lang)}</span>
+                      <span className="text-sm font-black text-slate-800">{formatCurrency(s.totalBorrowed)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pl-3 border-l-2 border-emerald-400">
+                      <span className="text-xs font-bold text-emerald-600">{t('principalCollected', lang)}</span>
+                      <span className="text-sm font-black text-emerald-700">{formatCurrency(s.paidPrincipal)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pl-3 border-l-2 border-amber-400">
+                      <span className="text-xs font-bold text-amber-600">{t('principalRemaining', lang)}</span>
+                      <span className="text-sm font-black text-amber-700">{formatCurrency(s.unpaidPrincipal)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pl-3 border-l-2 border-rose-400">
+                      <span className="text-xs font-bold text-rose-600">{t('principalLost', lang)}</span>
+                      <span className="text-sm font-black text-rose-700">{formatCurrency(s.scamPrincipal)}</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center pl-3 border-l-2 border-emerald-400">
-                  <span className="text-xs font-bold text-emerald-600">{t('principalCollected', lang)}</span>
-                  <span className="text-sm font-black text-emerald-700">{formatCurrency(s.paidPrincipal)}</span>
-                </div>
-                <div className="flex justify-between items-center pl-3 border-l-2 border-amber-400">
-                  <span className="text-xs font-bold text-amber-600">{t('principalRemaining', lang)}</span>
-                  <span className="text-sm font-black text-amber-700">{formatCurrency(s.unpaidPrincipal)}</span>
-                </div>
-                <div className="flex justify-between items-center pl-3 border-l-2 border-rose-400">
-                  <span className="text-xs font-bold text-rose-600">{t('principalLost', lang)}</span>
-                  <span className="text-sm font-black text-rose-700">{formatCurrency(s.scamPrincipal)}</span>
-                </div>
-              </div>
-            </div>
 
-            {/* Interest Breakdown Card */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
-                {t('interestBreakdown', lang)}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
+                    {t('interestBreakdown', lang)}
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-slate-600">{t('interestExpected', lang)}</span>
+                      <span className="text-sm font-black text-slate-800">{formatCurrency(s.totalInterest)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pl-3 border-l-2 border-emerald-400">
+                      <span className="text-xs font-bold text-emerald-600">{t('interestCollected', lang)}</span>
+                      <span className="text-sm font-black text-emerald-700">{formatCurrency(s.paidInterest)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pl-3 border-l-2 border-amber-400">
+                      <span className="text-xs font-bold text-amber-600">{t('interestRemaining', lang)}</span>
+                      <span className="text-sm font-black text-amber-700">{formatCurrency(s.unpaidInterest)}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="p-4 space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-slate-600">{t('interestExpected', lang)}</span>
-                  <span className="text-sm font-black text-slate-800">{formatCurrency(s.totalInterest)}</span>
-                </div>
-                <div className="flex justify-between items-center pl-3 border-l-2 border-emerald-400">
-                  <span className="text-xs font-bold text-emerald-600">{t('interestCollected', lang)}</span>
-                  <span className="text-sm font-black text-emerald-700">{formatCurrency(s.paidInterest)}</span>
-                </div>
-                <div className="flex justify-between items-center pl-3 border-l-2 border-amber-400">
-                  <span className="text-xs font-bold text-amber-600">{t('interestRemaining', lang)}</span>
-                  <span className="text-sm font-black text-amber-700">{formatCurrency(s.unpaidInterest)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
             </motion.div>
           )}
+
           {/* Loans Content with Animation */}
           {(isDesktop || activeMobileTab === 'loans') && (
             <motion.div
@@ -913,115 +901,113 @@ export default function App() {
               className="md:block"
             >
               <h2 className="text-base font-bold mb-3 text-slate-800">{t('dataManagement', lang)}</h2>
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
-            <div className="flex border-b border-slate-200 bg-slate-50/50 overflow-x-auto">
-              {(['all', 'renewals', 'paid', 'defaulted', 'withdrawn', 'raw'] as const).map(tab => (
-                <button
-                  key={tab}
-                  className={`px-4 py-3 text-xs font-semibold capitalize border-b-2 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-emerald-500 text-emerald-700 bg-white' : 'border-transparent text-slate-500'}`}
-                  onClick={() => setActiveTab(tab)}
-                >
-                  {tab === 'all' ? t('tabAll', lang) :
-                    tab === 'renewals' ? t('tabRenewals', lang) :
-                      tab === 'paid' ? t('tabPaid', lang) :
-                        tab === 'defaulted' ? t('tabDefaulted', lang) :
-                          tab === 'withdrawn' ? t('tabWithdrawn', lang) :
-                            t('tabRaw', lang)}
-                </button>
-              ))}
-            </div>
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+                <div className="flex border-b border-slate-200 bg-slate-50/50 overflow-x-auto">
+                  {(['all', 'renewals', 'paid', 'defaulted', 'withdrawn', 'raw'] as const).map(tab => (
+                    <button
+                      key={tab}
+                      className={`px-4 py-3 text-xs font-semibold capitalize border-b-2 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-emerald-500 text-emerald-700 bg-white' : 'border-transparent text-slate-500'}`}
+                      onClick={() => setActiveTab(tab)}
+                    >
+                      {tab === 'all' ? t('tabAll', lang) :
+                        tab === 'renewals' ? t('tabRenewals', lang) :
+                          tab === 'paid' ? t('tabPaid', lang) :
+                            tab === 'defaulted' ? t('tabDefaulted', lang) :
+                              tab === 'withdrawn' ? t('tabWithdrawn', lang) :
+                                t('tabRaw', lang)}
+                    </button>
+                  ))}
+                </div>
 
-            <div className="p-0 overflow-x-auto overflow-y-auto max-h-[600px] relative">
-              {/* Desktop Table View */}
-              <table className="hidden md:table w-full text-left whitespace-nowrap text-sm">
-                <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase sticky top-0 z-10 shadow-[0_1px_0_#E2E8F0]">
-                  <tr>
-                    <th className="px-4 py-3 text-left">{t('customerId', lang)}</th>
-                    <th className="px-4 py-3 text-left">{t('name', lang)}</th>
-                    <th className="px-4 py-3 text-right">{t('principal', lang)}</th>
-                    <th className="px-4 py-3 text-right">{t('interestRate', lang)}</th>
-                    <th className="px-4 py-3 text-center">{t('issueDate', lang)}</th>
-                    <th className="px-4 py-3 text-center">{t('dueDate', lang)}</th>
-                    <th className="px-4 py-3 text-left">{t('status', lang)}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100" ref={tableRef}>
-                  {data.loans
-                    .filter(l => {
-                      if (activeTab === 'all') return !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn;
-                      if (activeTab === 'renewals') return l.isRenewed;
-                      if (activeTab === 'paid') return l.isPaid;
-                      if (activeTab === 'defaulted') return l.isScam;
-                      if (activeTab === 'withdrawn') return l.isWithdrawn;
-                      return true;
-                    })
-                    .map((l, i) => (
-                      <tr key={i} onClick={() => setSelectedLoan(l)} className="cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition-colors">
-                        <td className="px-4 py-3 font-mono text-slate-400 text-xs">{l.id}</td>
-                        <td className="px-4 py-3 font-semibold text-slate-800">{l.name}</td>
-                        <td className="px-4 py-3 text-right font-medium text-sm">{formatNumber(l.principal)}</td>
-                        <td className="px-4 py-3 text-right text-slate-500">{l.interestRate}%</td>
-                        <td className="px-4 py-3 text-center text-slate-500">{l.borrowDate}</td>
-                        <td className="px-4 py-3 text-center text-slate-500 text-sm">{l.dueDate}</td>
-                        <td className="px-4 py-3">{renderStatusBadge(l.status)}</td>
+                <div className="p-0 overflow-x-auto overflow-y-auto max-h-[600px] relative">
+                  <table className="hidden md:table w-full text-left whitespace-nowrap text-sm">
+                    <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase sticky top-0 z-10 shadow-[0_1px_0_#E2E8F0]">
+                      <tr>
+                        <th className="px-4 py-3 text-left">{t('customerId', lang)}</th>
+                        <th className="px-4 py-3 text-left">{t('name', lang)}</th>
+                        <th className="px-4 py-3 text-right">{t('principal', lang)}</th>
+                        <th className="px-4 py-3 text-right">{t('interestRate', lang)}</th>
+                        <th className="px-4 py-3 text-center">{t('issueDate', lang)}</th>
+                        <th className="px-4 py-3 text-center">{t('dueDate', lang)}</th>
+                        <th className="px-4 py-3 text-left">{t('status', lang)}</th>
                       </tr>
-                    ))}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100" ref={tableRef}>
+                      {data.loans
+                        .filter(l => {
+                          if (activeTab === 'all') return !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn;
+                          if (activeTab === 'renewals') return l.isRenewed;
+                          if (activeTab === 'paid') return l.isPaid;
+                          if (activeTab === 'defaulted') return l.isScam;
+                          if (activeTab === 'withdrawn') return l.isWithdrawn;
+                          return true;
+                        })
+                        .map((l, i) => (
+                          <tr key={i} onClick={() => setSelectedLoan(l)} className="cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition-colors">
+                            <td className="px-4 py-3 font-mono text-slate-400 text-xs">{l.id}</td>
+                            <td className="px-4 py-3 font-semibold text-slate-800">{l.name}</td>
+                            <td className="px-4 py-3 text-right font-medium text-sm">{formatNumber(l.principal)}</td>
+                            <td className="px-4 py-3 text-right text-slate-500">{l.interestRate}%</td>
+                            <td className="px-4 py-3 text-center text-slate-500">{l.borrowDate}</td>
+                            <td className="px-4 py-3 text-center text-slate-500 text-sm">{l.dueDate}</td>
+                            <td className="px-4 py-3">{renderStatusBadge(l.status)}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
 
-              {/* Mobile Card View */}
-              <div className="md:hidden" ref={tableRef as any}>
-                {data.loans
-                  .filter(l => {
-                    if (activeTab === 'all') return !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn;
-                    if (activeTab === 'renewals') return l.isRenewed;
-                    if (activeTab === 'paid') return l.isPaid;
-                    if (activeTab === 'defaulted') return l.isScam;
-                    if (activeTab === 'withdrawn') return l.isWithdrawn;
-                    return true;
-                  })
-                  .map((l, i) => {
-                    const stripeClass = l.isScam ? 'border-l-[3px] border-rose-500'
-                      : l.isPaid ? 'border-l-[3px] border-cyan-400'
-                      : l.isRenewed ? 'border-l-[3px] border-indigo-500'
-                      : l.isWithdrawn ? 'border-l-[3px] border-amber-400'
-                      : l.isOverdue ? 'border-l-[3px] border-red-500'
-                      : 'border-l-[3px] border-emerald-500';
-                    const avatarBg = l.isScam ? 'bg-rose-100 text-rose-700'
-                      : l.isPaid ? 'bg-cyan-100 text-cyan-700'
-                      : l.isRenewed ? 'bg-indigo-100 text-indigo-700'
-                      : l.isOverdue ? 'bg-red-100 text-red-700'
-                      : 'bg-emerald-100 text-emerald-700';
-                    return (
-                      <div
-                        key={i}
-                        onClick={() => setSelectedLoan(l)}
-                        className={`flex items-center gap-3 px-4 py-3.5 border-b border-slate-100 last:border-0 active:bg-slate-50 cursor-pointer ${stripeClass}`}
-                      >
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-black text-sm ${avatarBg}`}>
-                          {l.name.charAt(0).toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-bold text-slate-800 text-sm truncate">{l.name}</div>
-                          <div className="text-[10px] text-slate-400 font-medium">{l.id} · {l.dueDate}</div>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <div className="font-black text-slate-900 text-sm">{formatCurrency(l.principal)}</div>
-                          {renderStatusBadge(l.status)}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <div className="md:hidden" ref={tableRef as any}>
+                    {data.loans
+                      .filter(l => {
+                        if (activeTab === 'all') return !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn;
+                        if (activeTab === 'renewals') return l.isRenewed;
+                        if (activeTab === 'paid') return l.isPaid;
+                        if (activeTab === 'defaulted') return l.isScam;
+                        if (activeTab === 'withdrawn') return l.isWithdrawn;
+                        return true;
+                      })
+                      .map((l, i) => {
+                        const stripeClass = l.isScam ? 'border-l-[3px] border-rose-500'
+                          : l.isPaid ? 'border-l-[3px] border-cyan-400'
+                          : l.isRenewed ? 'border-l-[3px] border-indigo-500'
+                          : l.isWithdrawn ? 'border-l-[3px] border-amber-400'
+                          : l.isOverdue ? 'border-l-[3px] border-red-500'
+                          : 'border-l-[3px] border-emerald-500';
+                        const avatarBg = l.isScam ? 'bg-rose-100 text-rose-700'
+                          : l.isPaid ? 'bg-cyan-100 text-cyan-700'
+                          : l.isRenewed ? 'bg-indigo-100 text-indigo-700'
+                          : l.isOverdue ? 'bg-red-100 text-red-700'
+                          : 'bg-emerald-100 text-emerald-700';
+                        return (
+                          <div
+                            key={i}
+                            onClick={() => setSelectedLoan(l)}
+                            className={`flex items-center gap-3 px-4 py-3.5 border-b border-slate-100 last:border-0 active:bg-slate-50 cursor-pointer ${stripeClass}`}
+                          >
+                            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-black text-sm ${avatarBg}`}>
+                              {l.name.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-bold text-slate-800 text-sm truncate">{l.name}</div>
+                              <div className="text-[10px] text-slate-400 font-medium">{l.id} · {l.dueDate}</div>
+                            </div>
+                            <div className="text-right flex-shrink-0">
+                              <div className="font-black text-slate-900 text-sm">{formatCurrency(l.principal)}</div>
+                              {renderStatusBadge(l.status)}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* Mobile Bottom Navigation - Simplified with Primary Actions */}
       <div className="fixed bottom-0 left-0 right-0 md:hidden z-40 pb-safe">
         <div className="mx-6 mb-6 h-[70px] bg-slate-900/90 backdrop-blur-xl border border-white/10 flex shadow-[0_20px_50px_rgba(0,0,0,0.3)] rounded-3xl px-2 items-center gap-4">
-          {/* 1. New Loan — Primary Action */}
           <button
             onClick={() => setShowNewLoanModal(true)}
             className="flex-1 h-[54px] flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 text-white font-black text-sm active:scale-95 transition-transform shadow-lg shadow-emerald-500/30"
@@ -1030,7 +1016,6 @@ export default function App() {
             {t('newLoan', lang)}
           </button>
 
-          {/* 2. Withdraw — Secondary Action */}
           <button
             onClick={() => setShowWithdrawModal(true)}
             className="flex-1 h-[54px] flex items-center justify-center gap-2 rounded-2xl bg-rose-500 text-white font-black text-sm active:scale-95 transition-transform shadow-lg shadow-rose-500/30"
@@ -1041,291 +1026,243 @@ export default function App() {
         </div>
       </div>
 
-      {/* Loan Details & Action Modal */}
       <AnimatePresence>
         {selectedLoan && (
           <div
             className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm"
             onClick={() => setSelectedLoan(null)}
           >
-          <motion.div
-            className="bg-white w-full md:rounded-2xl md:max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh] rounded-t-3xl"
-            drag="y"
-            dragConstraints={{ top: 0, bottom: 0 }}
-            dragElastic={{ top: 0, bottom: 0.5 }}
-            onDragEnd={(e, info) => {
-              if (info.offset.y > 100) setSelectedLoan(null);
-            }}
-            initial={{ translateY: '100%' }}
-            animate={{ translateY: 0 }}
-            exit={{ translateY: '100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Handle bar mobile with Drag handle */}
-            <div className="flex justify-center pt-3 pb-1 md:hidden cursor-grab active:cursor-grabbing">
-              <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
-            </div>
-
-            {/* Status-aware gradient header */}
-            <div className={`flex justify-between items-start px-5 py-4 border-b border-slate-100 ${
-              selectedLoan.isScam ? 'bg-gradient-to-r from-rose-50 to-white'
-              : selectedLoan.isOverdue ? 'bg-gradient-to-r from-red-50 to-white'
-              : selectedLoan.isPaid ? 'bg-gradient-to-r from-cyan-50 to-white'
-              : selectedLoan.isRenewed ? 'bg-gradient-to-r from-indigo-50 to-white'
-              : 'bg-gradient-to-r from-emerald-50 to-white'
-            }`}>
-              <div>
-                <h2 className="text-xl font-black text-slate-800 flex items-center gap-2 flex-wrap">
-                  {selectedLoan.name}
-                  <button
-                    onClick={() => setIsEditingLoan(!isEditingLoan)}
-                    className={`text-xs px-2.5 py-1 rounded-full font-bold transition-colors ${
-                      isEditingLoan ? 'bg-indigo-100 text-indigo-700' : 'bg-white/80 text-slate-500 border border-slate-200'
-                    }`}
-                  >
-                    {isEditingLoan ? t('cancelEdit', lang) : t('editDetails', lang)}
-                  </button>
-                </h2>
-                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                  <span className="text-xs font-mono text-slate-400">ID: {selectedLoan.id}</span>
-                  {selectedLoan.isScam ? (
-                    <span className="inline-flex px-2 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black uppercase">💀 Defaulted</span>
-                  ) : selectedLoan.isWithdrawn ? (
-                    <span className="inline-flex px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold uppercase">Payout</span>
-                  ) : selectedLoan.isPaid ? (
-                    <span className="inline-flex px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700 text-[10px] font-bold uppercase">✓ Paid</span>
-                  ) : selectedLoan.isRenewed ? (
-                    <span className="inline-flex px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold uppercase">Renewed</span>
-                  ) : selectedLoan.isOverdue ? (
-                    <span className="inline-flex px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-bold uppercase">⚠ Overdue</span>
-                  ) : (
-                    <span className="inline-flex px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase">Active</span>
-                  )}
-                </div>
-              </div>
-              <button
-                onClick={() => setSelectedLoan(null)}
-                className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition-colors flex-shrink-0 ml-2"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-6 bg-white">
-              {/* Financials Section */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Financial Details</h3>
-
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  {isEditingLoan ? (
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-1">Principal</label>
-                        <input
-                          type="number"
-                          value={editLoanForm.principal}
-                          onChange={e => setEditLoanForm({ ...editLoanForm, principal: e.target.value })}
-                          className="w-full border border-slate-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-1">Interest Rate (%)</label>
-                        <input
-                          type="number"
-                          value={editLoanForm.interestRate}
-                          onChange={e => setEditLoanForm({ ...editLoanForm, interestRate: Number(e.target.value) })}
-                          className="w-full border border-slate-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      </div>
-                      <div className="flex justify-between items-center mt-4 pt-4 border-t border-slate-200">
-                        <span className="text-slate-700 font-bold">New Expected</span>
-                        <span className="font-black text-xl text-indigo-600">
-                          {formatCurrency(parseFloat(editLoanForm.principal) + ((parseFloat(editLoanForm.principal) * editLoanForm.interestRate) / 100))}
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-slate-500 text-sm">Principal</span>
-                        <span className="font-semibold text-slate-800">{formatCurrency(selectedLoan.principal)}</span>
-                      </div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-slate-500 text-sm">Interest Rate</span>
-                        <span className="font-semibold text-slate-800">{selectedLoan.interestRate}%</span>
-                      </div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-slate-500 text-sm">Expected Interest</span>
-                        <span className="font-semibold text-emerald-600">+{formatCurrency(selectedLoan.expectedInterest)}</span>
-                      </div>
-                      <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-200">
-                        <span className="text-slate-500 text-sm">Penalty Fee</span>
-                        <span className="font-semibold text-amber-600">+{formatCurrency(selectedLoan.penalty)}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-slate-700 font-bold">Total Expected</span>
-                        <span className="font-black text-xl text-slate-900">{formatCurrency(selectedLoan.totalExpected)}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
+            <motion.div
+              className="bg-white w-full md:rounded-2xl md:max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh] rounded-t-3xl"
+              drag="y"
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={{ top: 0, bottom: 0.5 }}
+              onDragEnd={(e, info) => {
+                if (info.offset.y > 100) setSelectedLoan(null);
+              }}
+              initial={{ translateY: '100%' }}
+              animate={{ translateY: 0 }}
+              exit={{ translateY: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex justify-center pt-3 pb-1 md:hidden cursor-grab active:cursor-grabbing">
+                <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
               </div>
 
-              {/* Payments Section */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Payments & Dates</h3>
-
-                <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-emerald-700 text-sm">Total Paid</span>
-                    <span className="font-bold text-emerald-700">{formatCurrency(selectedLoan.paidAmount)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs text-emerald-600/80 pl-2 border-l-2 border-emerald-200 ml-1">
-                    <span>Principal Paid</span>
-                    <span>{formatCurrency(selectedLoan.paidPrincipal)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs text-emerald-600/80 pl-2 border-l-2 border-emerald-200 ml-1 mt-1">
-                    <span>Interest Paid</span>
-                    <span>{formatCurrency(selectedLoan.paidInterest)}</span>
+              <div className={`flex justify-between items-start px-5 py-4 border-b border-slate-100 ${
+                selectedLoan.isScam ? 'bg-gradient-to-r from-rose-50 to-white'
+                : selectedLoan.isOverdue ? 'bg-gradient-to-r from-red-50 to-white'
+                : selectedLoan.isPaid ? 'bg-gradient-to-r from-cyan-50 to-white'
+                : selectedLoan.isRenewed ? 'bg-gradient-to-r from-indigo-50 to-white'
+                : 'bg-gradient-to-r from-emerald-50 to-white'
+              }`}>
+                <div>
+                  <h2 className="text-xl font-black text-slate-800 flex items-center gap-2 flex-wrap">
+                    {selectedLoan.name}
+                    <button
+                      onClick={() => setIsEditingLoan(!isEditingLoan)}
+                      className={`text-xs px-2.5 py-1 rounded-full font-bold transition-colors ${
+                        isEditingLoan ? 'bg-indigo-100 text-indigo-700' : 'bg-white/80 text-slate-500 border border-slate-200'
+                      }`}
+                    >
+                      {isEditingLoan ? t('cancelEdit', lang) : t('editDetails', lang)}
+                    </button>
+                  </h2>
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    <span className="text-xs font-mono text-slate-400">ID: {selectedLoan.id}</span>
+                    {selectedLoan.isScam ? (
+                      <span className="inline-flex px-2 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black uppercase">💀 Defaulted</span>
+                    ) : selectedLoan.isWithdrawn ? (
+                      <span className="inline-flex px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold uppercase">Payout</span>
+                    ) : selectedLoan.isPaid ? (
+                      <span className="inline-flex px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700 text-[10px] font-bold uppercase">✓ Paid</span>
+                    ) : selectedLoan.isRenewed ? (
+                      <span className="inline-flex px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold uppercase">Renewed</span>
+                    ) : selectedLoan.isOverdue ? (
+                      <span className="inline-flex px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-bold uppercase">⚠ Overdue</span>
+                    ) : (
+                      <span className="inline-flex px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase">Active</span>
+                    )}
                   </div>
                 </div>
+                <button
+                  onClick={() => setSelectedLoan(null)}
+                  className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition-colors flex-shrink-0 ml-2"
+                >
+                  <X size={20} />
+                </button>
+              </div>
 
-                {selectedLoan.historicalRenewalCount > 0 && (
-                  <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 mb-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-indigo-800 text-sm font-semibold">{t('renewalHistory', lang)}</span>
-                      <span className="bg-indigo-200 text-indigo-800 text-xs px-2 py-0.5 rounded-full font-bold">{selectedLoan.historicalRenewalCount} {t('times', lang)}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-indigo-600">{t('totalInterestAccumulated', lang)}</span>
-                      <span className="font-black text-indigo-700">{formatCurrency(selectedLoan.historicalRenewalInterest)}</span>
-                    </div>
-                    <p className="text-[10px] text-indigo-500 mt-2 leading-tight">These are the historical interest payments made by this customer to extend this specific loan sequence before paying off the principal.</p>
-                  </div>
-                )}
-
-                {selectedLoan.penaltyHistory && selectedLoan.penaltyHistory.length > 0 && (
-                  <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 mb-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-amber-800 text-sm font-semibold">{t('penaltyHistory', lang)}</span>
-                      <span className="bg-amber-200 text-amber-800 text-xs px-2 py-0.5 rounded-full font-bold">{selectedLoan.penaltyHistory.length} {t('times', lang)}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm mb-3 border-b border-amber-200/50 pb-2">
-                      <span className="text-amber-700">{t('totalPenaltyPaid', lang)}</span>
-                      <span className="font-black text-amber-700">
-                        {formatCurrency(selectedLoan.penaltyHistory.reduce((sum, p) => sum + p.amount, 0))}
-                      </span>
-                    </div>
-                    <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
-                      {selectedLoan.penaltyHistory.map((p, idx) => (
-                        <div key={idx} className="flex justify-between items-center text-xs bg-white/60 p-2 rounded border border-amber-100/50 shadow-sm">
-                          <span className="text-amber-600 font-medium">{t('round', lang)} {idx + 1} <span className="text-amber-500/80 font-normal ml-1">({p.date})</span></span>
-                          <span className="text-amber-800 font-bold">{formatCurrency(p.amount)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                    <div className="text-xs text-slate-500 mb-1">{t('issueDate', lang)}</div>
-                    <div className="font-semibold text-slate-800">{selectedLoan.borrowDate}</div>
-                  </div>
-                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+              <div className="p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-6 bg-white">
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Financial Details</h3>
+                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                     {isEditingLoan ? (
-                      <>
-                        <div className="text-xs font-bold text-slate-500 mb-1">{t('dueDateLabel', lang)}</div>
-                        <DatePicker
-                          selected={editLoanForm.dueDate}
-                          onChange={handleEditDueDateChange}
-                          dateFormat="dd/MM/yyyy"
-                          className="w-full border border-slate-300 rounded p-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
-                        />
-                        <div className="text-xs font-bold text-slate-500 mt-2 mb-1">{t('days', lang)}</div>
-                        <input
-                          type="number"
-                          min="1"
-                          value={editLoanForm.daysBorrowed}
-                          onChange={e => handleEditDaysChange(Number(e.target.value))}
-                          className="w-full border border-slate-300 rounded p-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                        />
-                      </>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">Principal</label>
+                          <input
+                            type="number"
+                            value={editLoanForm.principal}
+                            onChange={e => setEditLoanForm({ ...editLoanForm, principal: e.target.value })}
+                            className="w-full border border-slate-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">Interest Rate (%)</label>
+                          <input
+                            type="number"
+                            value={editLoanForm.interestRate}
+                            onChange={e => setEditLoanForm({ ...editLoanForm, interestRate: Number(e.target.value) })}
+                            className="w-full border border-slate-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                        </div>
+                        <div className="flex justify-between items-center mt-4 pt-4 border-t border-slate-200">
+                          <span className="text-slate-700 font-bold">New Expected</span>
+                          <span className="font-black text-xl text-indigo-600">
+                            {formatCurrency(parseFloat(editLoanForm.principal) + ((parseFloat(editLoanForm.principal) * editLoanForm.interestRate) / 100))}
+                          </span>
+                        </div>
+                      </div>
                     ) : (
                       <>
-                        <div className="text-xs text-slate-500 mb-1">{t('dueDateLabel', lang)}</div>
-                        <div className={`font-semibold ${selectedLoan.isOverdue ? 'text-rose-600' : 'text-slate-800'}`}>
-                          {selectedLoan.dueDate}
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-slate-500 text-sm">Principal</span>
+                          <span className="font-semibold text-slate-800">{formatCurrency(selectedLoan.principal)}</span>
+                        </div>
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-slate-500 text-sm">Interest Rate</span>
+                          <span className="font-semibold text-slate-800">{selectedLoan.interestRate}%</span>
+                        </div>
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-slate-500 text-sm">Expected Interest</span>
+                          <span className="font-semibold text-emerald-600">+{formatCurrency(selectedLoan.expectedInterest)}</span>
+                        </div>
+                        <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-200">
+                          <span className="text-slate-500 text-sm">Penalty Fee</span>
+                          <span className="font-semibold text-amber-600">+{formatCurrency(selectedLoan.penalty)}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-700 font-bold">Total Expected</span>
+                          <span className="font-black text-xl text-slate-900">{formatCurrency(selectedLoan.totalExpected)}</span>
                         </div>
                       </>
                     )}
                   </div>
                 </div>
 
-                {selectedLoan.daysLate > 0 && (
-                  <div className="flex items-center gap-2 mt-2 p-3 bg-rose-50 rounded-lg text-rose-700 text-sm border border-rose-100">
-                    <AlertCircle className="w-4 h-4" />
-                    <span className="font-medium">{lang === 'th' ? 'ค้างชำระ' : 'Currently'} {selectedLoan.daysLate} {t('daysOverdueText', lang)}</span>
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Payments & Dates</h3>
+                  <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-emerald-700 text-sm">Total Paid</span>
+                      <span className="font-bold text-emerald-700">{formatCurrency(selectedLoan.paidAmount)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs text-emerald-600/80 pl-2 border-l-2 border-emerald-200 ml-1">
+                      <span>Principal Paid</span>
+                      <span>{formatCurrency(selectedLoan.paidPrincipal)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-xs text-emerald-600/80 pl-2 border-l-2 border-emerald-200 ml-1 mt-1">
+                      <span>Interest Paid</span>
+                      <span>{formatCurrency(selectedLoan.paidInterest)}</span>
+                    </div>
+                  </div>
+
+                  {selectedLoan.historicalRenewalCount > 0 && (
+                    <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 mb-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-indigo-800 text-sm font-semibold">{t('renewalHistory', lang)}</span>
+                        <span className="bg-indigo-200 text-indigo-800 text-xs px-2 py-0.5 rounded-full font-bold">{selectedLoan.historicalRenewalCount} {t('times', lang)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-indigo-600">{t('totalInterestAccumulated', lang)}</span>
+                        <span className="font-black text-indigo-700">{formatCurrency(selectedLoan.historicalRenewalInterest)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                      <div className="text-xs text-slate-500 mb-1">{t('issueDate', lang)}</div>
+                      <div className="font-semibold text-slate-800">{selectedLoan.borrowDate}</div>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                      {isEditingLoan ? (
+                        <>
+                          <div className="text-xs font-bold text-slate-500 mb-1">{t('dueDateLabel', lang)}</div>
+                          <DatePicker
+                            selected={editLoanForm.dueDate}
+                            onChange={handleEditDueDateChange}
+                            dateFormat="dd/MM/yyyy"
+                            className="w-full border border-slate-300 rounded p-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-xs text-slate-500 mb-1">{t('dueDateLabel', lang)}</div>
+                          <div className={`font-semibold ${selectedLoan.isOverdue ? 'text-rose-600' : 'text-slate-800'}`}>
+                            {selectedLoan.dueDate}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 border-t border-slate-100 bg-white">
+                {isEditingLoan ? (
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={isSyncing}
+                    className="w-full py-3.5 font-bold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-white text-sm"
+                    style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
+                  >
+                    {isSyncing ? t('saving', lang) : t('saveChanges', lang)}
+                  </button>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs font-bold text-slate-500 whitespace-nowrap">{t('actionDate', lang)}</label>
+                      <DatePicker
+                        selected={actionDate}
+                        onChange={(date) => date && setActionDate(date)}
+                        dateFormat="dd/MM/yyyy"
+                        className="border border-slate-200 rounded-xl p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer bg-slate-50 w-32 font-medium"
+                      />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        onClick={() => handleUpdateStatus('ชำระแล้ว')}
+                        className="py-3.5 font-bold rounded-xl text-white text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
+                        style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+                      >
+                        <CheckCircle2 className="w-4 h-4" /> {t('markPaid', lang)}
+                      </button>
+                      <button
+                        onClick={() => handleUpdateStatus('ต่อดอก')}
+                        className="py-3.5 font-bold rounded-xl text-white text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
+                        style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
+                      >
+                        <Activity className="w-4 h-4" /> {t('renew', lang)}
+                      </button>
+                      <button
+                        onClick={() => handleUpdateStatus('โดนบิด')}
+                        className="py-3.5 font-bold rounded-xl text-white text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
+                        style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}
+                      >
+                        <UserX className="w-4 h-4" /> {t('default', lang)}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
-            </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
-            {/* Action Buttons Section */}
-            <div className="p-4 border-t border-slate-100 bg-white">
-              {isEditingLoan ? (
-                <button
-                  onClick={handleSaveEdit}
-                  disabled={isSyncing}
-                  className="w-full py-3.5 font-bold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-white text-sm"
-                  style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
-                >
-                  {isSyncing ? t('saving', lang) : t('saveChanges', lang)}
-                </button>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <label className="text-xs font-bold text-slate-500 whitespace-nowrap">{t('actionDate', lang)}</label>
-                    <DatePicker
-                      selected={actionDate}
-                      onChange={(date) => date && setActionDate(date)}
-                      dateFormat="dd/MM/yyyy"
-                      className="border border-slate-200 rounded-xl p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer bg-slate-50 w-32 font-medium"
-                    />
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      onClick={() => handleUpdateStatus('ชำระแล้ว')}
-                      className="py-3.5 font-bold rounded-xl text-white text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
-                      style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
-                    >
-                      <CheckCircle2 className="w-4 h-4" /> {t('markPaid', lang)}
-                    </button>
-                    <button
-                      onClick={() => handleUpdateStatus('ต่อดอก')}
-                      className="py-3.5 font-bold rounded-xl text-white text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
-                      style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
-                    >
-                      <Activity className="w-4 h-4" /> {t('renew', lang)}
-                    </button>
-                    <button
-                      onClick={() => handleUpdateStatus('โดนบิด')}
-                      className="py-3.5 font-bold rounded-xl text-white text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
-                      style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}
-                    >
-                      <UserX className="w-4 h-4" /> {t('default', lang)}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
-
-      {/* Expanded Analytics Modal */}
       {showExpandedTrend && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 lg:p-8 bg-slate-900/70 backdrop-blur-sm"
@@ -1335,7 +1272,6 @@ export default function App() {
             className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[95vh] lg:h-[85vh] overflow-hidden flex flex-col animate-[slideIn_0.2s_ease-out]"
             onClick={e => e.stopPropagation()}
           >
-            {/* Header */}
             <div className="flex justify-between items-center p-5 lg:p-6 border-b border-slate-200 bg-white">
               <div>
                 <h2 className="text-xl lg:text-2xl font-black text-slate-800 flex items-center gap-2">
@@ -1346,10 +1282,7 @@ export default function App() {
               <button onClick={() => { setShowExpandedTrend(false); setInsightDate(null); }} className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition-colors"><X size={24} /></button>
             </div>
 
-            {/* Split Body */}
             <div className="flex flex-col lg:flex-row flex-1 overflow-hidden bg-slate-50">
-
-              {/* Left: Big Chart */}
               <div className="w-full lg:w-2/3 p-6 flex flex-col bg-white border-r border-slate-200 shadow-[2px_0_10px_rgba(0,0,0,0.02)] z-10">
                 <div className="flex justify-between items-center mb-6">
                   <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">{t('trend30day', lang)}</h3>
@@ -1378,7 +1311,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Right: Insights */}
               <div className="w-full lg:w-1/3 p-0 flex flex-col overflow-y-auto">
                 {!insightDate ? (
                   <div className="flex-1 flex flex-col items-center justify-center p-8 text-center opacity-60">
@@ -1398,7 +1330,6 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* Expected */}
                     <div>
                       <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">{t('expectedInterestDue', lang)}</h3>
                       <div className="space-y-2">
@@ -1410,36 +1341,9 @@ export default function App() {
                             </div>
                             <div className="flex flex-col items-end justify-center">
                               <span className="font-black text-slate-700">{formatCurrency(l.expectedInterest)}</span>
-                              {l.isPaid && <span className="text-[10px] text-emerald-600 font-bold uppercase mt-0.5">Paid</span>}
-                              {l.isRenewed && <span className="text-[10px] text-indigo-600 font-bold uppercase mt-0.5">Renewed</span>}
-                              {l.isScam && <span className="text-[10px] text-rose-600 font-bold uppercase mt-0.5">Defaulted</span>}
                             </div>
                           </div>
                         ))}
-                        {data.loans.filter(l => l.dueDate && l.dueDate.startsWith(insightDate)).length === 0 && (
-                          <div className="p-4 bg-white rounded-lg text-sm text-slate-400 italic text-center border border-slate-200 border-dashed">{t('noExpectedForDate', lang)}</div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Received */}
-                    <div>
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2 text-emerald-600"><CheckCircle2 className="w-4 h-4" /> {t('actualPaymentsReceived', lang)}</h3>
-                      <div className="space-y-2">
-                        {data.loans.filter(l => l.actualDate && l.actualDate.startsWith(insightDate) && l.paidInterest > 0).map(l => (
-                          <div key={'rec-' + l.id} className="flex justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-200 shadow-sm hover:border-emerald-400 transition-colors">
-                            <div>
-                              <div className="font-bold text-emerald-900">{l.name} <span className="text-xs text-emerald-600/60 font-normal">({l.id})</span></div>
-                              <div className="text-[10px] text-emerald-600/80 mt-0.5">{l.status}</div>
-                            </div>
-                            <div className="flex items-center">
-                              <span className="font-black text-emerald-700 text-base">+{formatCurrency(l.paidInterest)}</span>
-                            </div>
-                          </div>
-                        ))}
-                        {data.loans.filter(l => l.actualDate && l.actualDate.startsWith(insightDate) && l.paidInterest > 0).length === 0 && (
-                          <div className="p-4 bg-white rounded-lg text-sm text-slate-400 italic text-center border border-slate-200 border-dashed">{t('noPaymentsForDate', lang)}</div>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -1450,7 +1354,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Portfolio Progress Insights Modal */}
       {showPortfolioProgressModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowPortfolioProgressModal(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden animate-[slideIn_0.2s_ease-out] flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
@@ -1460,7 +1363,6 @@ export default function App() {
                   <Activity className="w-6 h-6 text-emerald-600" />
                   {t('portfolioInsights', lang)}
                 </h2>
-                <p className="text-sm text-slate-500 mt-1">{t('portfolioInsightsDesc', lang)}</p>
               </div>
               <button onClick={() => setShowPortfolioProgressModal(false)} className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-200 transition-colors">
                 <X size={24} />
@@ -1477,140 +1379,45 @@ export default function App() {
                   <div className="text-3xl font-black text-emerald-700">{formatCurrency(s.totalPaid)}</div>
                 </div>
               </div>
-
-              <div className="space-y-4">
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 bg-slate-100/50 border-b border-slate-200 text-sm font-bold text-slate-600 uppercase">{t('principalBreakdown', lang)}</div>
-                  <div className="p-4 flex flex-col gap-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-600 font-medium">{t('principalLentOut', lang)}</span>
-                      <span className="font-bold text-slate-800">{formatCurrency(s.totalBorrowed)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pl-4 border-l-2 border-emerald-300">
-                      <span className="text-emerald-700 text-sm">{t('principalCollected', lang)}</span>
-                      <span className="font-bold text-emerald-700">{formatCurrency(s.paidPrincipal)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pl-4 border-l-2 border-amber-300">
-                      <span className="text-amber-700 text-sm">{t('principalRemaining', lang)}</span>
-                      <span className="font-bold text-amber-700">{formatCurrency(s.unpaidPrincipal)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pl-4 border-l-2 border-rose-300">
-                      <span className="text-rose-700 text-sm">{t('principalLost', lang)}</span>
-                      <span className="font-bold text-rose-700">{formatCurrency(s.scamPrincipal)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 bg-slate-100/50 border-b border-slate-200 text-sm font-bold text-slate-600 uppercase">{t('interestBreakdown', lang)}</div>
-                  <div className="p-4 flex flex-col gap-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-600 font-medium">{t('interestExpected', lang)}</span>
-                      <span className="font-bold text-slate-800">{formatCurrency(s.totalInterest)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pl-4 border-l-2 border-emerald-300">
-                      <span className="text-emerald-700 text-sm">{t('interestCollected', lang)}</span>
-                      <span className="font-bold text-emerald-700">{formatCurrency(s.paidInterest)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pl-4 border-l-2 border-amber-300">
-                      <span className="text-amber-700 text-sm">{t('interestRemaining', lang)}</span>
-                      <span className="font-bold text-amber-700">{formatCurrency(s.unpaidInterest)}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Withdraw Modal — slide-up sheet on mobile */}
       {showWithdrawModal && (
         <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowWithdrawModal(false)}>
           <div className="bg-white w-full md:max-w-md md:rounded-2xl shadow-2xl overflow-hidden rounded-t-3xl animate-sheet-up md:animate-slide-up" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-center pt-3 pb-1 md:hidden"><div className="w-10 h-1 bg-slate-200 rounded-full" /></div>
             <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}>
-                  <Wallet className="w-4.5 h-4.5 text-white" style={{ width: '18px', height: '18px' }} />
-                </div>
-                <h3 className="text-lg font-black text-slate-800">{t('newPayout', lang)}</h3>
-              </div>
+              <h3 className="text-lg font-black text-slate-800">{t('newPayout', lang)}</h3>
               <button onClick={() => setShowWithdrawModal(false)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100"><X size={20} /></button>
             </div>
-
             <form onSubmit={handleWithdrawSubmit} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('payoutAmount', lang)}</label>
                 <input
                   type="number"
                   required
-                  min="1"
                   value={withdrawForm.principal}
                   onChange={e => setWithdrawForm({ ...withdrawForm, principal: e.target.value })}
-                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
-                  placeholder="ระบุจำนวนเงิน"
-                />
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {[500, 1000, 1500, 2000, 2500, 3000].map(amt => (
-                    <button
-                      key={amt} type="button"
-                      onClick={() => setWithdrawForm({ ...withdrawForm, principal: amt.toString() })}
-                      className="px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors border border-rose-100"
-                    >
-                      {formatNumber(amt)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('withdrawalDate', lang)}</label>
-                <DatePicker
-                  selected={withdrawForm.date}
-                  onChange={(date: Date) => setWithdrawForm({ ...withdrawForm, date: date || new Date() })}
-                  dateFormat="dd/MM/yyyy"
-                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer bg-white"
+                  className="w-full border border-slate-200 rounded-lg p-3"
                 />
               </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('withdrawalName', lang)}</label>
-                <input
-                  type="text"
-                  value={withdrawForm.name}
-                  onChange={e => setWithdrawForm({ ...withdrawForm, name: e.target.value })}
-                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
-                  placeholder="Withdrawal (default)"
-                />
+              <div className="pt-4 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowWithdrawModal(false)} className="px-4 py-2 text-slate-600">{t('cancel', lang)}</button>
+                <button type="submit" className="px-6 py-2 bg-rose-600 text-white font-bold rounded-xl">{t('confirmPayout', lang)}</button>
               </div>
-
-            <div className="pt-4 border-t border-slate-100 mt-2 px-5 pb-5 flex justify-end gap-3">
-              <button type="button" onClick={() => setShowWithdrawModal(false)} className="px-4 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors text-sm">{t('cancel', lang)}</button>
-              <button type="submit" disabled={isSyncing} className="px-5 py-2.5 text-white font-bold rounded-xl transition-colors shadow-sm disabled:opacity-50 text-sm" style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}>
-                {isSyncing ? t('saving', lang) : t('confirmPayout', lang)}
-              </button>
-            </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* New Loan Modal — slide-up sheet on mobile */}
       {showNewLoanModal && (
         <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowNewLoanModal(false)}>
           <div className="bg-white w-full md:max-w-md md:rounded-2xl shadow-2xl overflow-hidden rounded-t-3xl animate-sheet-up md:animate-slide-up" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-center pt-3 pb-1 md:hidden"><div className="w-10 h-1 bg-slate-200 rounded-full" /></div>
             <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}>
-                  <Activity className="w-4.5 h-4.5 text-white" style={{ width: '18px', height: '18px' }} />
-                </div>
-                <h3 className="text-lg font-black text-slate-800">{t('issueNewLoan', lang)}</h3>
-              </div>
+              <h3 className="text-lg font-black text-slate-800">{t('issueNewLoan', lang)}</h3>
               <button onClick={() => setShowNewLoanModal(false)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100"><X size={20} /></button>
             </div>
-
             <form onSubmit={handleCreateNewLoan} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('borrowerName', lang)}</label>
@@ -1619,220 +1426,51 @@ export default function App() {
                   required
                   value={newLoanForm.name}
                   onChange={e => setNewLoanForm({ ...newLoanForm, name: e.target.value })}
-                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="e.g. John Doe"
+                  className="w-full border border-slate-200 rounded-lg p-3"
                 />
               </div>
-
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('principalAmount', lang)}</label>
                 <input
                   type="number"
                   required
-                  min="1"
                   value={newLoanForm.principal}
                   onChange={e => setNewLoanForm({ ...newLoanForm, principal: e.target.value })}
-                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-2"
-                  placeholder="฿"
+                  className="w-full border border-slate-200 rounded-lg p-3"
                 />
-                <div className="flex flex-wrap gap-2">
-                  {[500, 1000, 1500, 2000, 2500, 3000].map(amt => (
-                    <button
-                      key={amt} type="button"
-                      onClick={() => setNewLoanForm({ ...newLoanForm, principal: amt.toString() })}
-                      className="px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-100"
-                    >
-                      {formatNumber(amt)}
-                    </button>
-                  ))}
-                </div>
               </div>
-
-              <div className="grid grid-cols-2 gap-4 relative">
-                <div className="flex flex-col relative z-20">
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('borrowDate', lang)}</label>
-                  <DatePicker
-                    selected={newLoanForm.borrowDate}
-                    onChange={handleBorrowDateChange}
-                    dateFormat="dd/MM/yyyy"
-                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
-                  />
-                </div>
-                <div className="flex flex-col relative z-20">
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('dueDateLabel', lang)}</label>
-                  <DatePicker
-                    selected={newLoanForm.dueDate}
-                    onChange={handleDueDateChange}
-                    dateFormat="dd/MM/yyyy"
-                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
-                  />
-                </div>
+              <div className="pt-4 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowNewLoanModal(false)} className="px-4 py-2 text-slate-600">{t('cancel', lang)}</button>
+                <button type="submit" className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-xl">{t('addLoan', lang)}</button>
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('daysBorrowed', lang)}</label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    value={newLoanForm.daysBorrowed}
-                    onChange={e => handleDaysChange(Number(e.target.value))}
-                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('interestRateLabel', lang)}</label>
-                  <input
-                    type="number"
-                    required
-                    min="0"
-                    value={newLoanForm.interestRate}
-                    onChange={e => setNewLoanForm({ ...newLoanForm, interestRate: Number(e.target.value) })}
-                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-              </div>
-
-            <div className="pt-4 border-t border-slate-100 mt-2 px-5 pb-5 flex justify-end gap-3">
-              <button type="button" onClick={() => setShowNewLoanModal(false)} className="px-4 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors text-sm">{t('cancel', lang)}</button>
-              <button type="submit" disabled={isSyncing} className="px-5 py-2.5 text-white font-bold rounded-xl transition-colors shadow-sm disabled:opacity-50 text-sm" style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}>
-                {isSyncing ? t('saving', lang) : t('addLoan', lang)}
-              </button>
-            </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* Notification Settings Modal */}
       {showNotifModal && (
-        <div
-          className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
-          onClick={() => setShowNotifModal(false)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center p-6 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center">
-                  <Bell className="w-5 h-5 text-emerald-600" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-extrabold text-slate-800">{t('notifTitle', lang)}</h2>
-                  <p className="text-xs text-slate-500">Notification Settings</p>
-                </div>
-              </div>
-              <button onClick={() => setShowNotifModal(false)} className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100">
-                <X size={20} />
-              </button>
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowNotifModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+              <h2 className="text-xl font-extrabold text-slate-800">{t('notifTitle', lang)}</h2>
+              <button onClick={() => setShowNotifModal(false)} className="p-2 text-slate-400"><X size={20} /></button>
             </div>
-            <div className="p-6 space-y-5">
-              <div className={`flex items-center gap-3 p-4 rounded-xl border ${isSubscribed ? 'bg-emerald-50 border-emerald-200' : notifPermission === 'denied' ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'
-                }`}>
-                <div className={`w-3 h-3 rounded-full ${isSubscribed ? 'bg-emerald-500 animate-pulse' : notifPermission === 'denied' ? 'bg-rose-500' : 'bg-slate-300'
-                  }`}></div>
-                <div>
-                  <p className={`text-sm font-bold ${isSubscribed ? 'text-emerald-800' : notifPermission === 'denied' ? 'text-rose-700' : 'text-slate-600'}`}>
-                    {isSubscribed ? t('notifEnabled', lang) : notifPermission === 'denied' ? t('notifBlocked', lang) : t('notifDisabled', lang)}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {isSubscribed ? t('notifEnabledDesc', lang) : notifPermission === 'denied' ? t('notifBlockedDesc', lang) : t('notifDisabledDesc', lang)}
-                  </p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-amber-50 p-3 rounded-xl border border-amber-100 text-center">
-                  <div className="text-2xl mb-1">🌅</div>
-                  <div className="text-sm font-bold text-amber-800">06:00 น.</div>
-                  <div className="text-xs text-amber-600 mt-1">{t('morningAlert', lang)}</div>
-                </div>
-                <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 text-center">
-                  <div className="text-2xl mb-1">🔔</div>
-                  <div className="text-sm font-bold text-indigo-800">16:00 น.</div>
-                  <div className="text-xs text-indigo-600 mt-1">{t('afternoonAlert', lang)}</div>
-                </div>
-              </div>
-              <div className="space-y-3">
-                {!isSubscribed ? (
-                  <button
-                    onClick={async () => {
-                      const sub = await subscribeToPush();
-                      if (sub) { setIsSubscribed(true); setNotifPermission('granted'); showToast(t('notifSuccess', lang), 'success'); setShowNotifModal(false); }
-                      else showToast(t('notifFailed', lang), 'error');
-                    }}
-                    disabled={notifPermission === 'denied'}
-                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Bell className="w-4 h-4" /> {t('enableNotif', lang)}
-                  </button>
-                ) : (
-                  <button
-                    onClick={async () => { await unsubscribeFromPush(); setIsSubscribed(false); showToast(t('notifDisabledToast', lang), 'success'); setShowNotifModal(false); }}
-                    className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
-                  >
-                    <BellOff className="w-4 h-4" /> {t('disableNotif', lang)}
-                  </button>
-                )}
-                <div className="border-t border-slate-100 pt-3">
-                  <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-2">{t('testNotif', lang)}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      disabled={!isSubscribed || isSendingTestNotif}
-                      onClick={async () => {
-                        setIsSendingTestNotif(true);
-                        const t = new Date(); t.setHours(0, 0, 0, 0);
-                        const dueCount = data ? data.loans.filter(l => { if (l.isPaid || l.isScam || l.isRenewed || l.isWithdrawn) return false; const d = parseThaiDate(l.dueDate); return d && d.getTime() === t.getTime(); }).length : 0;
-                        const overdueCount = data ? data.loans.filter(l => l.isOverdue && !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn).length : 0;
-                        await sendTestNotification('🌅 LoanTrack - สรุปยอดวันนี้', `📋 นัดชำระวันนี้: ${dueCount} ราย | ⚠️ ค้างชำระ: ${overdueCount} ราย`);
-                        setIsSendingTestNotif(false);
-                      }}
-                      className="py-2 px-3 text-xs font-bold bg-amber-100 text-amber-800 rounded-lg hover:bg-amber-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      🌅 ทดสอบ 06:00
-                    </button>
-                    <button
-                      disabled={!isSubscribed || isSendingTestNotif}
-                      onClick={async () => {
-                        setIsSendingTestNotif(true);
-                        const t = new Date(); t.setHours(0, 0, 0, 0);
-                        const unpaid = data ? data.loans.filter(l => { if (l.isPaid || l.isScam || l.isRenewed || l.isWithdrawn) return false; const d = parseThaiDate(l.dueDate); return d && d.getTime() === t.getTime(); }).length : 0;
-                        await sendTestNotification('🔔 LoanTrack - ต้องทวงวันนี้!', unpaid > 0 ? `💬 ยังมี ${unpaid} ราย ที่ยังไม่ชำระในวันนี้ รีบตามทวงด่วน!` : '✅ ยอดทั้งหมดของวันนี้ชำระแล้ว!');
-                        setIsSendingTestNotif(false);
-                      }}
-                      className="py-2 px-3 text-xs font-bold bg-indigo-100 text-indigo-800 rounded-lg hover:bg-indigo-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      🔔 ทดสอบ 16:00
-                    </button>
-                  </div>
-                  {!isSubscribed && <p className="text-xs text-slate-400 text-center mt-2">เปิดการแจ้งเตือนก่อนเพื่อทดสอบ</p>}
-                </div>
-              </div>
+            <div className="p-6 text-center">
+              <p className="text-slate-600 mb-6">Notification settings are managed by your browser.</p>
+              <button onClick={() => setShowNotifModal(false)} className="w-full py-3 bg-slate-800 text-white font-bold rounded-xl">Close</button>
             </div>
           </div>
         </div>
       )}
 
       {toastMessage && (
-        <div className={`fixed z-[100] animate-slide-down pointer-events-none
-          top-4 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-sm
-          md:top-auto md:bottom-6 md:right-6 md:left-auto md:translate-x-0 md:w-auto
-        `}>
-          <div className={`px-5 py-3.5 rounded-2xl shadow-xl flex items-center gap-3 text-white font-bold text-sm ${
-            toastMessage.type === 'success'
-              ? 'bg-gradient-to-r from-emerald-600 to-emerald-500'
-              : 'bg-gradient-to-r from-rose-600 to-rose-500'
-          }`}>
-            {toastMessage.type === 'success'
-              ? <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-              : <AlertCircle className="w-5 h-5 flex-shrink-0" />}
-            <span>{toastMessage.text}</span>
+        <div className="fixed bottom-6 right-6 z-[100] animate-slide-up">
+          <div className={`px-6 py-3 rounded-xl shadow-2xl text-white font-bold flex items-center gap-3 ${toastMessage.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
+            {toastMessage.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
+            {toastMessage.text}
           </div>
         </div>
       )}
     </div>
   );
 }
-
