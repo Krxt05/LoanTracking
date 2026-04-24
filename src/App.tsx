@@ -8,6 +8,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, L
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, getNotificationPermission, sendTestNotification } from './services/pushService';
 import { t, Lang } from './lib/i18n';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function App() {
   const [data, setData] = useState<AppData | null>(null);
@@ -28,8 +29,15 @@ export default function App() {
   const [isSendingTestNotif, setIsSendingTestNotif] = useState(false);
   const [lang, setLang] = useState<Lang>(() => (localStorage.getItem('lang') as Lang) || 'th');
   const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'loans' | 'analytics'>('dashboard');
-  const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
+  const [isDesktop, setIsDesktop] = useState(true);
+
+  useEffect(() => {
+    const checkIsDesktop = () => setIsDesktop(window.innerWidth >= 768);
+    checkIsDesktop();
+    window.addEventListener('resize', checkIsDesktop);
+    return () => window.removeEventListener('resize', checkIsDesktop);
+  }, []);
 
   const minSwipeDistance = 50;
 
@@ -653,13 +661,21 @@ export default function App() {
           </div>
         </header>
 
-        {/* Mobile: section visibility by active tab */}
-        {/* Dashboard Tab Content: Metrics & Alerts */}
-        <div className={activeMobileTab === 'dashboard' ? 'block' : 'hidden md:block'}>
-          <MetricRow />
+        {/* Main Content Sections with Animation */}
+        <AnimatePresence mode="wait">
+          {(isDesktop || activeMobileTab === 'dashboard') && (
+            <motion.div
+              key="dashboard"
+              initial={isDesktop ? false : { opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={isDesktop ? false : { opacity: 0, x: 20 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="md:block"
+            >
+              <MetricRow />
 
-          {/* Section 2: Action & Alerts */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              {/* Section 2: Action & Alerts */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             {/* Due Today */}
             <div className="bg-white rounded-2xl border border-amber-100 flex flex-col shadow-sm overflow-hidden">
               <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #fffbeb, #fef3c7)' }}>
@@ -751,15 +767,21 @@ export default function App() {
                   </div>
                 )}
               </div>
-            </div>
           </div>
-        </div>
+            </motion.div>
+          )}
 
 
-
-        {/* Analytics Tab Content: Charts & Insights */}
-        {/* Analytics Tab Content: Charts & Insights (Desktop) / Portfolio Progress (Mobile) */}
-        <div className={activeMobileTab === 'analytics' ? 'block' : 'hidden md:block'}>
+          {/* Analytics Content with Animation */}
+          {(isDesktop || activeMobileTab === 'analytics') && (
+            <motion.div
+              key="analytics"
+              initial={isDesktop ? false : { opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={isDesktop ? false : { opacity: 0, x: -20 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="md:block"
+            >
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-base font-black text-slate-800">{t('portfolioAnalytics', lang)}</h2>
             {/* Mobile-only date indicator */}
@@ -878,11 +900,19 @@ export default function App() {
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Loans Tab Content: Data Management Table */}
-        <div className={activeMobileTab === 'loans' ? 'block' : 'hidden md:block'}>
-          <h2 className="text-base font-bold mb-3 text-slate-800">{t('dataManagement', lang)}</h2>
+            </motion.div>
+          )}
+          {/* Loans Content with Animation */}
+          {(isDesktop || activeMobileTab === 'loans') && (
+            <motion.div
+              key="loans"
+              initial={isDesktop ? false : { opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={isDesktop ? false : { opacity: 0, x: -20 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="md:block"
+            >
+              <h2 className="text-base font-bold mb-3 text-slate-800">{t('dataManagement', lang)}</h2>
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
             <div className="flex border-b border-slate-200 bg-slate-50/50 overflow-x-auto">
               {(['all', 'renewals', 'paid', 'defaulted', 'withdrawn', 'raw'] as const).map(tab => (
@@ -983,82 +1013,58 @@ export default function App() {
                     );
                   })}
               </div>
-            </div>
-          </div>
-        </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
-      {/* Mobile Bottom Navigation - Premium Floating Style */}
-      <div className="fixed bottom-0 left-0 right-0 md:hidden z-40 pb-safe" style={{ background: 'linear-gradient(180deg, transparent 0%, rgba(15,23,42,0.02) 100%)' }}>
-        <div className="mx-3 mb-3 h-[60px] bg-white border border-slate-200/80 flex shadow-[0_8px_32px_-8px_rgba(0,0,0,0.18)] rounded-2xl px-1 items-center">
-          {/* 1. Dashboard */}
-          <button
-            onClick={() => { setShowNewLoanModal(false); setShowWithdrawModal(false); setActiveMobileTab('dashboard'); }}
-            className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-1 rounded-xl transition-all ${
-              activeMobileTab === 'dashboard' ? 'bg-emerald-50' : ''
-            }`}
-          >
-            <Home className={`w-5 h-5 transition-colors ${ activeMobileTab === 'dashboard' ? 'text-emerald-600 stroke-[2.5px]' : 'text-slate-400'}`} />
-            <span className={`text-[9px] font-black uppercase tracking-tight ${ activeMobileTab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'}`}>{t('navDashboard', lang)}</span>
-          </button>
-
-          {/* 2. Analytics */}
-          <button
-            onClick={() => setActiveMobileTab('analytics')}
-            className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-1 rounded-xl transition-all ${
-              activeMobileTab === 'analytics' ? 'bg-emerald-50' : ''
-            }`}
-          >
-            <BarChart2 className={`w-5 h-5 transition-colors ${ activeMobileTab === 'analytics' ? 'text-emerald-600 stroke-[2.5px]' : 'text-slate-400'}`} />
-            <span className={`text-[9px] font-black uppercase tracking-tight ${ activeMobileTab === 'analytics' ? 'text-emerald-600' : 'text-slate-400'}`}>{t('navAnalytics', lang)}</span>
-          </button>
-
-          {/* 3. New Loan — primary CTA */}
+      {/* Mobile Bottom Navigation - Simplified with Primary Actions */}
+      <div className="fixed bottom-0 left-0 right-0 md:hidden z-40 pb-safe">
+        <div className="mx-6 mb-6 h-[70px] bg-slate-900/90 backdrop-blur-xl border border-white/10 flex shadow-[0_20px_50px_rgba(0,0,0,0.3)] rounded-3xl px-2 items-center gap-4">
+          {/* 1. New Loan — Primary Action */}
           <button
             onClick={() => setShowNewLoanModal(true)}
-            className="flex-1 flex flex-col items-center justify-center -mt-5"
+            className="flex-1 h-[54px] flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 text-white font-black text-sm active:scale-95 transition-transform shadow-lg shadow-emerald-500/30"
           >
-            <div className="w-13 h-13 flex items-center justify-center rounded-2xl shadow-lg shadow-emerald-200/60 border-4 border-white active:scale-90 transition-transform" style={{ width: '52px', height: '52px', background: 'linear-gradient(135deg, #10b981, #059669)' }}>
-              <Activity className="w-6 h-6 text-white stroke-[2.5px]" />
-            </div>
+            <Activity className="w-5 h-5 stroke-[3px]" />
+            {t('newLoan', lang)}
           </button>
 
-          {/* 4. Withdraw */}
+          {/* 2. Withdraw — Secondary Action */}
           <button
             onClick={() => setShowWithdrawModal(true)}
-            className="flex-1 flex flex-col items-center justify-center -mt-5"
+            className="flex-1 h-[54px] flex items-center justify-center gap-2 rounded-2xl bg-rose-500 text-white font-black text-sm active:scale-95 transition-transform shadow-lg shadow-rose-500/30"
           >
-            <div className="w-13 h-13 flex items-center justify-center rounded-2xl shadow-lg shadow-rose-200/60 border-4 border-white active:scale-90 transition-transform" style={{ width: '52px', height: '52px', background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}>
-              <Wallet className="w-6 h-6 text-white stroke-[2.5px]" />
-            </div>
-          </button>
-
-          {/* 5. Loans List */}
-          <button
-            onClick={() => setActiveMobileTab('loans')}
-            className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-1 rounded-xl transition-all ${
-              activeMobileTab === 'loans' ? 'bg-emerald-50' : ''
-            }`}
-          >
-            <List className={`w-5 h-5 transition-colors ${ activeMobileTab === 'loans' ? 'text-emerald-600 stroke-[2.5px]' : 'text-slate-400'}`} />
-            <span className={`text-[9px] font-black uppercase tracking-tight ${ activeMobileTab === 'loans' ? 'text-emerald-600' : 'text-slate-400'}`}>{t('navLoans', lang)}</span>
+            <Wallet className="w-5 h-5 stroke-[3px]" />
+            {t('withdraw', lang)}
           </button>
         </div>
       </div>
 
       {/* Loan Details & Action Modal */}
-      {selectedLoan && (
-        <div
-          className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm"
-          onClick={() => setSelectedLoan(null)}
-        >
+      <AnimatePresence>
+        {selectedLoan && (
           <div
-            className="bg-white w-full md:rounded-2xl md:max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh] rounded-t-3xl animate-sheet-up md:animate-slide-up"
+            className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm"
+            onClick={() => setSelectedLoan(null)}
+          >
+          <motion.div
+            className="bg-white w-full md:rounded-2xl md:max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh] rounded-t-3xl"
+            drag="y"
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0, bottom: 0.5 }}
+            onDragEnd={(e, info) => {
+              if (info.offset.y > 100) setSelectedLoan(null);
+            }}
+            initial={{ translateY: '100%' }}
+            animate={{ translateY: 0 }}
+            exit={{ translateY: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             onClick={e => e.stopPropagation()}
           >
-            {/* Handle bar mobile */}
-            <div className="flex justify-center pt-3 pb-1 md:hidden">
-              <div className="w-10 h-1 bg-slate-200 rounded-full" />
+            {/* Handle bar mobile with Drag handle */}
+            <div className="flex justify-center pt-3 pb-1 md:hidden cursor-grab active:cursor-grabbing">
+              <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
             </div>
 
             {/* Status-aware gradient header */}
@@ -1314,9 +1320,10 @@ export default function App() {
                 </div>
               )}
             </div>
-          </div>
+          </motion.div>
         </div>
       )}
+    </AnimatePresence>
 
       {/* Expanded Analytics Modal */}
       {showExpandedTrend && (
