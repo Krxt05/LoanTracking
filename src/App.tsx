@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { fetchAppData, AppData, LoanRecord, updateLoanStatus, createNewLoan, editExistingLoan } from './services/dataService';
@@ -9,6 +9,30 @@ import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, getNotificationPermission, sendTestNotification } from './services/pushService';
 import { t, Lang } from './lib/i18n';
 import { motion, AnimatePresence } from 'framer-motion';
+
+interface MetricCardProps {
+  label: string;
+  value: string;
+  sub: React.ReactNode;
+  subColor?: string;
+  icon: React.ElementType;
+  iconBg: string;
+}
+
+function MetricCard({ label, value, sub, subColor = 'emerald', icon: Icon, iconBg }: MetricCardProps) {
+  return (
+    <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm card-lift overflow-hidden relative">
+      <div className="flex justify-between items-start mb-3">
+        <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider leading-tight">{label}</div>
+        <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+          <Icon className="w-4 h-4" />
+        </div>
+      </div>
+      <div className="text-xl font-black text-slate-800 leading-none mb-1.5">{value}</div>
+      <div className={`text-[10px] font-semibold flex items-center gap-0.5 text-${subColor}-600`}>{sub}</div>
+    </div>
+  );
+}
 
 export default function App() {
   const [data, setData] = useState<AppData | null>(null);
@@ -160,6 +184,55 @@ export default function App() {
   const [overdueListRef] = useAutoAnimate<HTMLDivElement>();
   const [tableRef] = useAutoAnimate<HTMLTableSectionElement>();
 
+  const today = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  const dueTodayLoans = useMemo(() => {
+    if (!data) return [];
+    return data.loans.filter(l => {
+      if (l.isPaid || l.isScam || l.isRenewed || l.isWithdrawn) return false;
+      const parsed = parseThaiDate(l.dueDate);
+      return parsed && parsed.getTime() === today.getTime();
+    });
+  }, [data, today]);
+
+  const overdueLoans = useMemo(() =>
+    data ? data.loans.filter(l => l.isOverdue && !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn) : [],
+  [data]);
+
+  const { progressData, progressPct, trendData14, trendData30, labelToFullDate } = useMemo(() => {
+    if (!data) return { progressData: [], progressPct: '0.0', trendData14: [], trendData30: [], labelToFullDate: new Map<string, string>() };
+    const s = data.summary;
+    const progressData = [
+      { name: 'Collected', value: s.totalPaid, color: '#10B981' },
+      { name: 'Remaining', value: s.totalUnpaid, color: '#E2E8F0' }
+    ];
+    const progressPct = s.totalExpected > 0 ? ((s.totalPaid / s.totalExpected) * 100).toFixed(1) : '0.0';
+
+    const dateMap: Record<string, { expected: number; actual: number }> = {};
+    const allDates = new Set<string>();
+    data.loans.forEach(l => {
+      if (l.dueDate && parseThaiDate(l.dueDate)) {
+        allDates.add(l.dueDate);
+        if (!dateMap[l.dueDate]) dateMap[l.dueDate] = { expected: 0, actual: 0 };
+        dateMap[l.dueDate].expected += l.expectedInterest;
+      }
+      if (l.actualDate && parseThaiDate(l.actualDate)) {
+        allDates.add(l.actualDate);
+        if (!dateMap[l.actualDate]) dateMap[l.actualDate] = { expected: 0, actual: 0 };
+        dateMap[l.actualDate].actual += l.paidInterest;
+      }
+    });
+    const sortedDates = Array.from(allDates).sort((a, b) => parseThaiDate(a)!.getTime() - parseThaiDate(b)!.getTime());
+    const labelToFullDate = new Map<string, string>(sortedDates.map(d => [d.substring(0, 5), d]));
+    const trendData14 = sortedDates.slice(-14).map(date => ({ date: date.substring(0, 5), Expected: dateMap[date].expected, Received: dateMap[date].actual }));
+    const trendData30 = sortedDates.slice(-30).map(date => ({ date: date.substring(0, 5), Expected: dateMap[date].expected, Received: dateMap[date].actual }));
+    return { progressData, progressPct, trendData14, trendData30, labelToFullDate };
+  }, [data]);
+
   const loadData = async (quiet = false) => {
     if (!quiet) setIsSyncing(true);
     try {
@@ -184,10 +257,6 @@ export default function App() {
 
     setIsSyncing(true);
     const pValue = parseFloat(newLoanForm.principal);
-
-    const formatToThaiStr = (dateObj: Date) => {
-      return `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth() + 1).toString().padStart(2, '0')}/${dateObj.getFullYear()}`;
-    };
 
     try {
       const res = await createNewLoan({
@@ -306,17 +375,14 @@ export default function App() {
       setData({ ...data, loans: updatedLoans });
     }
 
-    // 3. ส่งข้อมูลไปอัปเดตที่ Google Sheets เบื้องหลัง
     const success = await updateLoanStatus(currentLoan.id, action, formattedActionDate);
 
-    // ถ้าพลาด แจ้งเตือน และแอบโหลดข้อมูลใหม่
     if (!success) {
-      showToast(`เกิดข้อผิดพลาดในการอัปเดตข้อมูลไป Google Sheets`, 'error');
+      showToast(t('sheetsUpdateFailed', lang), 'error');
       setIsSyncing(false);
     } else {
-      setTimeout(() => {
-        loadData(true);
-      }, 1500); // ดีเลย์ 1.5 วิ ให้ sheet คำนวณเสร็จ
+      setIsSyncing(false);
+      setTimeout(() => loadData(true), 1500);
     }
   };
 
@@ -365,6 +431,35 @@ export default function App() {
     }
   };
 
+  const handleEnableNotif = async () => {
+    const sub = await subscribeToPush();
+    if (sub) {
+      setIsSubscribed(true);
+      setNotifPermission('granted');
+      showToast(t('notifSuccess', lang), 'success');
+    } else {
+      showToast(t('notifFailed', lang), 'error');
+    }
+  };
+
+  const handleDisableNotif = async () => {
+    await unsubscribeFromPush();
+    setIsSubscribed(false);
+    showToast(t('notifDisabledToast', lang), 'success');
+  };
+
+  const handleTestNotif = async (type: 'morning' | 'afternoon') => {
+    setIsSendingTestNotif(true);
+    const dueCount = dueTodayLoans.length;
+    const overdueCount = overdueLoans.length;
+    if (type === 'morning') {
+      await sendTestNotification('📊 สรุปยอดวันนี้', `ครบกำหนด ${dueCount} รายการ | ค้างชำระ ${overdueCount} รายการ`);
+    } else {
+      await sendTestNotification('🔔 แจ้งเตือนทวง', `มี ${dueCount} รายการที่ยังไม่ชำระวันนี้`);
+    }
+    setIsSendingTestNotif(false);
+  };
+
   useEffect(() => {
     fetchAppData()
       .then(res => {
@@ -377,7 +472,6 @@ export default function App() {
       })
       .finally(() => setLoading(false));
 
-    // Initialize Service Worker & check notification status
     registerServiceWorker().then(async (reg) => {
       if (!reg) return;
       setNotifPermission(getNotificationPermission());
@@ -436,46 +530,6 @@ export default function App() {
 
   const s = data.summary;
 
-  // Categorize loans
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const dueTodayLoans = data.loans.filter(l => {
-    if (l.isPaid || l.isScam || l.isRenewed || l.isWithdrawn) return false;
-    const parsed = parseThaiDate(l.dueDate);
-    return parsed && parsed.getTime() === today.getTime();
-  });
-
-  const overdueLoans = data.loans.filter(l => l.isOverdue && !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn);
-  const progressData = [
-    { name: 'Collected', value: s.totalPaid, color: '#10B981' },
-    { name: 'Remaining', value: s.totalUnpaid, color: '#E2E8F0' }
-  ];
-  const progressPct = s.totalExpected > 0 ? ((s.totalPaid / s.totalExpected) * 100).toFixed(1) : '0.0';
-
-  const dateMap: Record<string, { expected: number, actual: number }> = {};
-  const allDates = new Set<string>();
-
-  data.loans.forEach(l => {
-    if (l.dueDate && parseThaiDate(l.dueDate)) {
-      const d = l.dueDate;
-      allDates.add(d);
-      if (!dateMap[d]) dateMap[d] = { expected: 0, actual: 0 };
-      dateMap[d].expected += l.expectedInterest;
-    }
-
-    if (l.actualDate && parseThaiDate(l.actualDate)) {
-      const d = l.actualDate;
-      allDates.add(d);
-      if (!dateMap[d]) dateMap[d] = { expected: 0, actual: 0 };
-      dateMap[d].actual += l.paidInterest;
-    }
-  });
-
-  const sortedDates = Array.from(allDates).sort((a, b) => parseThaiDate(a)!.getTime() - parseThaiDate(b)!.getTime());
-  const trendData14 = sortedDates.slice(-14).map(date => ({ date: date.substring(0, 5), Expected: dateMap[date].expected, Received: dateMap[date].actual }));
-  const trendData30 = sortedDates.slice(-30).map(date => ({ date: date.substring(0, 5), Expected: dateMap[date].expected, Received: dateMap[date].actual }));
-
   const renderStatusBadge = (status: string) => {
     const s = status.toLowerCase();
     if (s.includes('ชำระแล้ว') || s.includes('paid') || s.includes('ปิดยอด')) {
@@ -492,19 +546,6 @@ export default function App() {
     }
     return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-wider border border-slate-200">{t('statusActive', lang)}</span>;
   };
-
-  const MetricCard = ({ label, value, sub, subColor = 'emerald', icon: Icon, iconBg }: { label: string; value: string; sub: React.ReactNode; subColor?: string; icon: React.ElementType; iconBg: string }) => (
-    <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm card-lift overflow-hidden relative">
-      <div className="flex justify-between items-start mb-3">
-        <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider leading-tight">{label}</div>
-        <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
-          <Icon className="w-4 h-4" />
-        </div>
-      </div>
-      <div className="text-xl font-black text-slate-800 leading-none mb-1.5">{value}</div>
-      <div className={`text-[10px] font-semibold flex items-center gap-0.5 text-${subColor}-600`}>{sub}</div>
-    </div>
-  );
 
   const MetricRow = () => (
     <div className="grid grid-cols-2 mb-4 gap-3 md:grid-cols-4 md:mb-6">
@@ -1096,12 +1137,12 @@ export default function App() {
 
               <div className="p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-6 bg-white">
                 <div className="space-y-4">
-                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Financial Details</h3>
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">{t('financialDetails', lang)}</h3>
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                     {isEditingLoan ? (
                       <div className="space-y-3">
                         <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-1">Principal</label>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">{t('principal', lang)}</label>
                           <input
                             type="number"
                             value={editLoanForm.principal}
@@ -1110,7 +1151,7 @@ export default function App() {
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-1">Interest Rate (%)</label>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">{t('interestRateLabel', lang)}</label>
                           <input
                             type="number"
                             value={editLoanForm.interestRate}
@@ -1119,7 +1160,7 @@ export default function App() {
                           />
                         </div>
                         <div className="flex justify-between items-center mt-4 pt-4 border-t border-slate-200">
-                          <span className="text-slate-700 font-bold">New Expected</span>
+                          <span className="text-slate-700 font-bold">{t('newExpected', lang)}</span>
                           <span className="font-black text-xl text-indigo-600">
                             {formatCurrency(parseFloat(editLoanForm.principal) + ((parseFloat(editLoanForm.principal) * editLoanForm.interestRate) / 100))}
                           </span>
@@ -1128,23 +1169,23 @@ export default function App() {
                     ) : (
                       <>
                         <div className="flex justify-between items-center mb-2">
-                          <span className="text-slate-500 text-sm">Principal</span>
+                          <span className="text-slate-500 text-sm">{t('principal', lang)}</span>
                           <span className="font-semibold text-slate-800">{formatCurrency(selectedLoan.principal)}</span>
                         </div>
                         <div className="flex justify-between items-center mb-2">
-                          <span className="text-slate-500 text-sm">Interest Rate</span>
+                          <span className="text-slate-500 text-sm">{t('interestRate', lang)}</span>
                           <span className="font-semibold text-slate-800">{selectedLoan.interestRate}%</span>
                         </div>
                         <div className="flex justify-between items-center mb-2">
-                          <span className="text-slate-500 text-sm">Expected Interest</span>
+                          <span className="text-slate-500 text-sm">{t('expectedInterest', lang)}</span>
                           <span className="font-semibold text-emerald-600">+{formatCurrency(selectedLoan.expectedInterest)}</span>
                         </div>
                         <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-200">
-                          <span className="text-slate-500 text-sm">Penalty Fee</span>
+                          <span className="text-slate-500 text-sm">{t('penaltyFee', lang)}</span>
                           <span className="font-semibold text-amber-600">+{formatCurrency(selectedLoan.penalty)}</span>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className="text-slate-700 font-bold">Total Expected</span>
+                          <span className="text-slate-700 font-bold">{t('totalExpected', lang)}</span>
                           <span className="font-black text-xl text-slate-900">{formatCurrency(selectedLoan.totalExpected)}</span>
                         </div>
                       </>
@@ -1153,18 +1194,18 @@ export default function App() {
                 </div>
 
                 <div className="space-y-4">
-                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">Payments & Dates</h3>
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">{t('paymentsAndDates', lang)}</h3>
                   <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-4">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-emerald-700 text-sm">Total Paid</span>
+                      <span className="text-emerald-700 text-sm">{t('totalPaid', lang)}</span>
                       <span className="font-bold text-emerald-700">{formatCurrency(selectedLoan.paidAmount)}</span>
                     </div>
                     <div className="flex justify-between items-center text-xs text-emerald-600/80 pl-2 border-l-2 border-emerald-200 ml-1">
-                      <span>Principal Paid</span>
+                      <span>{t('principalPaid', lang)}</span>
                       <span>{formatCurrency(selectedLoan.paidPrincipal)}</span>
                     </div>
                     <div className="flex justify-between items-center text-xs text-emerald-600/80 pl-2 border-l-2 border-emerald-200 ml-1 mt-1">
-                      <span>Interest Paid</span>
+                      <span>{t('interestPaid', lang)}</span>
                       <span>{formatCurrency(selectedLoan.paidInterest)}</span>
                     </div>
                   </div>
@@ -1275,9 +1316,9 @@ export default function App() {
             <div className="flex justify-between items-center p-5 lg:p-6 border-b border-slate-200 bg-white">
               <div>
                 <h2 className="text-xl lg:text-2xl font-black text-slate-800 flex items-center gap-2">
-                  <Activity className="w-6 h-6 lg:w-7 lg:h-7 text-indigo-600" /> Advanced Cashflow Analytics
+                  <Activity className="w-6 h-6 lg:w-7 lg:h-7 text-indigo-600" /> {t('advancedCashflow', lang)}
                 </h2>
-                <p className="text-sm text-slate-500 mt-1 font-medium">30-Day Cashflow History & Daily Drill-down Insights</p>
+                <p className="text-sm text-slate-500 mt-1 font-medium">{t('cashflow30History', lang)}</p>
               </div>
               <button onClick={() => { setShowExpandedTrend(false); setInsightDate(null); }} className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition-colors"><X size={24} /></button>
             </div>
@@ -1295,7 +1336,7 @@ export default function App() {
                       margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
                       onClick={(e: any) => {
                         if (e && e.activeLabel) {
-                          setInsightDate(e.activeLabel);
+                          setInsightDate(labelToFullDate.get(e.activeLabel) ?? e.activeLabel);
                         }
                       }}
                     >
@@ -1333,7 +1374,7 @@ export default function App() {
                     <div>
                       <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">{t('expectedInterestDue', lang)}</h3>
                       <div className="space-y-2">
-                        {data.loans.filter(l => l.dueDate && l.dueDate.startsWith(insightDate)).map(l => (
+                        {data.loans.filter(l => l.dueDate === insightDate).map(l => (
                           <div key={'exp-' + l.id} className="flex justify-between p-3 bg-white rounded-lg border border-slate-200 shadow-sm hover:border-indigo-300 transition-colors">
                             <div>
                               <div className="font-bold text-slate-800">{l.name} <span className="text-xs text-slate-400 font-normal">({l.id})</span></div>
@@ -1572,9 +1613,31 @@ export default function App() {
               <h2 className="text-xl font-extrabold text-slate-800">{t('notifTitle', lang)}</h2>
               <button onClick={() => setShowNotifModal(false)} className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100"><X size={20} /></button>
             </div>
-            <div className="p-6 text-center">
-              <p className="text-slate-600 mb-6">Notification settings are managed by your browser.</p>
-              <button onClick={() => setShowNotifModal(false)} className="w-full py-3 bg-slate-800 text-white font-bold rounded-xl">Close</button>
+            <div className="p-6 space-y-5">
+              <div className={`p-4 rounded-xl border text-center font-bold text-sm ${isSubscribed ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : notifPermission === 'denied' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
+                {isSubscribed ? t('notifEnabled', lang) : notifPermission === 'denied' ? t('notifBlocked', lang) : t('notifDisabled', lang)}
+                <p className="font-normal text-xs mt-1 opacity-80">
+                  {isSubscribed ? t('notifEnabledDesc', lang) : notifPermission === 'denied' ? t('notifBlockedDesc', lang) : t('notifDisabledDesc', lang)}
+                </p>
+              </div>
+              {isSubscribed && (
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t('testNotif', lang)}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => handleTestNotif('morning')} disabled={isSendingTestNotif} className="py-2.5 text-sm font-bold rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-colors disabled:opacity-50">{t('testMorning', lang)}</button>
+                    <button onClick={() => handleTestNotif('afternoon')} disabled={isSendingTestNotif} className="py-2.5 text-sm font-bold rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-colors disabled:opacity-50">{t('testAfternoon', lang)}</button>
+                  </div>
+                </div>
+              )}
+              <div className="pt-2 flex flex-col gap-2">
+                {!isSubscribed && notifPermission !== 'denied' && (
+                  <button onClick={handleEnableNotif} className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors text-sm">{t('enableNotif', lang)}</button>
+                )}
+                {isSubscribed && (
+                  <button onClick={handleDisableNotif} className="w-full py-3 bg-rose-50 text-rose-700 border border-rose-200 font-bold rounded-xl hover:bg-rose-100 transition-colors text-sm">{t('disableNotif', lang)}</button>
+                )}
+                <button onClick={() => setShowNotifModal(false)} className="w-full py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors text-sm">{t('cancel', lang)}</button>
+              </div>
             </div>
           </div>
         </div>
