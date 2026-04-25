@@ -57,8 +57,6 @@ export default function App() {
   const [showFabMenu, setShowFabMenu] = useState(false);
   const [showConfirmDefault, setShowConfirmDefault] = useState(false);
   const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'loans' | 'analytics'>('dashboard');
-  const [touchStart, setTouchStart] = useState<number | null>(null);
-  const [touchEnd, setTouchEnd] = useState<number | null>(null);
   const [isDesktop, setIsDesktop] = useState(true);
 
   useEffect(() => {
@@ -67,34 +65,6 @@ export default function App() {
     window.addEventListener('resize', checkIsDesktop);
     return () => window.removeEventListener('resize', checkIsDesktop);
   }, []);
-
-  const minSwipeDistance = 50;
-
-  const onTouchStart = (e: React.TouchEvent) => {
-    setTouchEnd(null);
-    setTouchStart(e.targetTouches[0].clientX);
-  };
-
-  const onTouchMove = (e: React.TouchEvent) => setTouchEnd(e.targetTouches[0].clientX);
-
-  const onTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-    const distance = touchStart - touchEnd;
-    const isLeftSwipe = distance > minSwipeDistance;
-    const isRightSwipe = distance < -minSwipeDistance;
-
-    if (isLeftSwipe || isRightSwipe) {
-      const tabs: ('dashboard' | 'analytics' | 'loans')[] = ['dashboard', 'analytics', 'loans'];
-      const currentIndex = tabs.indexOf(activeMobileTab);
-
-      if (isLeftSwipe && currentIndex < tabs.length - 1) {
-        setActiveMobileTab(tabs[currentIndex + 1]);
-      }
-      if (isRightSwipe && currentIndex > 0) {
-        setActiveMobileTab(tabs[currentIndex - 1]);
-      }
-    }
-  };
 
   const toggleLang = () => {
     setLang(l => { const next = l === 'th' ? 'en' : 'th'; localStorage.setItem('lang', next); return next; });
@@ -628,12 +598,7 @@ export default function App() {
   );
 
   return (
-    <div
-      className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-32 md:pb-8"
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
-    >
+    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-32 md:pb-8">
       {/* Sticky Mobile Header */}
       <header className="sticky top-0 z-30 md:hidden" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' }}>
         <div className="flex justify-between items-center px-4 py-3">
@@ -766,7 +731,8 @@ export default function App() {
                           <div
                             key={l.id}
                             onClick={() => setSelectedLoan(l)}
-                            className="flex justify-between items-center px-4 py-3 hover:bg-amber-50/50 active:bg-amber-50 transition-colors cursor-pointer border-l-[3px] border-amber-400"
+                            className="flex justify-between items-center px-4 py-3 active:bg-amber-50 transition-colors cursor-pointer border-l-[3px] border-amber-400"
+                            style={{ touchAction: 'manipulation' }}
                           >
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
@@ -811,7 +777,8 @@ export default function App() {
                           <div
                             key={l.id}
                             onClick={() => setSelectedLoan(l)}
-                            className="flex justify-between items-center px-4 py-3 hover:bg-rose-50/50 active:bg-rose-50 transition-colors cursor-pointer border-l-[3px] border-rose-500"
+                            className="flex justify-between items-center px-4 py-3 active:bg-rose-50 transition-colors cursor-pointer border-l-[3px] border-rose-500"
+                            style={{ touchAction: 'manipulation' }}
                           >
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center flex-shrink-0">
@@ -1089,6 +1056,7 @@ export default function App() {
                         <div
                           key={l.id}
                           onClick={() => setSelectedLoan(l)}
+                          style={{ touchAction: 'manipulation' }}
                           className={`flex items-center gap-3 px-4 py-3.5 border-b border-slate-100 last:border-0 active:bg-slate-50 cursor-pointer ${stripeClass} ${l.isOverdue ? 'bg-rose-50/20' : ''}`}
                         >
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-black text-sm ${avatarBg}`}>
@@ -1131,12 +1099,12 @@ export default function App() {
       <div className="fixed bottom-0 left-0 right-0 md:hidden z-40">
         <div className="bg-slate-900/95 backdrop-blur-xl border-t border-white/10 flex items-center shadow-[0_-8px_30px_rgba(0,0,0,0.3)]">
           {/* Home */}
-          <button onClick={() => setActiveMobileTab('dashboard')} className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors ${activeMobileTab === 'dashboard' ? 'text-emerald-400' : 'text-white/40'}`}>
+          <button style={{ touchAction: 'manipulation' }} onClick={() => setActiveMobileTab('dashboard')} className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors ${activeMobileTab === 'dashboard' ? 'text-emerald-400' : 'text-white/40'}`}>
             <Home className="w-5 h-5" />
             <span className="text-[9px] font-bold uppercase tracking-wide">{t('navDashboard', lang)}</span>
           </button>
           {/* Loans */}
-          <button onClick={() => setActiveMobileTab('loans')} className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors relative ${activeMobileTab === 'loans' ? 'text-emerald-400' : 'text-white/40'}`}>
+          <button style={{ touchAction: 'manipulation' }} onClick={() => setActiveMobileTab('loans')} className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors relative ${activeMobileTab === 'loans' ? 'text-emerald-400' : 'text-white/40'}`}>
             <List className="w-5 h-5" />
             <span className="text-[9px] font-bold uppercase tracking-wide">{t('navLoans', lang)}</span>
             {overdueLoans.length > 0 && <span className="absolute top-2 right-[calc(50%-10px)] w-4 h-4 bg-rose-500 text-white text-[8px] font-black rounded-full flex items-center justify-center">{overdueLoans.length}</span>}
@@ -1144,6 +1112,7 @@ export default function App() {
           {/* FAB */}
           <div className="flex-1 flex justify-center items-center relative py-2">
             <button
+              style={{ touchAction: 'manipulation' }}
               onClick={() => setShowFabMenu(v => !v)}
               className={`w-14 h-14 rounded-full flex items-center justify-center -mt-6 border-4 border-slate-900 shadow-xl shadow-emerald-900/40 active:scale-95 transition-all ${showFabMenu ? 'rotate-45 bg-slate-600' : 'bg-gradient-to-br from-emerald-400 to-emerald-600'}`}
             >
@@ -1151,12 +1120,12 @@ export default function App() {
             </button>
           </div>
           {/* Analytics */}
-          <button onClick={() => setActiveMobileTab('analytics')} className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors ${activeMobileTab === 'analytics' ? 'text-emerald-400' : 'text-white/40'}`}>
+          <button style={{ touchAction: 'manipulation' }} onClick={() => setActiveMobileTab('analytics')} className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors ${activeMobileTab === 'analytics' ? 'text-emerald-400' : 'text-white/40'}`}>
             <BarChart2 className="w-5 h-5" />
             <span className="text-[9px] font-bold uppercase tracking-wide">{t('navAnalytics', lang)}</span>
           </button>
           {/* Notifications */}
-          <button onClick={() => setShowNotifModal(true)} className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors relative ${isSubscribed ? 'text-emerald-400' : 'text-white/40'}`}>
+          <button style={{ touchAction: 'manipulation' }} onClick={() => setShowNotifModal(true)} className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors relative ${isSubscribed ? 'text-emerald-400' : 'text-white/40'}`}>
             {isSubscribed ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
             <span className="text-[9px] font-bold uppercase tracking-wide">{lang === 'th' ? 'แจ้งเตือน' : 'Alerts'}</span>
           </button>
@@ -1547,34 +1516,8 @@ export default function App() {
                 <X size={24} />
               </button>
             </div>
-            <div className="p-6 overflow-y-auto bg-slate-50 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center">
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">{t('totalExpectedValue', lang)}</div>
-                  <div className="text-2xl font-black text-slate-800">{formatCurrency(s.totalExpected)}</div>
-                </div>
-                <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-200 shadow-sm flex flex-col justify-center items-center text-center">
-                  <div className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-2">{t('totalCollected', lang)}</div>
-                  <div className="text-2xl font-black text-emerald-700">{formatCurrency(s.totalPaid)}</div>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col items-center">
-                <div className="h-[160px] w-full relative">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={progressData} cx="50%" cy="100%" startAngle={180} endAngle={0} innerRadius={65} outerRadius={90} dataKey="value" stroke="none">
-                        {progressData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                      </Pie>
-                    </PieChart>
-                  </ResponsiveContainer>
-                  <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center pb-1">
-                    <span className="text-4xl font-black text-slate-800">{progressPct}%</span>
-                    <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">{t('collected', lang)}</span>
-                  </div>
-                </div>
-              </div>
-
+            <div className="p-5 overflow-y-auto bg-slate-50 space-y-4">
+              {/* Principal Breakdown */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
                   <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
@@ -1600,6 +1543,7 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Interest Breakdown */}
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
                   <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
@@ -1620,6 +1564,96 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              {/* Portfolio Analysis */}
+              {(() => {
+                const principalRecovery = s.totalBorrowed > 0 ? (s.paidPrincipal / s.totalBorrowed) * 100 : 0;
+                const interestCollection = s.totalInterest > 0 ? (s.paidInterest / s.totalInterest) * 100 : 0;
+                const nplRate = s.totalBorrowed > 0 ? (s.scamPrincipal / s.totalBorrowed) * 100 : 0;
+                const realizedYield = s.paidPrincipal > 0 ? (s.paidInterest / s.paidPrincipal) * 100 : 0;
+                const overdueCapital = data.loans
+                  .filter(l => l.isOverdue && !l.isPaid && !l.isScam)
+                  .reduce((sum, l) => sum + l.principal, 0);
+                const activeCount = data.loans.filter(l => !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn).length;
+                const overdueCount = data.loans.filter(l => l.isOverdue && !l.isPaid && !l.isScam).length;
+
+                return (
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                    <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                      <div className="w-1.5 h-1.5 bg-violet-500 rounded-full" />
+                      {lang === 'th' ? 'การวิเคราะห์พอร์ต' : 'Portfolio Analysis'}
+                    </div>
+                    <div className="p-4 space-y-4">
+                      {/* Progress Bars */}
+                      <div className="space-y-3">
+                        {[
+                          { label: lang === 'th' ? 'เรียกคืนต้นทุน' : 'Principal Recovery', value: principalRecovery, color: 'bg-emerald-500', textColor: 'text-emerald-700' },
+                          { label: lang === 'th' ? 'เก็บดอกเบี้ย' : 'Interest Collected', value: interestCollection, color: 'bg-indigo-500', textColor: 'text-indigo-700' },
+                          { label: lang === 'th' ? 'หนี้เสีย (NPL)' : 'NPL Rate', value: nplRate, color: nplRate > 20 ? 'bg-rose-500' : nplRate > 10 ? 'bg-amber-500' : 'bg-emerald-500', textColor: nplRate > 20 ? 'text-rose-700' : nplRate > 10 ? 'text-amber-700' : 'text-emerald-700' },
+                        ].map(item => (
+                          <div key={item.label}>
+                            <div className="flex justify-between items-center mb-1.5">
+                              <span className="text-xs font-bold text-slate-600">{item.label}</span>
+                              <span className={`text-xs font-black ${item.textColor}`}>{item.value.toFixed(1)}%</span>
+                            </div>
+                            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full transition-all duration-700 ${item.color}`} style={{ width: `${Math.min(100, item.value)}%` }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Key Metric Cards */}
+                      <div className="grid grid-cols-2 gap-2 pt-1">
+                        <div className="bg-violet-50 rounded-xl p-3 border border-violet-100">
+                          <div className="text-lg font-black text-violet-700">{realizedYield.toFixed(1)}%</div>
+                          <div className="text-[10px] font-bold text-violet-500 uppercase tracking-wide mt-0.5">
+                            {lang === 'th' ? 'ผลตอบแทนจริง' : 'Realized Yield'}
+                          </div>
+                          <div className="text-[10px] text-violet-400 mt-0.5">
+                            {lang === 'th' ? `ดอก/ต้นที่เก็บแล้ว` : 'Interest / Paid Principal'}
+                          </div>
+                        </div>
+                        <div className={`rounded-xl p-3 border ${overdueCapital > 0 ? 'bg-rose-50 border-rose-100' : 'bg-emerald-50 border-emerald-100'}`}>
+                          <div className={`text-lg font-black ${overdueCapital > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
+                            {formatCurrency(overdueCapital)}
+                          </div>
+                          <div className={`text-[10px] font-bold uppercase tracking-wide mt-0.5 ${overdueCapital > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                            {lang === 'th' ? 'ต้นที่ค้างชำระ' : 'Overdue Capital'}
+                          </div>
+                          <div className={`text-[10px] mt-0.5 ${overdueCapital > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                            {overdueCount} / {activeCount} {lang === 'th' ? 'รายการ' : 'accounts'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Health Comment */}
+                      {(() => {
+                        let msg = '';
+                        let color = '';
+                        if (nplRate === 0 && overdueCount === 0) {
+                          msg = lang === 'th' ? '✅ พอร์ตสุขภาพดีมาก ไม่มีหนี้เสียและค้างชำระ' : '✅ Excellent portfolio health — no defaults or overdue.';
+                          color = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                        } else if (nplRate > 20 || overdueCount > activeCount * 0.5) {
+                          msg = lang === 'th' ? '⚠️ ความเสี่ยงสูง ควรติดตามลูกหนี้ที่ค้างชำระอย่างเร่งด่วน' : '⚠️ High risk — follow up on overdue accounts urgently.';
+                          color = 'bg-rose-50 text-rose-700 border-rose-200';
+                        } else if (nplRate > 10 || overdueCount > 0) {
+                          msg = lang === 'th' ? `🔶 ควรติดตาม ${overdueCount} รายการที่ค้างชำระ NPL ${nplRate.toFixed(1)}%` : `🔶 Monitor ${overdueCount} overdue accounts. NPL ${nplRate.toFixed(1)}%`;
+                          color = 'bg-amber-50 text-amber-700 border-amber-200';
+                        } else {
+                          msg = lang === 'th' ? `✅ พอร์ตอยู่ในเกณฑ์ดี อัตราเรียกคืน ${principalRecovery.toFixed(0)}%` : `✅ Portfolio in good shape. Recovery rate ${principalRecovery.toFixed(0)}%`;
+                          color = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                        }
+                        return (
+                          <div className={`rounded-xl p-3 border text-xs font-semibold leading-relaxed ${color}`}>
+                            {msg}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
