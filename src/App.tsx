@@ -234,6 +234,18 @@ export default function App() {
     }
   }, [data, activeTab, searchQuery, sortBy]);
 
+  const tabCounts = useMemo(() => {
+    if (!data) return { all: 0, renewals: 0, paid: 0, defaulted: 0, withdrawn: 0, raw: 0 };
+    return {
+      all: data.loans.filter(l => !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn).length,
+      renewals: data.loans.filter(l => l.isRenewed).length,
+      paid: data.loans.filter(l => l.isPaid).length,
+      defaulted: data.loans.filter(l => l.isScam).length,
+      withdrawn: data.loans.filter(l => l.isWithdrawn).length,
+      raw: data.loans.length
+    };
+  }, [data]);
+
   const { progressData, progressPct, trendData14, trendData30, labelToFullDate } = useMemo(() => {
     if (!data) return { progressData: [], progressPct: '0.0', trendData14: [], trendData30: [], labelToFullDate: new Map<string, string>() };
     const s = data.summary;
@@ -432,7 +444,7 @@ export default function App() {
       });
 
       if (success) {
-        showToast(`Loan details updated`, 'success');
+        showToast(t('loanUpdated', lang), 'success');
         setIsEditingLoan(false);
 
         // Optimistic UI update for edits
@@ -455,7 +467,7 @@ export default function App() {
         throw new Error("API failed");
       }
     } catch (err) {
-      showToast("เกิดข้อผิดพลาดในการบันทึกข้อมูล", 'error');
+      showToast(t('loanUpdateFailed', lang), 'error');
     } finally {
       setIsSyncing(false);
       setTimeout(() => loadData(true), 2500);
@@ -723,7 +735,7 @@ export default function App() {
               key="dashboard"
               initial={isDesktop ? false : { opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={isDesktop ? false : { opacity: 0, x: 20 }}
+              exit={isDesktop ? undefined : { opacity: 0, x: 20 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
               className="md:block"
             >
@@ -833,7 +845,7 @@ export default function App() {
               key="analytics"
               initial={isDesktop ? false : { opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={isDesktop ? false : { opacity: 0, x: -20 }}
+              exit={isDesktop ? undefined : { opacity: 0, x: -20 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
               className="md:block"
             >
@@ -844,7 +856,7 @@ export default function App() {
                 </span>
               </div>
 
-              <div className="hidden md:grid md:grid-cols-2 gap-6 mb-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 md:mb-8">
                 <div
                   className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center cursor-pointer group hover:border-emerald-300 hover:shadow-md transition-all relative overflow-hidden"
                   onClick={() => setShowPortfolioProgressModal(true)}
@@ -958,7 +970,7 @@ export default function App() {
               key="loans"
               initial={isDesktop ? false : { opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={isDesktop ? false : { opacity: 0, x: -20 }}
+              exit={isDesktop ? undefined : { opacity: 0, x: -20 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
               className="md:block"
             >
@@ -1008,8 +1020,16 @@ export default function App() {
                             tab === 'defaulted' ? t('tabDefaulted', lang) :
                               tab === 'withdrawn' ? t('tabWithdrawn', lang) :
                                 t('tabRaw', lang)}
-                      {tab === 'all' && activeLoansCount > 0 && <span className="bg-emerald-100 text-emerald-700 text-[9px] font-black px-1.5 py-0.5 rounded-full">{activeLoansCount}</span>}
-                      {tab === 'defaulted' && data && data.loans.filter(l => l.isScam).length > 0 && <span className="bg-rose-100 text-rose-700 text-[9px] font-black px-1.5 py-0.5 rounded-full">{data.loans.filter(l => l.isScam).length}</span>}
+                      {tabCounts[tab] > 0 && (
+                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
+                          tab === 'defaulted' ? 'bg-rose-100 text-rose-700' :
+                          tab === 'paid' ? 'bg-cyan-100 text-cyan-700' :
+                          tab === 'renewals' ? 'bg-indigo-100 text-indigo-700' :
+                          tab === 'withdrawn' ? 'bg-amber-100 text-amber-700' :
+                          tab === 'all' ? 'bg-emerald-100 text-emerald-700' :
+                          'bg-slate-100 text-slate-600'
+                        }`}>{tabCounts[tab]}</span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -1028,8 +1048,8 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100" ref={tableRef}>
-                      {filteredLoans.map((l, i) => (
-                        <tr key={i} onClick={() => setSelectedLoan(l)} className={`cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition-colors ${l.isOverdue ? 'bg-rose-50/30' : ''}`}>
+                      {filteredLoans.map((l) => (
+                        <tr key={l.id} onClick={() => setSelectedLoan(l)} className={`cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition-colors ${l.isOverdue ? 'bg-rose-50/30' : ''}`}>
                           <td className="px-4 py-3 font-mono text-slate-400 text-xs">{l.id}</td>
                           <td className="px-4 py-3 font-semibold text-slate-800">
                             {l.name}
@@ -1053,7 +1073,7 @@ export default function App() {
                   </table>
 
                   <div className="md:hidden" ref={tableRef as any}>
-                    {filteredLoans.map((l, i) => {
+                    {filteredLoans.map((l) => {
                       const stripeClass = l.isScam ? 'border-l-[3px] border-rose-500'
                         : l.isPaid ? 'border-l-[3px] border-cyan-400'
                         : l.isRenewed ? 'border-l-[3px] border-indigo-500'
@@ -1067,7 +1087,7 @@ export default function App() {
                         : 'bg-emerald-100 text-emerald-700';
                       return (
                         <div
-                          key={i}
+                          key={l.id}
                           onClick={() => setSelectedLoan(l)}
                           className={`flex items-center gap-3 px-4 py-3.5 border-b border-slate-100 last:border-0 active:bg-slate-50 cursor-pointer ${stripeClass} ${l.isOverdue ? 'bg-rose-50/20' : ''}`}
                         >
@@ -1198,7 +1218,7 @@ export default function App() {
                     ) : selectedLoan.isRenewed ? (
                       <span className="inline-flex px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold uppercase">Renewed</span>
                     ) : selectedLoan.isOverdue ? (
-                      <span className="inline-flex px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-bold uppercase">⚠ Overdue</span>
+                      <span className="inline-flex px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-bold uppercase">⚠ {selectedLoan.daysLate}d overdue</span>
                     ) : (
                       <span className="inline-flex px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase">Active</span>
                     )}
@@ -1296,6 +1316,25 @@ export default function App() {
                       <div className="flex justify-between items-center text-sm">
                         <span className="text-indigo-600">{t('totalInterestAccumulated', lang)}</span>
                         <span className="font-black text-indigo-700">{formatCurrency(selectedLoan.historicalRenewalInterest)}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedLoan.penaltyHistory && selectedLoan.penaltyHistory.length > 0 && (
+                    <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 mb-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-amber-800 text-sm font-semibold">{t('penaltyHistory', lang)}</span>
+                        <span className="bg-amber-200 text-amber-800 text-xs px-2 py-0.5 rounded-full font-bold">
+                          {formatCurrency(selectedLoan.penaltyHistory.reduce((sum, p) => sum + p.amount, 0))}
+                        </span>
+                      </div>
+                      <div className="space-y-1">
+                        {selectedLoan.penaltyHistory.map((p, i) => (
+                          <div key={i} className="flex justify-between text-xs text-amber-700">
+                            <span>{t('round', lang)} {i + 1} · {p.date}</span>
+                            <span className="font-bold">{formatCurrency(p.amount)}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -1449,16 +1488,38 @@ export default function App() {
                     </div>
 
                     <div>
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">{t('expectedInterestDue', lang)}</h3>
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">{t('expectedInterestDue', lang)}</h3>
                       <div className="space-y-2">
-                        {data.loans.filter(l => l.dueDate === insightDate).map(l => (
+                        {data.loans.filter(l => l.dueDate === insightDate).length === 0 ? (
+                          <p className="text-xs text-slate-400 italic py-2 px-1">{t('noExpectedForDate', lang)}</p>
+                        ) : data.loans.filter(l => l.dueDate === insightDate).map(l => (
                           <div key={'exp-' + l.id} className="flex justify-between p-3 bg-white rounded-lg border border-slate-200 shadow-sm hover:border-indigo-300 transition-colors">
                             <div>
-                              <div className="font-bold text-slate-800">{l.name} <span className="text-xs text-slate-400 font-normal">({l.id})</span></div>
-                              <div className="text-[10px] text-slate-500 mt-0.5">Principal: {formatCurrency(l.principal)}</div>
+                              <div className="font-bold text-slate-800 text-sm">{l.name} <span className="text-xs text-slate-400 font-normal">({l.id})</span></div>
+                              <div className="text-[10px] text-slate-500 mt-0.5">{t('principal', lang)}: {formatCurrency(l.principal)}</div>
                             </div>
                             <div className="flex flex-col items-end justify-center">
                               <span className="font-black text-slate-700">{formatCurrency(l.expectedInterest)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">{t('actualPaymentsReceived', lang)}</h3>
+                      <div className="space-y-2">
+                        {data.loans.filter(l => l.actualDate === insightDate && (l.isPaid || l.isRenewed)).length === 0 ? (
+                          <p className="text-xs text-slate-400 italic py-2 px-1">{t('noPaymentsForDate', lang)}</p>
+                        ) : data.loans.filter(l => l.actualDate === insightDate && (l.isPaid || l.isRenewed)).map(l => (
+                          <div key={'act-' + l.id} className="flex justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-200 shadow-sm">
+                            <div>
+                              <div className="font-bold text-slate-800 text-sm">{l.name} <span className="text-xs text-slate-400 font-normal">({l.id})</span></div>
+                              <div className="mt-1">{renderStatusBadge(l.status)}</div>
+                            </div>
+                            <div className="flex flex-col items-end justify-center gap-0.5">
+                              <span className="font-black text-emerald-700">{formatCurrency(l.paidInterest)}</span>
+                              <span className="text-[10px] text-emerald-600">{t('principalPaid', lang)}: {formatCurrency(l.paidPrincipal)}</span>
                             </div>
                           </div>
                         ))}
@@ -1486,15 +1547,77 @@ export default function App() {
                 <X size={24} />
               </button>
             </div>
-            <div className="p-6 overflow-y-auto bg-slate-50">
-              <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="p-6 overflow-y-auto bg-slate-50 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center items-center text-center">
                   <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">{t('totalExpectedValue', lang)}</div>
-                  <div className="text-3xl font-black text-slate-800">{formatCurrency(s.totalExpected)}</div>
+                  <div className="text-2xl font-black text-slate-800">{formatCurrency(s.totalExpected)}</div>
                 </div>
                 <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-200 shadow-sm flex flex-col justify-center items-center text-center">
                   <div className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-2">{t('totalCollected', lang)}</div>
-                  <div className="text-3xl font-black text-emerald-700">{formatCurrency(s.totalPaid)}</div>
+                  <div className="text-2xl font-black text-emerald-700">{formatCurrency(s.totalPaid)}</div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex flex-col items-center">
+                <div className="h-[160px] w-full relative">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={progressData} cx="50%" cy="100%" startAngle={180} endAngle={0} innerRadius={65} outerRadius={90} dataKey="value" stroke="none">
+                        {progressData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center pb-1">
+                    <span className="text-4xl font-black text-slate-800">{progressPct}%</span>
+                    <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">{t('collected', lang)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
+                  {t('principalBreakdown', lang)}
+                </div>
+                <div className="p-4 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-600">{t('principalLentOut', lang)}</span>
+                    <span className="text-sm font-black text-slate-800">{formatCurrency(s.totalBorrowed)}</span>
+                  </div>
+                  <div className="flex justify-between items-center pl-3 border-l-2 border-emerald-400">
+                    <span className="text-xs font-bold text-emerald-600">{t('principalCollected', lang)}</span>
+                    <span className="text-sm font-black text-emerald-700">{formatCurrency(s.paidPrincipal)}</span>
+                  </div>
+                  <div className="flex justify-between items-center pl-3 border-l-2 border-amber-400">
+                    <span className="text-xs font-bold text-amber-600">{t('principalRemaining', lang)}</span>
+                    <span className="text-sm font-black text-amber-700">{formatCurrency(s.unpaidPrincipal)}</span>
+                  </div>
+                  <div className="flex justify-between items-center pl-3 border-l-2 border-rose-400">
+                    <span className="text-xs font-bold text-rose-600">{t('principalLost', lang)}</span>
+                    <span className="text-sm font-black text-rose-700">{formatCurrency(s.scamPrincipal)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                  {t('interestBreakdown', lang)}
+                </div>
+                <div className="p-4 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-600">{t('interestExpected', lang)}</span>
+                    <span className="text-sm font-black text-slate-800">{formatCurrency(s.totalInterest)}</span>
+                  </div>
+                  <div className="flex justify-between items-center pl-3 border-l-2 border-emerald-400">
+                    <span className="text-xs font-bold text-emerald-600">{t('interestCollected', lang)}</span>
+                    <span className="text-sm font-black text-emerald-700">{formatCurrency(s.paidInterest)}</span>
+                  </div>
+                  <div className="flex justify-between items-center pl-3 border-l-2 border-amber-400">
+                    <span className="text-xs font-bold text-amber-600">{t('interestRemaining', lang)}</span>
+                    <span className="text-sm font-black text-amber-700">{formatCurrency(s.unpaidInterest)}</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1546,7 +1669,7 @@ export default function App() {
                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('withdrawalDate', lang)}</label>
                 <DatePicker
                   selected={withdrawForm.date}
-                  onChange={(date: Date) => setWithdrawForm({ ...withdrawForm, date: date || new Date() })}
+                  onChange={(date: Date | null) => setWithdrawForm({ ...withdrawForm, date: date ?? new Date() })}
                   dateFormat="dd/MM/yyyy"
                   className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer bg-white"
                 />
