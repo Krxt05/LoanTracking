@@ -139,6 +139,12 @@ export async function fetchAppData(): Promise<AppData | null> {
                 isOverdue = parsedDueDate.getTime() < today.getTime();
               }
 
+              let daysLate = parseNumeric(row[7]);
+              if (isOverdue && parsedDueDate) {
+                const calcDaysLate = Math.ceil((today.getTime() - parsedDueDate.getTime()) / 86400000);
+                if (daysLate === 0 || calcDaysLate > daysLate) daysLate = Math.max(1, calcDaysLate);
+              }
+
               let historicalRenewalInterest = cycleAccumulatedAcc[name] || 0;
               let historicalRenewalCount = cycleAccumulatedCount[name] || 0;
 
@@ -155,7 +161,7 @@ export async function fetchAppData(): Promise<AppData | null> {
                 dueDate: dueDateStr,
                 actualDate: String(row[5] || ''),
                 daysBorrowed: parseNumeric(row[6]),
-                daysLate: parseNumeric(row[7]),
+                daysLate,
                 interestRate: parseNumeric(row[8]),
                 expectedInterest: parseNumeric(row[9]),
                 penalty: parseNumeric(row[10]),
@@ -240,6 +246,7 @@ export async function updateLoanStatus(id: string, action: 'ชำระแล�
 
 export async function editExistingLoan(id: string, editData: {
   principal: number;
+  borrowDate?: string; // dd/MM/yyyy
   dueDate: string; // dd/MM/yyyy
   daysBorrowed: number;
   interestRate: number;
@@ -253,6 +260,7 @@ export async function editExistingLoan(id: string, editData: {
     urlWithParams.searchParams.append('id', id);
     urlWithParams.searchParams.append('action', 'EDIT_LOAN');
     urlWithParams.searchParams.append('principal', editData.principal.toString());
+    if (editData.borrowDate) urlWithParams.searchParams.append('borrowDate', editData.borrowDate);
     urlWithParams.searchParams.append('dueDate', editData.dueDate);
     urlWithParams.searchParams.append('daysBorrowed', editData.daysBorrowed.toString());
     urlWithParams.searchParams.append('interestRate', editData.interestRate.toString());

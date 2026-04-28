@@ -4,7 +4,7 @@ import "react-datepicker/dist/react-datepicker.css";
 import { fetchAppData, AppData, LoanRecord, updateLoanStatus, createNewLoan, editExistingLoan } from './services/dataService';
 import { formatCurrency, formatNumber, parseThaiDate } from './lib/utils';
 import { TrendingUp, TrendingDown, AlertCircle, CalendarClock, Activity, List, X, CheckCircle2, UserX, Wallet, RefreshCcw, LineChart, Bell, BellOff, Home, BarChart2, Languages, Search, Plus } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { ResponsiveContainer, Tooltip as RechartsTooltip, Legend, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, getNotificationPermission, sendTestNotification } from './services/pushService';
 import { t, Lang } from './lib/i18n';
@@ -45,7 +45,6 @@ export default function App() {
   const [insightDate, setInsightDate] = useState<string | null>(null);
   const [showExpandedTrend, setShowExpandedTrend] = useState(false);
   const [showNewLoanModal, setShowNewLoanModal] = useState(false);
-  const [showPortfolioProgressModal, setShowPortfolioProgressModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>('default');
   const [isSubscribed, setIsSubscribed] = useState(false);
@@ -79,6 +78,7 @@ export default function App() {
   const [isEditingLoan, setIsEditingLoan] = useState(false);
   const [editLoanForm, setEditLoanForm] = useState({
     principal: '500',
+    borrowDate: new Date(),
     dueDate: new Date(),
     daysBorrowed: 7,
     interestRate: 35
@@ -91,8 +91,11 @@ export default function App() {
     if (selectedLoan) {
       const parts = selectedLoan.dueDate.split('/');
       const dDate = parts.length === 3 ? new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])) : new Date();
+      const bParts = selectedLoan.borrowDate.split('/');
+      const bDate = bParts.length === 3 ? new Date(parseInt(bParts[2]), parseInt(bParts[1]) - 1, parseInt(bParts[0])) : new Date();
       setEditLoanForm({
         principal: selectedLoan.principal.toString(),
+        borrowDate: bDate,
         dueDate: dDate,
         daysBorrowed: selectedLoan.daysBorrowed || 7,
         interestRate: selectedLoan.interestRate || 20
@@ -131,21 +134,16 @@ export default function App() {
   };
 
   const handleEditDueDateChange = (date: Date | null) => {
-    if (!date || !selectedLoan) return;
-    const parts = selectedLoan.borrowDate.split('/');
-    if (parts.length !== 3) return;
-    const bDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+    if (!date) return;
+    const bDate = editLoanForm.borrowDate;
     const diffTime = date.getTime() - bDate.getTime();
     const days = Math.max(1, Math.ceil(diffTime / 86400000));
     setEditLoanForm(f => ({ ...f, dueDate: date, daysBorrowed: days, interestRate: days * 5 }));
   };
 
   const handleEditDaysChange = (val: number) => {
-    if (!selectedLoan) return;
     const days = Math.max(1, val);
-    const parts = selectedLoan.borrowDate.split('/');
-    if (parts.length !== 3) return;
-    const bDate = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+    const bDate = editLoanForm.borrowDate;
     const dDate = new Date(bDate.getTime() + days * 86400000);
     setEditLoanForm(f => ({ ...f, daysBorrowed: days, dueDate: dDate, interestRate: days * 5 }));
   };
@@ -216,14 +214,8 @@ export default function App() {
     };
   }, [data]);
 
-  const { progressData, progressPct, trendData14, trendData30, labelToFullDate } = useMemo(() => {
-    if (!data) return { progressData: [], progressPct: '0.0', trendData14: [], trendData30: [], labelToFullDate: new Map<string, string>() };
-    const s = data.summary;
-    const progressData = [
-      { name: 'Collected', value: s.totalPaid, color: '#10B981' },
-      { name: 'Remaining', value: s.totalUnpaid, color: '#E2E8F0' }
-    ];
-    const progressPct = s.totalExpected > 0 ? ((s.totalPaid / s.totalExpected) * 100).toFixed(1) : '0.0';
+  const { trendData14, trendData30, labelToFullDate } = useMemo(() => {
+    if (!data) return { trendData14: [], trendData30: [], labelToFullDate: new Map<string, string>() };
 
     const dateMap: Record<string, { expected: number; actual: number }> = {};
     const allDates = new Set<string>();
@@ -243,7 +235,28 @@ export default function App() {
     const labelToFullDate = new Map<string, string>(sortedDates.map(d => [d.substring(0, 5), d]));
     const trendData14 = sortedDates.slice(-14).map(date => ({ date: date.substring(0, 5), Expected: dateMap[date].expected, Received: dateMap[date].actual }));
     const trendData30 = sortedDates.slice(-30).map(date => ({ date: date.substring(0, 5), Expected: dateMap[date].expected, Received: dateMap[date].actual }));
-    return { progressData, progressPct, trendData14, trendData30, labelToFullDate };
+    return { trendData14, trendData30, labelToFullDate };
+  }, [data]);
+
+  const monthlySummary = useMemo(() => {
+    if (!data) return [];
+    const months: Record<string, { principal: number; interest: number; count: number; month: number; year: number }> = {};
+    data.loans.forEach(l => {
+      if ((l.isPaid || l.isRenewed) && l.actualDate) {
+        const parsed = parseThaiDate(l.actualDate);
+        if (!parsed) return;
+        const key = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
+        if (!months[key]) {
+          months[key] = { principal: 0, interest: 0, count: 0, month: parsed.getMonth(), year: parsed.getFullYear() };
+        }
+        months[key].principal += l.paidPrincipal;
+        months[key].interest += l.paidInterest;
+        months[key].count += 1;
+      }
+    });
+    return Object.entries(months)
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([key, val]) => ({ key, ...val }));
   }, [data]);
 
   const loadData = async (quiet = false) => {
@@ -408,6 +421,7 @@ export default function App() {
     try {
       const success = await editExistingLoan(currentLoan.id, {
         principal: parseFloat(editLoanForm.principal),
+        borrowDate: formatToThaiStr(editLoanForm.borrowDate),
         dueDate: formatToThaiStr(editLoanForm.dueDate),
         daysBorrowed: editLoanForm.daysBorrowed,
         interestRate: editLoanForm.interestRate
@@ -424,6 +438,7 @@ export default function App() {
           updatedLoans[loanIndex] = {
             ...updatedLoans[loanIndex],
             principal: parseFloat(editLoanForm.principal),
+            borrowDate: formatToThaiStr(editLoanForm.borrowDate),
             dueDate: formatToThaiStr(editLoanForm.dueDate),
             daysBorrowed: editLoanForm.daysBorrowed,
             interestRate: editLoanForm.interestRate,
@@ -823,51 +838,55 @@ export default function App() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 md:mb-8">
-                <div
-                  className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center cursor-pointer group hover:border-emerald-300 hover:shadow-md transition-all relative overflow-hidden"
-                  onClick={() => setShowPortfolioProgressModal(true)}
-                >
-                  <div className="w-full flex justify-between items-center mb-6">
-                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">{t('portfolioProgress', lang)}</h3>
-                    <span className="text-xs text-emerald-500 bg-emerald-50 px-3 py-1 rounded-full font-bold border border-emerald-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickForInsights', lang)}</span>
-                  </div>
-                  <div className="h-[180px] w-full relative">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={progressData} cx="50%" cy="100%" startAngle={180} endAngle={0} innerRadius={80} outerRadius={110} dataKey="value" stroke="none">
-                          {progressData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                        </Pie>
-                        <RechartsTooltip formatter={(val: number) => [formatCurrency(val), 'Amount']} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="absolute bottom-0 left-0 right-0 text-center flex flex-col items-center justify-end pb-2">
-                      <span className="text-4xl font-black text-slate-800">{progressPct}%</span>
-                      <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">{t('collected', lang)}</span>
-                    </div>
-                  </div>
+              <div
+                className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col cursor-pointer group hover:border-indigo-300 hover:shadow-md transition-all mb-4"
+                onClick={() => setShowExpandedTrend(true)}
+              >
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">{t('cashflowTrend', lang)}</h3>
+                  <span className="text-xs text-indigo-500 bg-indigo-50 px-3 py-1 rounded-full font-bold border border-indigo-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickToExpand', lang)}</span>
                 </div>
+                <div className="h-[160px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={trendData14}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94A3B8' }} />
+                      <YAxis axisLine={false} tickLine={false} hide />
+                      <Bar dataKey="Expected" barSize={12} fill="#CBD5E1" radius={[4, 4, 0, 0]} />
+                      <Line type="monotone" dataKey="Received" stroke="#10B981" strokeWidth={3} dot={false} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
 
-                <div
-                  className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col cursor-pointer group hover:border-indigo-300 hover:shadow-md transition-all"
-                  onClick={() => setShowExpandedTrend(true)}
-                >
-                  <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">{t('cashflowTrend', lang)}</h3>
-                    <span className="text-xs text-indigo-500 bg-indigo-50 px-3 py-1 rounded-full font-bold border border-indigo-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickToExpand', lang)}</span>
-                  </div>
-                  <div className="h-[180px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={trendData14}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                        <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94A3B8' }} />
-                        <YAxis axisLine={false} tickLine={false} hide />
-                        <Bar dataKey="Expected" barSize={12} fill="#CBD5E1" radius={[4, 4, 0, 0]} />
-                        <Line type="monotone" dataKey="Received" stroke="#10B981" strokeWidth={3} dot={false} />
-                      </ComposedChart>
-                    </ResponsiveContainer>
-                  </div>
+              {/* Monthly Summary */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4">
+                <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 bg-amber-500 rounded-full"></div>
+                  {lang === 'th' ? 'สรุปรายเดือน' : 'Monthly Summary'}
                 </div>
+                {monthlySummary.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-slate-400">{lang === 'th' ? 'ยังไม่มีข้อมูล' : 'No data yet'}</div>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {monthlySummary.map(m => {
+                      const d = new Date(m.year, m.month, 1);
+                      const label = d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { month: 'short', year: 'numeric' });
+                      return (
+                        <div key={m.key} className="px-4 py-3 flex items-center justify-between">
+                          <div>
+                            <div className="font-bold text-slate-800 text-sm">{label}</div>
+                            <div className="text-[10px] text-slate-400">{m.count} {lang === 'th' ? 'รายการ' : 'records'}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-black text-emerald-700 text-sm">{formatCurrency(m.interest)}</div>
+                            <div className="text-[10px] text-slate-500">{lang === 'th' ? 'ต้น' : 'principal'} {formatCurrency(m.principal)}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="space-y-4">
@@ -927,6 +946,75 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+
+                {/* Portfolio Analysis */}
+                {(() => {
+                  const principalRecovery = s.totalBorrowed > 0 ? (s.paidPrincipal / s.totalBorrowed) * 100 : 0;
+                  const interestCollection = s.totalInterest > 0 ? (s.paidInterest / s.totalInterest) * 100 : 0;
+                  const nplRate = s.totalBorrowed > 0 ? (s.scamPrincipal / s.totalBorrowed) * 100 : 0;
+                  const realizedYield = s.paidPrincipal > 0 ? (s.paidInterest / s.paidPrincipal) * 100 : 0;
+                  const overdueCapital = data.loans.filter(l => l.isOverdue && !l.isPaid && !l.isScam).reduce((sum, l) => sum + l.principal, 0);
+                  const activeCount = data.loans.filter(l => !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn).length;
+                  const overdueCount = data.loans.filter(l => l.isOverdue && !l.isPaid && !l.isScam).length;
+
+                  let healthMsg = '';
+                  let healthColor = '';
+                  if (nplRate === 0 && overdueCount === 0) {
+                    healthMsg = lang === 'th' ? '✅ พอร์ตสุขภาพดีมาก ไม่มีหนี้เสียและค้างชำระ' : '✅ Excellent portfolio health — no defaults or overdue.';
+                    healthColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                  } else if (nplRate > 20 || overdueCount > activeCount * 0.5) {
+                    healthMsg = lang === 'th' ? '⚠️ ความเสี่ยงสูง ควรติดตามลูกหนี้ที่ค้างชำระอย่างเร่งด่วน' : '⚠️ High risk — follow up on overdue accounts urgently.';
+                    healthColor = 'bg-rose-50 text-rose-700 border-rose-200';
+                  } else if (nplRate > 10 || overdueCount > 0) {
+                    healthMsg = lang === 'th' ? `🔶 ควรติดตาม ${overdueCount} รายการที่ค้างชำระ NPL ${nplRate.toFixed(1)}%` : `🔶 Monitor ${overdueCount} overdue accounts. NPL ${nplRate.toFixed(1)}%`;
+                    healthColor = 'bg-amber-50 text-amber-700 border-amber-200';
+                  } else {
+                    healthMsg = lang === 'th' ? `✅ พอร์ตอยู่ในเกณฑ์ดี อัตราเรียกคืน ${principalRecovery.toFixed(0)}%` : `✅ Portfolio in good shape. Recovery rate ${principalRecovery.toFixed(0)}%`;
+                    healthColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                  }
+
+                  return (
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                      <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 bg-violet-500 rounded-full" />
+                        {lang === 'th' ? 'การวิเคราะห์พอร์ต' : 'Portfolio Analysis'}
+                      </div>
+                      <div className="p-4 space-y-4">
+                        <div className="space-y-3">
+                          {[
+                            { label: lang === 'th' ? 'เรียกคืนต้นทุน' : 'Principal Recovery', value: principalRecovery, color: 'bg-emerald-500', textColor: 'text-emerald-700' },
+                            { label: lang === 'th' ? 'เก็บดอกเบี้ย' : 'Interest Collected', value: interestCollection, color: 'bg-indigo-500', textColor: 'text-indigo-700' },
+                            { label: lang === 'th' ? 'หนี้เสีย (NPL)' : 'NPL Rate', value: nplRate, color: nplRate > 20 ? 'bg-rose-500' : nplRate > 10 ? 'bg-amber-500' : 'bg-emerald-500', textColor: nplRate > 20 ? 'text-rose-700' : nplRate > 10 ? 'text-amber-700' : 'text-emerald-700' },
+                          ].map(item => (
+                            <div key={item.label}>
+                              <div className="flex justify-between items-center mb-1.5">
+                                <span className="text-xs font-bold text-slate-600">{item.label}</span>
+                                <span className={`text-xs font-black ${item.textColor}`}>{item.value.toFixed(1)}%</span>
+                              </div>
+                              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full transition-all duration-700 ${item.color}`} style={{ width: `${Math.min(100, item.value)}%` }} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <div className="bg-violet-50 rounded-xl p-3 border border-violet-100">
+                            <div className="text-lg font-black text-violet-700">{realizedYield.toFixed(1)}%</div>
+                            <div className="text-[10px] font-bold text-violet-500 uppercase tracking-wide mt-0.5">{lang === 'th' ? 'ผลตอบแทนจริง' : 'Realized Yield'}</div>
+                          </div>
+                          <div className={`rounded-xl p-3 border ${overdueCapital > 0 ? 'bg-rose-50 border-rose-100' : 'bg-emerald-50 border-emerald-100'}`}>
+                            <div className={`text-lg font-black ${overdueCapital > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>{formatCurrency(overdueCapital)}</div>
+                            <div className={`text-[10px] font-bold uppercase tracking-wide mt-0.5 ${overdueCapital > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                              {lang === 'th' ? 'ต้นที่ค้างชำระ' : 'Overdue Capital'}
+                            </div>
+                            <div className={`text-[10px] mt-0.5 ${overdueCapital > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>{overdueCount} / {activeCount} {lang === 'th' ? 'รายการ' : 'accounts'}</div>
+                          </div>
+                        </div>
+                        <div className={`rounded-xl p-3 border text-xs font-semibold leading-relaxed ${healthColor}`}>{healthMsg}</div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </motion.div>
           )}
@@ -1141,21 +1229,12 @@ export default function App() {
           >
             <motion.div
               className="bg-white w-full md:rounded-2xl md:max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh] rounded-t-3xl"
-              drag="y"
-              dragConstraints={{ top: 0, bottom: 0 }}
-              dragElastic={{ top: 0, bottom: 0.5 }}
-              onDragEnd={(e, info) => {
-                if (info.offset.y > 100) setSelectedLoan(null);
-              }}
               initial={{ translateY: '100%' }}
               animate={{ translateY: 0 }}
               exit={{ translateY: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
               onClick={e => e.stopPropagation()}
             >
-              <div className="flex justify-center pt-3 pb-1 md:hidden cursor-grab active:cursor-grabbing">
-                <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
-              </div>
 
               <div className={`flex justify-between items-start px-5 py-4 border-b border-slate-100 ${
                 selectedLoan.isScam ? 'bg-gradient-to-r from-rose-50 to-white'
@@ -1213,8 +1292,17 @@ export default function App() {
                             type="number"
                             value={editLoanForm.principal}
                             onChange={e => setEditLoanForm({ ...editLoanForm, principal: e.target.value })}
-                            className="w-full border border-slate-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full border border-slate-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-1.5"
                           />
+                          <div className="flex flex-wrap gap-1">
+                            {[10, 50, 100, 500, 1000].map(amt => (
+                              <button key={amt} type="button"
+                                onClick={() => setEditLoanForm(f => ({ ...f, principal: String(Math.max(0, parseFloat(f.principal || '0') + amt)) }))}
+                                className="px-2 py-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded border border-indigo-100 transition-colors">
+                                +{amt}
+                              </button>
+                            ))}
+                          </div>
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-500 mb-1">{t('interestRateLabel', lang)}</label>
@@ -1310,8 +1398,26 @@ export default function App() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                      <div className="text-xs text-slate-500 mb-1">{t('issueDate', lang)}</div>
-                      <div className="font-semibold text-slate-800">{selectedLoan.borrowDate}</div>
+                      {isEditingLoan ? (
+                        <>
+                          <div className="text-xs font-bold text-slate-500 mb-1">{t('issueDate', lang)}</div>
+                          <DatePicker
+                            selected={editLoanForm.borrowDate}
+                            onChange={(date: Date | null) => {
+                              if (!date) return;
+                              const dDate = new Date(date.getTime() + editLoanForm.daysBorrowed * 86400000);
+                              setEditLoanForm(f => ({ ...f, borrowDate: date, dueDate: dDate }));
+                            }}
+                            dateFormat="dd/MM/yyyy"
+                            className="w-full border border-slate-300 rounded p-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-xs text-slate-500 mb-1">{t('issueDate', lang)}</div>
+                          <div className="font-semibold text-slate-800">{selectedLoan.borrowDate}</div>
+                        </>
+                      )}
                     </div>
                     <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
                       {isEditingLoan ? (
@@ -1502,163 +1608,6 @@ export default function App() {
         </div>
       )}
 
-      {showPortfolioProgressModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowPortfolioProgressModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden animate-[slideIn_0.2s_ease-out] flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-emerald-50/30">
-              <div>
-                <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                  <Activity className="w-6 h-6 text-emerald-600" />
-                  {t('portfolioInsights', lang)}
-                </h2>
-              </div>
-              <button onClick={() => setShowPortfolioProgressModal(false)} className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-200 transition-colors">
-                <X size={24} />
-              </button>
-            </div>
-            <div className="p-5 overflow-y-auto bg-slate-50 space-y-4">
-              {/* Principal Breakdown */}
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full" />
-                  {t('principalBreakdown', lang)}
-                </div>
-                <div className="p-4 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-slate-600">{t('principalLentOut', lang)}</span>
-                    <span className="text-sm font-black text-slate-800">{formatCurrency(s.totalBorrowed)}</span>
-                  </div>
-                  <div className="flex justify-between items-center pl-3 border-l-2 border-emerald-400">
-                    <span className="text-xs font-bold text-emerald-600">{t('principalCollected', lang)}</span>
-                    <span className="text-sm font-black text-emerald-700">{formatCurrency(s.paidPrincipal)}</span>
-                  </div>
-                  <div className="flex justify-between items-center pl-3 border-l-2 border-amber-400">
-                    <span className="text-xs font-bold text-amber-600">{t('principalRemaining', lang)}</span>
-                    <span className="text-sm font-black text-amber-700">{formatCurrency(s.unpaidPrincipal)}</span>
-                  </div>
-                  <div className="flex justify-between items-center pl-3 border-l-2 border-rose-400">
-                    <span className="text-xs font-bold text-rose-600">{t('principalLost', lang)}</span>
-                    <span className="text-sm font-black text-rose-700">{formatCurrency(s.scamPrincipal)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Interest Breakdown */}
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                  {t('interestBreakdown', lang)}
-                </div>
-                <div className="p-4 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold text-slate-600">{t('interestExpected', lang)}</span>
-                    <span className="text-sm font-black text-slate-800">{formatCurrency(s.totalInterest)}</span>
-                  </div>
-                  <div className="flex justify-between items-center pl-3 border-l-2 border-emerald-400">
-                    <span className="text-xs font-bold text-emerald-600">{t('interestCollected', lang)}</span>
-                    <span className="text-sm font-black text-emerald-700">{formatCurrency(s.paidInterest)}</span>
-                  </div>
-                  <div className="flex justify-between items-center pl-3 border-l-2 border-amber-400">
-                    <span className="text-xs font-bold text-amber-600">{t('interestRemaining', lang)}</span>
-                    <span className="text-sm font-black text-amber-700">{formatCurrency(s.unpaidInterest)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Portfolio Analysis */}
-              {(() => {
-                const principalRecovery = s.totalBorrowed > 0 ? (s.paidPrincipal / s.totalBorrowed) * 100 : 0;
-                const interestCollection = s.totalInterest > 0 ? (s.paidInterest / s.totalInterest) * 100 : 0;
-                const nplRate = s.totalBorrowed > 0 ? (s.scamPrincipal / s.totalBorrowed) * 100 : 0;
-                const realizedYield = s.paidPrincipal > 0 ? (s.paidInterest / s.paidPrincipal) * 100 : 0;
-                const overdueCapital = data.loans
-                  .filter(l => l.isOverdue && !l.isPaid && !l.isScam)
-                  .reduce((sum, l) => sum + l.principal, 0);
-                const activeCount = data.loans.filter(l => !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn).length;
-                const overdueCount = data.loans.filter(l => l.isOverdue && !l.isPaid && !l.isScam).length;
-
-                return (
-                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                      <div className="w-1.5 h-1.5 bg-violet-500 rounded-full" />
-                      {lang === 'th' ? 'การวิเคราะห์พอร์ต' : 'Portfolio Analysis'}
-                    </div>
-                    <div className="p-4 space-y-4">
-                      {/* Progress Bars */}
-                      <div className="space-y-3">
-                        {[
-                          { label: lang === 'th' ? 'เรียกคืนต้นทุน' : 'Principal Recovery', value: principalRecovery, color: 'bg-emerald-500', textColor: 'text-emerald-700' },
-                          { label: lang === 'th' ? 'เก็บดอกเบี้ย' : 'Interest Collected', value: interestCollection, color: 'bg-indigo-500', textColor: 'text-indigo-700' },
-                          { label: lang === 'th' ? 'หนี้เสีย (NPL)' : 'NPL Rate', value: nplRate, color: nplRate > 20 ? 'bg-rose-500' : nplRate > 10 ? 'bg-amber-500' : 'bg-emerald-500', textColor: nplRate > 20 ? 'text-rose-700' : nplRate > 10 ? 'text-amber-700' : 'text-emerald-700' },
-                        ].map(item => (
-                          <div key={item.label}>
-                            <div className="flex justify-between items-center mb-1.5">
-                              <span className="text-xs font-bold text-slate-600">{item.label}</span>
-                              <span className={`text-xs font-black ${item.textColor}`}>{item.value.toFixed(1)}%</span>
-                            </div>
-                            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                              <div className={`h-full rounded-full transition-all duration-700 ${item.color}`} style={{ width: `${Math.min(100, item.value)}%` }} />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Key Metric Cards */}
-                      <div className="grid grid-cols-2 gap-2 pt-1">
-                        <div className="bg-violet-50 rounded-xl p-3 border border-violet-100">
-                          <div className="text-lg font-black text-violet-700">{realizedYield.toFixed(1)}%</div>
-                          <div className="text-[10px] font-bold text-violet-500 uppercase tracking-wide mt-0.5">
-                            {lang === 'th' ? 'ผลตอบแทนจริง' : 'Realized Yield'}
-                          </div>
-                          <div className="text-[10px] text-violet-400 mt-0.5">
-                            {lang === 'th' ? `ดอก/ต้นที่เก็บแล้ว` : 'Interest / Paid Principal'}
-                          </div>
-                        </div>
-                        <div className={`rounded-xl p-3 border ${overdueCapital > 0 ? 'bg-rose-50 border-rose-100' : 'bg-emerald-50 border-emerald-100'}`}>
-                          <div className={`text-lg font-black ${overdueCapital > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-                            {formatCurrency(overdueCapital)}
-                          </div>
-                          <div className={`text-[10px] font-bold uppercase tracking-wide mt-0.5 ${overdueCapital > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                            {lang === 'th' ? 'ต้นที่ค้างชำระ' : 'Overdue Capital'}
-                          </div>
-                          <div className={`text-[10px] mt-0.5 ${overdueCapital > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                            {overdueCount} / {activeCount} {lang === 'th' ? 'รายการ' : 'accounts'}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Health Comment */}
-                      {(() => {
-                        let msg = '';
-                        let color = '';
-                        if (nplRate === 0 && overdueCount === 0) {
-                          msg = lang === 'th' ? '✅ พอร์ตสุขภาพดีมาก ไม่มีหนี้เสียและค้างชำระ' : '✅ Excellent portfolio health — no defaults or overdue.';
-                          color = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                        } else if (nplRate > 20 || overdueCount > activeCount * 0.5) {
-                          msg = lang === 'th' ? '⚠️ ความเสี่ยงสูง ควรติดตามลูกหนี้ที่ค้างชำระอย่างเร่งด่วน' : '⚠️ High risk — follow up on overdue accounts urgently.';
-                          color = 'bg-rose-50 text-rose-700 border-rose-200';
-                        } else if (nplRate > 10 || overdueCount > 0) {
-                          msg = lang === 'th' ? `🔶 ควรติดตาม ${overdueCount} รายการที่ค้างชำระ NPL ${nplRate.toFixed(1)}%` : `🔶 Monitor ${overdueCount} overdue accounts. NPL ${nplRate.toFixed(1)}%`;
-                          color = 'bg-amber-50 text-amber-700 border-amber-200';
-                        } else {
-                          msg = lang === 'th' ? `✅ พอร์ตอยู่ในเกณฑ์ดี อัตราเรียกคืน ${principalRecovery.toFixed(0)}%` : `✅ Portfolio in good shape. Recovery rate ${principalRecovery.toFixed(0)}%`;
-                          color = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                        }
-                        return (
-                          <div className={`rounded-xl p-3 border text-xs font-semibold leading-relaxed ${color}`}>
-                            {msg}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Withdraw Modal — slide-up sheet on mobile */}
       {showWithdrawModal && (
         <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowWithdrawModal(false)}>
@@ -1687,13 +1636,13 @@ export default function App() {
                   placeholder="ระบุจำนวนเงิน"
                 />
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {[500, 1000, 1500, 2000, 2500, 3000].map(amt => (
+                  {[10, 50, 100, 500, 1000].map(amt => (
                     <button
                       key={amt} type="button"
-                      onClick={() => setWithdrawForm({ ...withdrawForm, principal: amt.toString() })}
+                      onClick={() => setWithdrawForm(f => ({ ...f, principal: String(Math.max(0, parseFloat(f.principal || '0') + amt)) }))}
                       className="px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors border border-rose-100"
                     >
-                      {formatNumber(amt)}
+                      +{formatNumber(amt)}
                     </button>
                   ))}
                 </div>
@@ -1771,13 +1720,13 @@ export default function App() {
                   placeholder="฿"
                 />
                 <div className="flex flex-wrap gap-2">
-                  {[500, 1000, 1500, 2000, 2500, 3000].map(amt => (
+                  {[10, 50, 100, 500, 1000].map(amt => (
                     <button
                       key={amt} type="button"
-                      onClick={() => setNewLoanForm({ ...newLoanForm, principal: amt.toString() })}
+                      onClick={() => setNewLoanForm(f => ({ ...f, principal: String(Math.max(0, parseFloat(f.principal || '0') + amt)) }))}
                       className="px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-100"
                     >
-                      {formatNumber(amt)}
+                      +{formatNumber(amt)}
                     </button>
                   ))}
                 </div>
@@ -1807,14 +1756,27 @@ export default function App() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('daysBorrowed', lang)}</label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    value={newLoanForm.daysBorrowed}
-                    onChange={e => handleDaysChange(Number(e.target.value))}
-                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleDaysChange(newLoanForm.daysBorrowed - 1)}
+                      disabled={newLoanForm.daysBorrowed <= 1}
+                      className="w-9 h-10 rounded-lg border border-slate-200 flex items-center justify-center text-slate-600 font-bold text-lg disabled:opacity-30 disabled:cursor-not-allowed bg-white hover:bg-slate-50 transition-colors flex-shrink-0"
+                    >−</button>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      value={newLoanForm.daysBorrowed}
+                      onChange={e => handleDaysChange(Number(e.target.value))}
+                      className="flex-1 border border-slate-200 rounded-lg p-3 text-slate-800 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-0"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleDaysChange(newLoanForm.daysBorrowed + 1)}
+                      className="w-9 h-10 rounded-lg border border-slate-200 flex items-center justify-center text-slate-600 font-bold text-lg bg-white hover:bg-slate-50 transition-colors flex-shrink-0"
+                    >+</button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('interestRateLabel', lang)}</label>
