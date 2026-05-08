@@ -3,6 +3,9 @@ import { parseNumeric, parseThaiDate } from '../lib/utils';
 
 export const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRYsFTD4K-tyIFIJry2YLJtnv6gUxZy9VZCvRZcOeGrD9X7inE8udy-cJU_ajJEWcouDSswJZYdAjE8/pub?gid=164801172&single=true&output=csv';
 
+// เงินต้นเริ่มต้นที่ลงทุน — แก้ตรงนี้เมื่อเพิ่มทุน
+export const INITIAL_CAPITAL = 20000;
+
 export interface DashboardSummary {
   available: number;       // ยอดว่าง
   totalLimit: number;      // วงเงินปัจจุบัน
@@ -187,8 +190,10 @@ export async function fetchAppData(): Promise<AppData | null> {
             const grossProfit = paidInterest;
             const netProfit = paidInterest - scamPrincipal;
             const profitPct = paidPrincipal > 0 ? (paidInterest / paidPrincipal) * 100 : 0;
-            const available = Math.max(0, paidPrincipal - withdrawnTotal);
-            const totalLimit = available + unpaidPrincipal;
+            // วงเงิน = เงินต้นเริ่มต้น + ดอกที่ได้รับ − โดนบิด − เบิก
+            const totalLimit = INITIAL_CAPITAL + paidInterest - scamPrincipal - withdrawnTotal;
+            // ยอดว่าง = วงเงิน − ปล่อยกู้อยู่
+            const available = Math.max(0, totalLimit - unpaidPrincipal);
 
             const summary: DashboardSummary = {
               available,
