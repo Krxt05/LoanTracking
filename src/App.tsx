@@ -60,6 +60,8 @@ export default function App() {
   const [showFabMenu, setShowFabMenu] = useState(false);
   const [showConfirmDefault, setShowConfirmDefault] = useState(false);
   const [showProfitModal, setShowProfitModal] = useState(false);
+  const [hasPenalty, setHasPenalty] = useState(false);
+  const [penaltyAmount, setPenaltyAmount] = useState(200);
   const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'loans' | 'analytics'>('dashboard');
   const [isDesktop, setIsDesktop] = useState(true);
 
@@ -93,7 +95,9 @@ export default function App() {
   useEffect(() => {
     setIsEditingLoan(false);
     setActionDate(new Date());
+    setHasPenalty(false);
     if (selectedLoan) {
+      setPenaltyAmount(selectedLoan.daysLate > 0 ? selectedLoan.daysLate * 200 : 200);
       const parts = selectedLoan.dueDate.split('/');
       const dDate = parts.length === 3 ? new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])) : new Date();
       const bParts = selectedLoan.borrowDate.split('/');
@@ -420,7 +424,7 @@ export default function App() {
       setData({ ...data, loans: updatedLoans });
     }
 
-    const success = await updateLoanStatus(currentLoan.id, action, formattedActionDate);
+    const success = await updateLoanStatus(currentLoan.id, action, formattedActionDate, hasPenalty ? penaltyAmount : 0);
 
     if (!success) {
       showToast(t('sheetsUpdateFailed', lang), 'error');
@@ -1499,6 +1503,30 @@ export default function App() {
                         dateFormat="dd/MM/yyyy"
                         className="border border-slate-200 rounded-xl p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer bg-slate-50 w-32 font-medium"
                       />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs font-bold text-slate-500 whitespace-nowrap">{lang === 'th' ? 'ค่าปรับ' : 'Penalty'}</label>
+                      <div className="flex rounded-xl overflow-hidden border border-slate-200 text-xs font-bold">
+                        <button
+                          onClick={() => setHasPenalty(false)}
+                          className={`px-3 py-1.5 transition-colors ${!hasPenalty ? 'bg-slate-700 text-white' : 'bg-white text-slate-400 hover:bg-slate-50'}`}
+                        >{lang === 'th' ? 'ไม่มี' : 'None'}</button>
+                        <button
+                          onClick={() => setHasPenalty(true)}
+                          className={`px-3 py-1.5 transition-colors ${hasPenalty ? 'bg-amber-500 text-white' : 'bg-white text-slate-400 hover:bg-slate-50'}`}
+                        >{lang === 'th' ? 'มี' : 'Yes'}</button>
+                      </div>
+                      {hasPenalty && (
+                        <div className="flex items-center gap-1 flex-1">
+                          <input
+                            type="number"
+                            value={penaltyAmount}
+                            onChange={e => setPenaltyAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                            className="border border-amber-300 rounded-xl px-3 py-1.5 text-sm w-24 text-center font-black text-amber-700 bg-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                          />
+                          <span className="text-xs font-bold text-amber-600">฿</span>
+                        </div>
+                      )}
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       <button
