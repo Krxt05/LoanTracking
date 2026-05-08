@@ -1504,27 +1504,41 @@ export default function App() {
                         className="border border-slate-200 rounded-xl p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer bg-slate-50 w-32 font-medium"
                       />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs font-bold text-slate-500 whitespace-nowrap">{lang === 'th' ? 'ค่าปรับ' : 'Penalty'}</label>
-                      <div className="flex rounded-xl overflow-hidden border border-slate-200 text-xs font-bold">
-                        <button
-                          onClick={() => setHasPenalty(false)}
-                          className={`px-3 py-1.5 transition-colors ${!hasPenalty ? 'bg-slate-700 text-white' : 'bg-white text-slate-400 hover:bg-slate-50'}`}
-                        >{lang === 'th' ? 'ไม่มี' : 'None'}</button>
-                        <button
-                          onClick={() => setHasPenalty(true)}
-                          className={`px-3 py-1.5 transition-colors ${hasPenalty ? 'bg-amber-500 text-white' : 'bg-white text-slate-400 hover:bg-slate-50'}`}
-                        >{lang === 'th' ? 'มี' : 'Yes'}</button>
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs font-bold text-slate-500 whitespace-nowrap">{lang === 'th' ? 'ค่าปรับ' : 'Penalty'}</label>
+                        <div className="flex rounded-xl overflow-hidden border border-slate-200 text-xs font-bold">
+                          <button
+                            onClick={() => setHasPenalty(false)}
+                            className={`px-3 py-1.5 transition-colors ${!hasPenalty ? 'bg-slate-700 text-white' : 'bg-white text-slate-400 hover:bg-slate-50'}`}
+                          >{lang === 'th' ? 'ไม่มี' : 'None'}</button>
+                          <button
+                            onClick={() => {
+                              const days = selectedLoan?.daysLate ?? 0;
+                              setPenaltyAmount(Math.max(1, days) * 200);
+                              setHasPenalty(true);
+                            }}
+                            className={`px-3 py-1.5 transition-colors ${hasPenalty ? 'bg-amber-500 text-white' : 'bg-white text-slate-400 hover:bg-slate-50'}`}
+                          >{lang === 'th' ? 'มี' : 'Yes'}</button>
+                        </div>
+                        {hasPenalty && (
+                          <div className="flex items-center gap-1 flex-1">
+                            <input
+                              type="number"
+                              value={penaltyAmount}
+                              onChange={e => setPenaltyAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                              className="border border-amber-300 rounded-xl px-3 py-1.5 text-sm w-24 text-center font-black text-amber-700 bg-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            />
+                            <span className="text-xs font-bold text-amber-600">฿</span>
+                          </div>
+                        )}
                       </div>
-                      {hasPenalty && (
-                        <div className="flex items-center gap-1 flex-1">
-                          <input
-                            type="number"
-                            value={penaltyAmount}
-                            onChange={e => setPenaltyAmount(Math.max(0, parseInt(e.target.value) || 0))}
-                            className="border border-amber-300 rounded-xl px-3 py-1.5 text-sm w-24 text-center font-black text-amber-700 bg-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                          />
-                          <span className="text-xs font-bold text-amber-600">฿</span>
+                      {hasPenalty && selectedLoan && (
+                        <div className="text-[10px] text-amber-500 font-semibold pl-1">
+                          {Math.max(1, selectedLoan.daysLate)} {lang === 'th' ? 'วัน' : 'd'} × ฿200 = ฿{Math.max(1, selectedLoan.daysLate) * 200}
+                          {penaltyAmount !== Math.max(1, selectedLoan.daysLate) * 200 && (
+                            <span className="ml-1 text-slate-400">{lang === 'th' ? '(แก้ไขแล้ว)' : '(edited)'}</span>
+                          )}
                         </div>
                       )}
                     </div>
