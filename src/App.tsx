@@ -278,23 +278,6 @@ export default function App() {
       .map(([key, val]) => ({ key, ...val }));
   }, [data]);
 
-  const forecastData = useMemo(() => {
-    if (!data) return [];
-    const map: Record<string, { date: Date; expectedInterest: number; totalExpected: number; count: number; isOverdue: boolean }> = {};
-    data.loans.forEach(l => {
-      if (l.isPaid || l.isScam || l.isRenewed || l.isWithdrawn) return;
-      const parsed = parseThaiDate(l.dueDate);
-      if (!parsed) return;
-      if (!map[l.dueDate]) map[l.dueDate] = { date: parsed, expectedInterest: 0, totalExpected: 0, count: 0, isOverdue: parsed < today };
-      map[l.dueDate].expectedInterest += l.expectedInterest;
-      map[l.dueDate].totalExpected += l.totalExpected;
-      map[l.dueDate].count += 1;
-    });
-    return Object.entries(map)
-      .sort(([, a], [, b]) => a.date.getTime() - b.date.getTime())
-      .map(([key, val]) => ({ key, ...val }));
-  }, [data, today]);
-
   const loadData = async (quiet = false) => {
     if (!quiet) setIsSyncing(true);
     try {
@@ -941,77 +924,6 @@ export default function App() {
                   </div>
                 )}
               </div>
-
-              {/* Forecast Section */}
-              {forecastData.length > 0 && (() => {
-                const totalForecastInterest = forecastData.reduce((s, f) => s + f.expectedInterest, 0);
-                const totalForecastReturn = forecastData.reduce((s, f) => s + f.totalExpected, 0);
-                const overdue = forecastData.filter(f => f.isOverdue);
-                const upcoming = forecastData.filter(f => !f.isOverdue);
-                return (
-                  <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4">
-                    <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                        <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>
-                        {lang === 'th' ? 'คาดการณ์รายรับ' : 'Income Forecast'}
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs font-black text-indigo-700">+{formatCurrency(totalForecastInterest)}</div>
-                        <div className="text-[10px] text-slate-400">{lang === 'th' ? 'คืน' : 'return'} {formatCurrency(totalForecastReturn)}</div>
-                      </div>
-                    </div>
-
-                    {overdue.length > 0 && (
-                      <div>
-                        <div className="px-4 py-1.5 bg-rose-50 border-b border-rose-100 text-[9px] font-black text-rose-500 uppercase tracking-widest">
-                          {lang === 'th' ? `เกินกำหนด (${overdue.length} วัน)` : `Overdue (${overdue.length})`}
-                        </div>
-                        {overdue.map(f => {
-                          const daysLate = Math.ceil((today.getTime() - f.date.getTime()) / 86400000);
-                          return (
-                            <div key={f.key} className="px-4 py-2.5 flex items-center justify-between border-b border-slate-50 bg-rose-50/40">
-                              <div>
-                                <div className="text-xs font-bold text-rose-700">{f.key}</div>
-                                <div className="text-[10px] text-rose-400">{f.count} {lang === 'th' ? 'ราย' : 'loans'} · {lang === 'th' ? `เกิน ${daysLate} วัน` : `${daysLate}d late`}</div>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-xs font-black text-rose-700">+{formatCurrency(f.expectedInterest)}</div>
-                                <div className="text-[10px] text-slate-400">{lang === 'th' ? 'คืนรวม' : 'total'} {formatCurrency(f.totalExpected)}</div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {upcoming.length > 0 && (
-                      <div>
-                        <div className="px-4 py-1.5 bg-slate-50 border-b border-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                          {lang === 'th' ? `กำหนดครบ (${upcoming.length} รายการ)` : `Upcoming (${upcoming.length})`}
-                        </div>
-                        {upcoming.map((f, i) => {
-                          const daysLeft = Math.ceil((f.date.getTime() - today.getTime()) / 86400000);
-                          const isThisWeek = daysLeft <= 7;
-                          return (
-                            <div key={f.key} className={`px-4 py-2.5 flex items-center justify-between ${i < upcoming.length - 1 ? 'border-b border-slate-50' : ''} ${isThisWeek ? 'bg-indigo-50/30' : ''}`}>
-                              <div>
-                                <div className={`text-xs font-bold ${isThisWeek ? 'text-indigo-700' : 'text-slate-700'}`}>{f.key}</div>
-                                <div className={`text-[10px] ${isThisWeek ? 'text-indigo-400' : 'text-slate-400'}`}>
-                                  {f.count} {lang === 'th' ? 'ราย' : 'loans'} · {daysLeft === 0 ? (lang === 'th' ? 'วันนี้' : 'today') : lang === 'th' ? `อีก ${daysLeft} วัน` : `in ${daysLeft}d`}
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className={`text-xs font-black ${isThisWeek ? 'text-indigo-700' : 'text-emerald-700'}`}>+{formatCurrency(f.expectedInterest)}</div>
-                                <div className="text-[10px] text-slate-400">{lang === 'th' ? 'คืนรวม' : 'total'} {formatCurrency(f.totalExpected)}</div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
 
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
