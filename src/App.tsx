@@ -17,11 +17,15 @@ interface MetricCardProps {
   subColor?: string;
   icon: React.ElementType;
   iconBg: string;
+  onClick?: () => void;
 }
 
-function MetricCard({ label, value, sub, subColor = 'emerald', icon: Icon, iconBg }: MetricCardProps) {
+function MetricCard({ label, value, sub, subColor = 'emerald', icon: Icon, iconBg, onClick }: MetricCardProps) {
   return (
-    <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm card-lift overflow-hidden relative">
+    <div
+      className={`bg-white p-4 rounded-2xl border border-slate-100 shadow-sm card-lift overflow-hidden relative ${onClick ? 'cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all active:scale-95' : ''}`}
+      onClick={onClick}
+    >
       <div className="flex justify-between items-start mb-3">
         <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider leading-tight">{label}</div>
         <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
@@ -55,6 +59,7 @@ export default function App() {
   const [sortBy, setSortBy] = useState<'default' | 'amount-desc' | 'amount-asc' | 'overdue' | 'name'>('default');
   const [showFabMenu, setShowFabMenu] = useState(false);
   const [showConfirmDefault, setShowConfirmDefault] = useState(false);
+  const [showProfitModal, setShowProfitModal] = useState(false);
   const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'loans' | 'analytics'>('dashboard');
   const [isDesktop, setIsDesktop] = useState(true);
 
@@ -619,10 +624,11 @@ export default function App() {
       <MetricCard
         label={t('netProfit', lang)}
         value={formatCurrency(s.netProfit)}
-        sub={<><TrendingUp className="w-3 h-3" /> {s.profitPct}% {t('margin', lang)}</>}
-        subColor="emerald"
+        sub={<><TrendingUp className="w-3 h-3" /> {s.profitPct.toFixed(1)}% {t('margin', lang)}</>}
+        subColor={s.netProfit >= 0 ? 'emerald' : 'rose'}
         icon={LineChart}
         iconBg="bg-indigo-100 text-indigo-600"
+        onClick={() => setShowProfitModal(true)}
       />
       <MetricCard
         label={t('nplRatio', lang)}
@@ -2036,6 +2042,64 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Profit Detail Modal */}
+      {showProfitModal && data && (() => {
+        const totalFutureProfit = s.paidInterest + s.unpaidInterest - s.scamPrincipal - s.withdrawn;
+        const rows = [
+          { label: lang === 'th' ? 'ดอกที่ได้รับแล้ว' : 'Interest Received', value: s.paidInterest, color: 'emerald', sign: '+' },
+          { label: lang === 'th' ? 'หักโดนบิด' : 'Deduct Defaults', value: -s.scamPrincipal, color: 'rose', sign: '-' },
+          { label: lang === 'th' ? 'หักเบิก' : 'Deduct Withdrawals', value: -s.withdrawn, color: 'amber', sign: '-' },
+        ];
+        return (
+          <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowProfitModal(false)}>
+            <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+              <div className="p-5 border-b border-slate-100 flex justify-between items-center">
+                <div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'th' ? 'รายละเอียดกำไร' : 'Profit Breakdown'}</div>
+                  <div className={`text-2xl font-black mt-0.5 ${s.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{formatCurrency(s.netProfit)}</div>
+                </div>
+                <button onClick={() => setShowProfitModal(false)} className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100"><X size={20} /></button>
+              </div>
+              <div className="p-5 space-y-3">
+                {rows.map(r => (
+                  <div key={r.label} className={`flex items-center justify-between px-3 py-2.5 rounded-xl bg-${r.color}-50`}>
+                    <span className={`text-xs font-bold text-${r.color}-700`}>{r.label}</span>
+                    <span className={`text-sm font-black text-${r.color}-700`}>{r.sign}{formatCurrency(Math.abs(r.value))}</span>
+                  </div>
+                ))}
+                <div className="border-t border-slate-100 pt-3 flex items-center justify-between px-3">
+                  <span className="text-xs font-black text-slate-700 uppercase tracking-wide">{lang === 'th' ? 'กำไรสุทธิ' : 'Net Profit'}</span>
+                  <span className={`text-base font-black ${s.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{formatCurrency(s.netProfit)}</span>
+                </div>
+
+                <div className="bg-indigo-50 rounded-xl p-3 mt-1">
+                  <div className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2">{lang === 'th' ? 'ดอกรอรับจากพอร์ตปัจจุบัน' : 'Unrealized Interest'}</div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-indigo-600">{lang === 'th' ? 'ดอกที่ยังไม่ถึงกำหนด' : 'Pending interest'}</span>
+                    <span className="text-sm font-black text-indigo-700">+{formatCurrency(s.unpaidInterest)}</span>
+                  </div>
+                  <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-indigo-100">
+                    <span className="text-xs font-bold text-indigo-700">{lang === 'th' ? 'กำไรรวมถ้าเก็บครบ' : 'Total if all collected'}</span>
+                    <span className={`text-sm font-black ${totalFutureProfit >= 0 ? 'text-indigo-700' : 'text-rose-700'}`}>{formatCurrency(totalFutureProfit)}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div className="bg-slate-50 rounded-xl p-3 text-center">
+                    <div className="text-lg font-black text-slate-800">{s.profitPct.toFixed(1)}%</div>
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-0.5">{lang === 'th' ? 'yield ต่อทุน' : 'Yield on Capital'}</div>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3 text-center">
+                    <div className="text-lg font-black text-slate-800">{formatCurrency(s.paidInterest)}</div>
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-0.5">{lang === 'th' ? 'ดอกสะสม' : 'Total Interest'}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-[100] animate-slide-up">

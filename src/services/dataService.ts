@@ -188,7 +188,7 @@ export async function fetchAppData(): Promise<AppData | null> {
             const totalPaid = paidPrincipal + paidInterest;
             const totalExpected = unpaidPrincipal + unpaidInterest;
             const grossProfit = paidInterest;
-            const netProfit = paidInterest - scamPrincipal;
+            const netProfit = paidInterest - scamPrincipal - withdrawnTotal;
             const profitPct = paidPrincipal > 0 ? (paidInterest / paidPrincipal) * 100 : 0;
             // วงเงิน = เงินต้นเริ่มต้น + ดอกที่ได้รับ − โดนบิด − เบิก
             const totalLimit = INITIAL_CAPITAL + paidInterest - scamPrincipal - withdrawnTotal;
