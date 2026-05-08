@@ -240,18 +240,32 @@ export default function App() {
 
   const monthlySummary = useMemo(() => {
     if (!data) return [];
-    const months: Record<string, { principal: number; interest: number; count: number; month: number; year: number }> = {};
+    const months: Record<string, { interest: number; scam: number; withdrawn: number; count: number; month: number; year: number }> = {};
+    const getOrCreate = (key: string, month: number, year: number) => {
+      if (!months[key]) months[key] = { interest: 0, scam: 0, withdrawn: 0, count: 0, month, year };
+      return months[key];
+    };
     data.loans.forEach(l => {
       if ((l.isPaid || l.isRenewed) && l.actualDate) {
         const parsed = parseThaiDate(l.actualDate);
         if (!parsed) return;
         const key = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
-        if (!months[key]) {
-          months[key] = { principal: 0, interest: 0, count: 0, month: parsed.getMonth(), year: parsed.getFullYear() };
-        }
-        months[key].principal += l.paidPrincipal;
-        months[key].interest += l.paidInterest;
-        months[key].count += 1;
+        const e = getOrCreate(key, parsed.getMonth(), parsed.getFullYear());
+        e.interest += l.paidInterest;
+        e.count += 1;
+      }
+      if (l.isScam) {
+        const dateStr = l.actualDate || l.dueDate;
+        const parsed = parseThaiDate(dateStr);
+        if (!parsed) return;
+        const key = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
+        getOrCreate(key, parsed.getMonth(), parsed.getFullYear()).scam += l.principal;
+      }
+      if (l.isWithdrawn) {
+        const parsed = parseThaiDate(l.borrowDate);
+        if (!parsed) return;
+        const key = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}`;
+        getOrCreate(key, parsed.getMonth(), parsed.getFullYear()).withdrawn += l.principal;
       }
     });
     return Object.entries(months)
@@ -873,14 +887,24 @@ export default function App() {
                       const d = new Date(m.year, m.month, 1);
                       const label = d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { month: 'short', year: 'numeric' });
                       return (
-                        <div key={m.key} className="px-4 py-3 flex items-center justify-between">
-                          <div>
+                        <div key={m.key} className="px-4 py-3">
+                          <div className="flex items-center justify-between mb-2">
                             <div className="font-bold text-slate-800 text-sm">{label}</div>
                             <div className="text-[10px] text-slate-400">{m.count} {lang === 'th' ? 'รายการ' : 'records'}</div>
                           </div>
-                          <div className="text-right">
-                            <div className="font-black text-emerald-700 text-sm">{formatCurrency(m.interest)}</div>
-                            <div className="text-[10px] text-slate-500">{lang === 'th' ? 'ต้น' : 'principal'} {formatCurrency(m.principal)}</div>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="bg-emerald-50 rounded-xl px-2 py-2 text-center">
+                              <div className="text-[9px] font-bold text-emerald-600 uppercase tracking-wide mb-0.5">{lang === 'th' ? 'รายได้' : 'Income'}</div>
+                              <div className="text-xs font-black text-emerald-700">{formatCurrency(m.interest)}</div>
+                            </div>
+                            <div className="bg-rose-50 rounded-xl px-2 py-2 text-center">
+                              <div className="text-[9px] font-bold text-rose-600 uppercase tracking-wide mb-0.5">{lang === 'th' ? 'โดนบิด' : 'Default'}</div>
+                              <div className="text-xs font-black text-rose-700">{formatCurrency(m.scam)}</div>
+                            </div>
+                            <div className="bg-amber-50 rounded-xl px-2 py-2 text-center">
+                              <div className="text-[9px] font-bold text-amber-600 uppercase tracking-wide mb-0.5">{lang === 'th' ? 'เบิก' : 'Withdraw'}</div>
+                              <div className="text-xs font-black text-amber-700">{formatCurrency(m.withdrawn)}</div>
+                            </div>
                           </div>
                         </div>
                       );
