@@ -71,37 +71,6 @@ export async function fetchAppData(): Promise<AppData | null> {
             const data = results.data as string[][];
             if (!data || data.length < 3) return resolve(null);
 
-            const gHeaders = data[0];
-            const gVals = data[1];
-
-            const getGlobal = (name: string) => {
-              const idx = gHeaders.findIndex(h => typeof h === 'string' && h.trim() === name);
-              return idx !== -1 ? parseNumeric(gVals[idx]) : 0;
-            };
-
-            const lHeaders = data[2];
-            const scamFallbackIdx = lHeaders.findIndex(h => typeof h === 'string' && h.includes('โดนบิด'));
-            const scamPrincipal = scamFallbackIdx !== -1 ? parseNumeric(gVals[scamFallbackIdx]) : 0;
-
-            const summary: DashboardSummary = {
-              available: getGlobal('ยอดว่าง'),
-              totalLimit: getGlobal('วงเงินปัจจุบัน'),
-              profitPct: getGlobal('%กำไร'),
-              grossProfit: getGlobal('กำไร'),
-              netProfit: getGlobal('กำไรสุทธิ'),
-              withdrawn: getGlobal('เบิก'),
-              totalExpected: getGlobal('ยอดรวมทั้งหมด'),
-              totalPaid: getGlobal('ยอดจ่ายแล้วรวม'),
-              totalUnpaid: getGlobal('ยอดยังไม่จ่ายรวม'),
-              totalBorrowed: getGlobal('ยอดยืมรวม'),
-              totalInterest: getGlobal('ดอกเบี้ยรวม'),
-              paidPrincipal: getGlobal('จ่ายต้นแล้ว'),
-              paidInterest: getGlobal('จ่ายดอกแล้ว'),
-              unpaidPrincipal: getGlobal('ยังไม่จ่ายต้น'),
-              unpaidInterest: getGlobal('ยังไม่จ่ายดอก'),
-              scamPrincipal: scamPrincipal
-            };
-
             const loans: LoanRecord[] = [];
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -189,6 +158,56 @@ export async function fetchAppData(): Promise<AppData | null> {
                 cycleAccumulatedCount[name] = historicalRenewalCount;
               }
             }
+
+            // Compute summary from loan records
+            let paidPrincipal = 0, paidInterest = 0;
+            let unpaidPrincipal = 0, unpaidInterest = 0;
+            let scamPrincipal = 0, withdrawnTotal = 0;
+
+            for (const l of loans) {
+              if (l.isWithdrawn) {
+                withdrawnTotal += l.principal;
+              } else if (l.isScam) {
+                scamPrincipal += l.principal;
+              } else if (l.isPaid) {
+                paidPrincipal += l.paidPrincipal;
+                paidInterest += l.paidInterest;
+              } else if (l.isRenewed) {
+                paidInterest += l.paidInterest;
+              } else {
+                unpaidPrincipal += l.principal;
+                unpaidInterest += l.expectedInterest;
+              }
+            }
+
+            const totalBorrowed = paidPrincipal + unpaidPrincipal + scamPrincipal;
+            const totalInterest = paidInterest + unpaidInterest;
+            const totalPaid = paidPrincipal + paidInterest;
+            const totalExpected = unpaidPrincipal + unpaidInterest;
+            const grossProfit = paidInterest;
+            const netProfit = paidInterest - scamPrincipal;
+            const profitPct = paidPrincipal > 0 ? (paidInterest / paidPrincipal) * 100 : 0;
+            const available = Math.max(0, paidPrincipal - withdrawnTotal);
+            const totalLimit = available + unpaidPrincipal;
+
+            const summary: DashboardSummary = {
+              available,
+              totalLimit,
+              profitPct,
+              grossProfit,
+              netProfit,
+              withdrawn: withdrawnTotal,
+              totalExpected,
+              totalPaid,
+              totalUnpaid: totalExpected,
+              totalBorrowed,
+              totalInterest,
+              paidPrincipal,
+              paidInterest,
+              unpaidPrincipal,
+              unpaidInterest,
+              scamPrincipal,
+            };
 
             resolve({ summary, loans });
           } catch (e) {
