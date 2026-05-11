@@ -2,41 +2,13 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { fetchAppData, AppData, LoanRecord, updateLoanStatus, createNewLoan, editExistingLoan } from './services/dataService';
-import { formatCurrency, formatNumber, parseThaiDate } from './lib/utils';
-import { TrendingUp, TrendingDown, AlertCircle, CalendarClock, Activity, List, X, CheckCircle2, UserX, Wallet, RefreshCcw, LineChart, Bell, BellOff, Home, BarChart2, Languages, Search, Plus } from 'lucide-react';
+import { formatCurrency, parseThaiDate } from './lib/utils';
 import { ResponsiveContainer, Tooltip as RechartsTooltip, Legend, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, getNotificationPermission, sendTestNotification } from './services/pushService';
 import { t, Lang } from './lib/i18n';
 import { motion, AnimatePresence } from 'framer-motion';
 
-interface MetricCardProps {
-  label: string;
-  value: string;
-  sub: React.ReactNode;
-  subColor?: string;
-  icon: React.ElementType;
-  iconBg: string;
-  onClick?: () => void;
-}
-
-function MetricCard({ label, value, sub, subColor = 'emerald', icon: Icon, iconBg, onClick }: MetricCardProps) {
-  return (
-    <div
-      className={`bg-white p-4 rounded-2xl border border-slate-100 shadow-sm card-lift overflow-hidden relative ${onClick ? 'cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all active:scale-95' : ''}`}
-      onClick={onClick}
-    >
-      <div className="flex justify-between items-start mb-3">
-        <div className="text-slate-500 text-[10px] font-bold uppercase tracking-wider leading-tight">{label}</div>
-        <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${iconBg}`}>
-          <Icon className="w-4 h-4" />
-        </div>
-      </div>
-      <div className="text-xl font-black text-slate-800 leading-none mb-1.5">{value}</div>
-      <div className={`text-[10px] font-semibold flex items-center gap-0.5 text-${subColor}-600`}>{sub}</div>
-    </div>
-  );
-}
 
 export default function App() {
   const [data, setData] = useState<AppData | null>(null);
@@ -118,7 +90,8 @@ export default function App() {
     borrowDate: new Date(),
     dueDate: new Date(Date.now() + 7 * 86400000),
     daysBorrowed: 7,
-    interestRate: 35
+    interestRate: 35,
+    note: ''
   });
 
   const handleBorrowDateChange = (date: Date | null) => {
@@ -242,10 +215,31 @@ export default function App() {
     });
     const sortedDates = Array.from(allDates).sort((a, b) => parseThaiDate(a)!.getTime() - parseThaiDate(b)!.getTime());
     const labelToFullDate = new Map<string, string>(sortedDates.map(d => [d.substring(0, 5), d]));
-    const trendData14 = sortedDates.slice(-14).map(date => ({ date: date.substring(0, 5), Expected: dateMap[date].expected, Received: dateMap[date].actual }));
-    const trendData30 = sortedDates.slice(-30).map(date => ({ date: date.substring(0, 5), Expected: dateMap[date].expected, Received: dateMap[date].actual }));
+    const trendData14 = sortedDates.slice(-14).map(date => ({ date: date.substring(0, 5), value: dateMap[date].actual, Expected: dateMap[date].expected, Received: dateMap[date].actual }));
+    const trendData30 = sortedDates.slice(-30).map(date => ({ date: date.substring(0, 5), value: dateMap[date].actual, Expected: dateMap[date].expected, Received: dateMap[date].actual }));
     return { trendData14, trendData30, labelToFullDate };
   }, [data]);
+
+  const portfolioTrend = useMemo(() => {
+    if (!data) return [];
+    const result: { date: string; value: number }[] = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today.getTime() - i * 86400000);
+      d.setHours(0, 0, 0, 0);
+      const portfolio = data.loans.reduce((sum, l) => {
+        const bDate = parseThaiDate(l.borrowDate);
+        if (!bDate) return sum;
+        const rawEnd = l.actualDate || l.dueDate;
+        const eDate = rawEnd ? parseThaiDate(rawEnd) : null;
+        if (bDate.getTime() <= d.getTime() && (!eDate || d.getTime() <= eDate.getTime())) {
+          return sum + l.principal;
+        }
+        return sum;
+      }, 0);
+      result.push({ date: `${d.getDate()}/${d.getMonth() + 1}`, value: portfolio });
+    }
+    return result;
+  }, [data, today]);
 
   const monthlySummary = useMemo(() => {
     if (!data) return [];
@@ -314,7 +308,8 @@ export default function App() {
         borrowDate: formatToThaiStr(newLoanForm.borrowDate),
         dueDate: formatToThaiStr(newLoanForm.dueDate),
         daysBorrowed: newLoanForm.daysBorrowed,
-        interestRate: newLoanForm.interestRate
+        interestRate: newLoanForm.interestRate,
+        note: newLoanForm.note || undefined
       });
 
       if (res.success) {
@@ -531,34 +526,77 @@ export default function App() {
     });
   }, []);
 
+  const D_T = {
+    bg: '#f7f1e3', surface: '#ffffff', surface2: '#fbf6ec',
+    ink: '#1b1f2a', ink2: '#3a4254', mute: '#7a8298', mute2: '#aab1bd',
+    line: '#ece3cf', line2: '#f3eada',
+    mint: '#a8d8b9', mintDeep: '#2f7a5a',
+    butter: '#fae28d', butterDeep: '#9a7a14',
+    blush: '#f6c3b1', blushDeep: '#a04a2c',
+    lavender: '#cdc6f0', lavDeep: '#3d3680',
+  };
+
+  const dChipMap: Record<string, [string, string]> = {
+    mint:   [D_T.mint,   D_T.mintDeep],
+    butter: [D_T.butter, D_T.butterDeep],
+    blush:  [D_T.blush,  D_T.blushDeep],
+    lav:    [D_T.lavender, D_T.lavDeep],
+    ghost:  ['rgba(27,31,42,.06)', D_T.ink2],
+  };
+
+  const DChip = ({ children, tone = 'mint' }: { children: React.ReactNode; tone?: string }) => {
+    const [bg, fg] = dChipMap[tone] ?? dChipMap.ghost;
+    return (
+      <span style={{ padding: '3px 9px', borderRadius: 999, background: bg, color: fg,
+                     fontSize: 10.5, fontWeight: 700, letterSpacing: '.02em', textTransform: 'uppercase',
+                     display: 'inline-block', whiteSpace: 'nowrap' }}>
+        {children}
+      </span>
+    );
+  };
+
+  const getLoanTone = (l: LoanRecord): string => {
+    if (l.isScam) return 'blush';
+    if (l.isRenewed) return 'lav';
+    if (l.isPaid) return 'mint';
+    if (l.isWithdrawn) return 'butter';
+    if (l.isOverdue) return 'blush';
+    const parsed = parseThaiDate(l.dueDate);
+    if (parsed && parsed.getTime() === today.getTime()) return 'butter';
+    return 'ghost';
+  };
+
+  const getLoanStatusText = (l: LoanRecord): string => {
+    if (l.isScam) return lang === 'th' ? 'หนี้เสีย' : 'Bad debt';
+    if (l.isRenewed) return lang === 'th' ? 'ต่อสัญญา' : 'Renewed';
+    if (l.isPaid) return lang === 'th' ? 'จ่ายแล้ว' : 'Paid';
+    if (l.isWithdrawn) return lang === 'th' ? 'เบิก' : 'Payout';
+    if (l.isOverdue) return lang === 'th' ? `ช้า ${l.daysLate}วัน` : `${l.daysLate}d late`;
+    const parsed = parseThaiDate(l.dueDate);
+    if (parsed && parsed.getTime() === today.getTime()) return lang === 'th' ? 'วันนี้' : 'Today';
+    return lang === 'th' ? 'ตามแผน' : 'On track';
+  };
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center font-sans relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f2027 100%)' }}>
-        {/* Ambient glow orbs */}
-        <div className="absolute top-[-15%] right-[-10%] w-[50%] h-[50%] rounded-full blur-[100px] opacity-30" style={{ background: 'radial-gradient(circle, #10b981, transparent)' }} />
-        <div className="absolute bottom-[-15%] left-[-10%] w-[50%] h-[50%] rounded-full blur-[100px] opacity-20" style={{ background: 'radial-gradient(circle, #6366f1, transparent)', animationDelay: '1s' }} />
-
-        <div className="flex flex-col items-center relative z-10 px-8 text-center">
-          {/* Logo */}
-          <div className="relative mb-10">
-            <div className="w-24 h-24 rounded-3xl flex items-center justify-center shadow-2xl border border-white/10" style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.2), rgba(99,102,241,0.2))', backdropFilter: 'blur(16px)' }}>
-              <Activity className="w-12 h-12 text-emerald-400 stroke-[2.5px]" />
-            </div>
-            {/* Pulse rings */}
-            <div className="absolute inset-0 rounded-3xl border-2 border-emerald-500/30 animate-ping" style={{ animationDuration: '2s' }} />
+      <div style={{ minHeight: '100vh', background: D_T.bg, display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', fontFamily: '"Hanken Grotesk", system-ui, sans-serif' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 52, height: 52, borderRadius: 16, background: D_T.ink, color: D_T.butter,
+                        display: 'grid', placeItems: 'center', fontSize: 24, fontWeight: 800,
+                        margin: '0 auto 20px' }}>P</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: D_T.ink, letterSpacing: '-.02em', marginBottom: 8 }}>
+            Pocket Bank
           </div>
-
-          <h1 className="text-3xl font-black tracking-tight text-white mb-1">
-            <span style={{ background: 'linear-gradient(90deg, #34d399, #818cf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>{t('appTitle', lang)}</span>
-          </h1>
-          <p className="text-slate-500 text-sm font-medium mb-8">{t('appSubtitle', lang)}</p>
-
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '120ms' }} />
-            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: '240ms' }} />
+          <div style={{ fontSize: 12, color: D_T.mute, marginBottom: 24 }}>
+            {lang === 'th' ? 'กำลังโหลดข้อมูล...' : 'Loading your data...'}
           </div>
-          <p className="text-slate-500 text-xs font-semibold uppercase tracking-[0.2em] mt-3">{t('syncingData', lang)}</p>
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+            {[0, 120, 240].map(d => (
+              <div key={d} style={{ width: 8, height: 8, borderRadius: 99, background: D_T.mintDeep,
+                                    animation: 'bounce-dot 1.4s ease-in-out infinite', animationDelay: `${d}ms` }} />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -566,1488 +604,1488 @@ export default function App() {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center font-sans p-6">
-        <div className="bg-white p-8 rounded-2xl shadow-xl border border-rose-100 text-center max-w-sm w-full">
-          <div className="w-14 h-14 bg-rose-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <AlertCircle className="w-7 h-7 text-rose-500" />
-          </div>
-          <h2 className="text-lg font-black text-slate-800 mb-1">ไม่สามารถเชื่อมต่อได้</h2>
-          <p className="text-slate-500 text-sm">Failed to sync with the central database. Please check your connection.</p>
-          <button onClick={() => window.location.reload()} className="mt-6 w-full py-3 bg-rose-600 text-white font-bold rounded-xl text-sm hover:bg-rose-700 transition-colors">ลองใหม่</button>
+      <div style={{ minHeight: '100vh', background: D_T.bg, display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', padding: 24, fontFamily: '"Hanken Grotesk", system-ui, sans-serif' }}>
+        <div style={{ background: D_T.surface, padding: 32, borderRadius: 20, border: `1px solid ${D_T.line}`,
+                      textAlign: 'center', maxWidth: 360, width: '100%' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: D_T.ink, marginBottom: 8 }}>ไม่สามารถเชื่อมต่อได้</div>
+          <div style={{ fontSize: 13, color: D_T.mute, marginBottom: 24 }}>Failed to sync. Check your connection.</div>
+          <button onClick={() => window.location.reload()}
+            style={{ width: '100%', padding: '12px 0', background: D_T.ink, color: D_T.bg,
+                     border: 'none', borderRadius: 999, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+            ลองใหม่
+          </button>
         </div>
       </div>
     );
   }
 
   const s = data.summary;
+  const nplRatio = ((s.scamPrincipal / Math.max(1, s.totalBorrowed)) * 100);
 
-  const renderStatusBadge = (status: string) => {
-    const s = status.toLowerCase();
-    if (s.includes('ชำระแล้ว') || s.includes('paid') || s.includes('ปิดยอด')) {
-      return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-black uppercase tracking-wider border border-emerald-200">{t('statusPaid', lang)}</span>;
-    }
-    if (s.includes('ต่อดอก') || s.includes('renew')) {
-      return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-wider border border-indigo-200">{t('statusRenewed', lang)}</span>;
-    }
-    if (s.includes('บิด') || s.includes('default')) {
-      return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-black uppercase tracking-wider border border-rose-200">{t('statusDefaulted', lang)}</span>;
-    }
-    if (s.includes('เบิก') || s.includes('withdraw') || s.includes('payout')) {
-      return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black uppercase tracking-wider border border-amber-200">{t('statusPayout', lang)}</span>;
-    }
-    return <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-[10px] font-black uppercase tracking-wider border border-slate-200">{t('statusActive', lang)}</span>;
+  const DAreaChart = ({ sparkData, w = 680, h = 150, showYAxis = false }: {
+    sparkData: { date: string; value: number }[];
+    w?: number; h?: number; showYAxis?: boolean;
+  }) => {
+    if (sparkData.length < 2) return <div style={{ height: h }} />;
+    const yPad = showYAxis ? 56 : 0;
+    const chartW = w - yPad;
+    const vals = sparkData.map(d => d.value);
+    const max = Math.max(...vals, 1);
+    const stepX = chartW / Math.max(sparkData.length - 1, 1);
+    const toY = (v: number) => h - (v / max) * (h - 28) - 14;
+    const pts = vals.map((v, i) => [yPad + i * stepX, toY(v)] as [number, number]);
+    const path = pts.map((p, i) => (i === 0 ? 'M' : 'L') + p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+    const fillPath = path + ` L ${yPad + chartW},${h} L ${yPad},${h} Z`;
+    const yTicks = [0, 0.25, 0.5, 0.75, 1];
+    return (
+      <svg width={w} height={h} style={{ display: 'block', overflow: 'visible' }}>
+        <defs>
+          <linearGradient id="d-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={D_T.mintDeep} stopOpacity="0.35" />
+            <stop offset="100%" stopColor={D_T.mintDeep} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {yTicks.map(p => {
+          const y = toY(p * max);
+          return (
+            <g key={p}>
+              <line x1={yPad} y1={y} x2={yPad + chartW} y2={y} stroke={D_T.line} strokeDasharray="2 5" />
+              {showYAxis && p > 0 && (
+                <text x={yPad - 6} y={y + 4} textAnchor="end" fontSize="9"
+                      fill={D_T.mute2} fontFamily={mono} fontVariantNumeric="tabular-nums">
+                  {max >= 10000 ? `${(p * max / 1000).toFixed(0)}k` : (p * max).toFixed(0)}
+                </text>
+              )}
+            </g>
+          );
+        })}
+        <path d={fillPath} fill="url(#d-grad)" />
+        <path d={path} fill="none" stroke={D_T.mintDeep} strokeWidth="2" strokeLinejoin="round" />
+        {pts.map(([x, y], i) => i === pts.length - 1 && (
+          <g key={i}>
+            <circle cx={x} cy={y} r="7" fill={D_T.bg} />
+            <circle cx={x} cy={y} r="4.5" fill={D_T.mintDeep} />
+          </g>
+        ))}
+      </svg>
+    );
   };
 
-  const MetricRow = () => (
-    <div className="grid grid-cols-2 mb-4 gap-3 md:grid-cols-4 md:mb-6">
-      <MetricCard
-        label={t('totalPortfolio', lang)}
-        value={formatCurrency(s.totalLimit)}
-        sub={<><TrendingUp className="w-3 h-3" /> {t('activeLimit', lang)}</>}
-        subColor="emerald"
-        icon={TrendingUp}
-        iconBg="bg-emerald-100 text-emerald-600"
-      />
-      <MetricCard
-        label={t('netProfit', lang)}
-        value={formatCurrency(s.netProfit)}
-        sub={<><TrendingUp className="w-3 h-3" /> {s.profitPct.toFixed(1)}% {t('margin', lang)}</>}
-        subColor={s.netProfit >= 0 ? 'emerald' : 'rose'}
-        icon={LineChart}
-        iconBg="bg-indigo-100 text-indigo-600"
-        onClick={() => setShowProfitModal(true)}
-      />
-      <MetricCard
-        label={t('nplRatio', lang)}
-        value={((s.scamPrincipal / Math.max(1, s.totalBorrowed)) * 100).toFixed(1) + '%'}
-        sub={<><TrendingDown className="w-3 h-3" /> {formatCurrency(s.scamPrincipal)} {t('lost', lang)}</>}
-        subColor="rose"
-        icon={TrendingDown}
-        iconBg="bg-rose-100 text-rose-600"
-      />
-      <MetricCard
-        label={t('availableBalance', lang)}
-        value={formatCurrency(s.available)}
-        sub={t('readyToLend', lang)}
-        subColor="slate"
-        icon={Wallet}
-        iconBg="bg-amber-100 text-amber-600"
-      />
-    </div>
-  );
+  const font = '"Hanken Grotesk", "IBM Plex Sans Thai", system-ui, sans-serif';
+  const mono = '"DM Mono", ui-monospace, monospace';
+
+  const todayLabel = (() => {
+    const d = new Date();
+    return d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  })();
+
+  const greetSub = (() => {
+    if (dueTodayLoans.length === 0) return lang === 'th' ? 'ไม่มีนัดวันนี้' : 'nothing due today';
+    return lang === 'th' ? `เก็บหนี้ ${dueTodayLoans.length} รายวันนี้` : `${dueTodayLoans.length} collection${dueTodayLoans.length > 1 ? 's' : ''} today`;
+  })();
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans pb-32 md:pb-8">
-      {/* Sticky Mobile Header */}
-      <header className="sticky top-0 z-30 md:hidden" style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)' }}>
-        <div className="flex justify-between items-center px-4 py-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
-              <Activity className="w-4.5 h-4.5 text-white" style={{ width: '18px', height: '18px' }} />
+    <div style={{ minHeight: '100vh', background: D_T.bg, color: D_T.ink, fontFamily: font }}>
+
+      {/* ── DESKTOP LAYOUT ─────────────────────────────── */}
+      {isDesktop && <div style={{ minHeight: '100vh', display: 'flex' }}>
+
+        {/* Sidebar */}
+        <aside style={{ width: 224, minHeight: '100vh', padding: '24px 16px', display: 'flex',
+                        flexDirection: 'column', gap: 4, background: D_T.surface2,
+                        borderRight: `1px solid ${D_T.line}`, position: 'sticky', top: 0, alignSelf: 'flex-start', maxHeight: '100vh', overflowY: 'auto' }}>
+          {/* Brand */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 10px 18px',
+                        borderBottom: `1px solid ${D_T.line}`, marginBottom: 14 }}>
+            <div style={{ width: 30, height: 30, borderRadius: 10, background: D_T.ink, color: D_T.butter,
+                          display: 'grid', placeItems: 'center', fontSize: 14, fontWeight: 800 }}>P</div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: '-.02em' }}>
+                {lang === 'th' ? 'พ็อกเก็ต แบงก์' : 'Pocket Bank'}
+              </div>
+              <div style={{ fontSize: 10, color: D_T.mute }}>
+                {lang === 'th' ? 'โต๊ะปล่อยกู้เล็กๆ' : 'your tiny lending desk'}
+              </div>
             </div>
-            <h1 className="text-base font-black tracking-tight text-white">
-              {t('appTitle', lang)}
-            </h1>
           </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={toggleLang}
-              className="w-8 h-8 flex items-center justify-center rounded-full border border-white/10 bg-white/10 text-white/80 text-[10px] font-black transition-colors"
-            >
+
+          {/* Nav */}
+          {([
+            [lang === 'th' ? 'ภาพรวม' : 'Overview', 'dashboard', '◉', overdueLoans.length > 0 ? overdueLoans.length : null],
+            [lang === 'th' ? 'สินเชื่อ' : 'Loans', 'loans', '◇', tabCounts.all > 0 ? tabCounts.all : null],
+            [lang === 'th' ? 'รายงาน' : 'Reports', 'analytics', '◑', null],
+          ] as [string, string, string, number | null][]).map(([label, tab, icon, badge]) => (
+            <div key={tab}
+              onClick={() => setActiveMobileTab(tab as any)}
+              style={{ padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
+                       background: activeMobileTab === tab ? D_T.surface : 'transparent',
+                       color: activeMobileTab === tab ? D_T.ink : D_T.ink2,
+                       fontSize: 13, fontWeight: activeMobileTab === tab ? 700 : 500,
+                       display: 'flex', alignItems: 'center', gap: 10,
+                       boxShadow: activeMobileTab === tab ? '0 1px 0 rgba(27,31,42,.04)' : 'none' }}>
+              <span style={{ width: 16, color: activeMobileTab === tab ? D_T.mintDeep : D_T.mute2 }}>{icon}</span>
+              <span style={{ flex: 1 }}>{label}</span>
+              {badge !== null && (
+                <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 999,
+                               background: D_T.bg, color: D_T.mute, fontWeight: 700 }}>{badge}</span>
+              )}
+            </div>
+          ))}
+
+          <div style={{ flex: 1 }} />
+
+          {/* Sync status */}
+          <div style={{ padding: 14, borderRadius: 14, background: D_T.surface, border: `1px solid ${D_T.line}`, marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <span style={{ width: 7, height: 7, borderRadius: 99,
+                             background: isSyncing ? D_T.butterDeep : D_T.mintDeep, display: 'block' }} />
+              <span style={{ fontSize: 12, fontWeight: 700 }}>{isSyncing ? (lang === 'th' ? 'กำลังซิงค์...' : 'Syncing...') : (lang === 'th' ? 'ซิงค์แล้ว' : 'Synced')}</span>
+            </div>
+            <div style={{ fontSize: 11, color: D_T.mute, lineHeight: 1.5 }}>
+              {lang === 'th' ? 'ดึงจาก Google Sheets' : 'Pulled from your Sheets ledger.'}
+            </div>
+          </div>
+
+          {/* Lang + refresh */}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={toggleLang}
+              style={{ flex: 1, padding: '8px 0', borderRadius: 10, background: D_T.surface,
+                       border: `1px solid ${D_T.line}`, fontSize: 11, fontWeight: 700,
+                       color: D_T.ink2, cursor: 'pointer', fontFamily: font }}>
               {lang === 'th' ? 'EN' : 'TH'}
             </button>
-            <button
-              onClick={() => setShowNotifModal(true)}
-              className={`relative w-8 h-8 flex items-center justify-center rounded-full transition-colors ${isSubscribed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/10 text-white/50'}`}
-            >
-              {isSubscribed ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
-              {isSubscribed && <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-emerald-400 rounded-full border border-slate-900"></span>}
+            <button onClick={() => loadData()}
+              style={{ flex: 1, padding: '8px 0', borderRadius: 10, background: D_T.surface,
+                       border: `1px solid ${D_T.line}`, fontSize: 11, fontWeight: 700,
+                       color: D_T.ink2, cursor: 'pointer', fontFamily: font }}>
+              ↺
             </button>
-            {isSyncing ? (
-              <div className="w-8 h-8 flex items-center justify-center">
-                <RefreshCcw className="w-4 h-4 text-emerald-400 animate-spin" />
-              </div>
-            ) : (
-              <button onClick={() => loadData()} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-white/60">
-                <RefreshCcw className="w-4 h-4" />
+            <button onClick={() => setShowNotifModal(true)}
+              style={{ flex: 1, padding: '8px 0', borderRadius: 10, background: D_T.surface,
+                       border: `1px solid ${D_T.line}`, fontSize: 14, cursor: 'pointer' }}>
+              {isSubscribed ? '🔔' : '🔕'}
+            </button>
+          </div>
+        </aside>
+
+        {/* Main area */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+          {/* Top bar */}
+          <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                           padding: '20px 28px', borderBottom: `1px solid ${D_T.line}`, background: D_T.bg }}>
+            <div>
+              <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em',
+                            textTransform: 'uppercase', marginBottom: 4 }}>{todayLabel}</div>
+              <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, letterSpacing: '-.02em' }}>
+                {lang === 'th' ? 'สวัสดี,' : 'Hey,'}{' '}
+                <span style={{ color: D_T.mute }}>{greetSub}</span>
+              </h1>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setShowWithdrawModal(true)}
+                style={{ padding: '9px 16px', borderRadius: 999, background: D_T.surface,
+                         color: D_T.ink, border: `1px solid ${D_T.line}`,
+                         fontFamily: font, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+                {lang === 'th' ? 'ถอนเงิน' : 'Withdraw'}
               </button>
-            )}
-          </div>
-        </div>
-        {/* Current tab subtitle */}
-        <div className="px-4 pb-2 text-[10px] font-bold text-white/40 uppercase tracking-widest">
-          {activeMobileTab === 'dashboard' ? t('navDashboard', lang) : activeMobileTab === 'analytics' ? t('navAnalytics', lang) : t('navLoans', lang)}
-        </div>
-      </header>
-
-      <div className="max-w-[1400px] mx-auto px-4 py-4 md:px-8 md:py-8">
-        {/* Desktop Header */}
-        <header className="hidden md:flex mb-8 justify-between items-center border-b border-slate-200 pb-6">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight flex items-center gap-3">
-              <div className="bg-emerald-600 p-2 rounded-xl shadow-lg shadow-emerald-100">
-                <Activity className="w-8 h-8 text-white" />
-              </div>
-              {t('appTitle', lang)}
-            </h1>
-            <p className="text-slate-500 mt-1.5 text-sm font-medium">{t('appSubtitle', lang)}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={toggleLang}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-sm font-bold transition-all shadow-sm"
-            >
-              <Languages className="w-4 h-4" />
-              {lang === 'th' ? 'English' : 'ภาษาไทย'}
-            </button>
-            <button
-              onClick={() => setShowNotifModal(true)}
-              className={`relative p-3 rounded-xl transition-all shadow-sm ${isSubscribed ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-white text-slate-400 border border-slate-200'}`}
-            >
-              {isSubscribed ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
-              {isSubscribed && <span className="absolute top-2.5 right-2.5 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white"></span>}
-            </button>
-            <button
-              onClick={() => setShowWithdrawModal(true)}
-              className="flex items-center gap-2 px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-rose-100 transition-all active:scale-95"
-            >
-              <Wallet className="w-4 h-4" /> {t('withdraw', lang)}
-            </button>
-            <button
-              onClick={() => setShowNewLoanModal(true)}
-              className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-lg shadow-indigo-100 transition-all active:scale-95"
-            >
-              <Activity className="w-4 h-4" /> {t('newLoan', lang)}
-            </button>
-            {isSyncing ? (
-              <span className="flex items-center gap-2 text-emerald-600 bg-emerald-50 px-4 py-2.5 rounded-xl border border-emerald-100 text-sm font-bold">
-                <RefreshCcw className="w-4 h-4 animate-spin" />
-                {t('syncingData', lang)}
-              </span>
-            ) : (
-              <button onClick={() => loadData()} className="p-3 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors border border-slate-200 bg-white">
-                <RefreshCcw className="w-5 h-5" />
+              <button onClick={() => setShowNewLoanModal(true)}
+                style={{ padding: '9px 18px', borderRadius: 999, background: D_T.ink,
+                         color: D_T.bg, border: 'none',
+                         fontFamily: font, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+                {lang === 'th' ? '+ ปล่อยกู้' : '+ Lend money'}
               </button>
-            )}
-          </div>
-        </header>
+            </div>
+          </header>
 
-        {/* Main Content Sections with Animation */}
-        <AnimatePresence mode="wait">
-          {(isDesktop || activeMobileTab === 'dashboard') && (
-            <motion.div
-              key="dashboard"
-              initial={isDesktop ? false : { opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={isDesktop ? undefined : { opacity: 0, x: 20 }}
-              transition={{ duration: 0.3, ease: "easeOut" }}
-              className="md:block"
-            >
-              <MetricRow />
-
-              {/* Section 2: Action & Alerts */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                {/* Due Today */}
-                <div className="bg-white rounded-2xl border border-amber-100 flex flex-col shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #fffbeb, #fef3c7)' }}>
-                    <div className="flex items-center gap-2 text-amber-800 font-black text-xs uppercase tracking-wider">
-                      <div className="w-6 h-6 bg-amber-500 rounded-lg flex items-center justify-center">
-                        <CalendarClock className="w-3.5 h-3.5 text-white" />
-                      </div>
-                      {t('dueToday', lang)}
-                    </div>
-                    <span className="bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">{dueTodayLoans.length}</span>
-                  </div>
-                  <div className="divide-y divide-slate-50 max-h-[220px] overflow-y-auto no-scrollbar">
-                    {dueTodayLoans.length === 0 ? (
-                      <div className="py-8 text-center">
-                        <div className="text-2xl mb-1">✅</div>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('noCollectionsToday', lang)}</p>
-                      </div>
-                    ) : (
-                      <div ref={dueListRef}>
-                        {dueTodayLoans.map(l => (
-                          <div
-                            key={l.id}
-                            onClick={() => setSelectedLoan(l)}
-                            className="flex justify-between items-center px-4 py-3 active:bg-amber-50 transition-colors cursor-pointer border-l-[3px] border-amber-400"
-                            style={{ touchAction: 'manipulation' }}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-                                <span className="text-amber-700 text-xs font-black">{l.name.charAt(0).toUpperCase()}</span>
-                              </div>
-                              <div>
-                                <div className="font-bold text-slate-800 text-sm leading-tight">{l.name}</div>
-                                <div className="text-[10px] font-medium text-slate-400">{l.id}</div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-black text-amber-600 text-sm">{formatCurrency(l.totalExpected)}</span>
-                              <span className="text-slate-300">›</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Overdue Alerts */}
-                <div className="bg-white rounded-2xl border border-rose-100 flex flex-col shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 flex items-center justify-between" style={{ background: 'linear-gradient(135deg, #fff1f2, #ffe4e6)' }}>
-                    <div className="flex items-center gap-2 text-rose-800 font-black text-xs uppercase tracking-wider">
-                      <div className="w-6 h-6 bg-rose-500 rounded-lg flex items-center justify-center">
-                        <AlertCircle className="w-3.5 h-3.5 text-white" />
-                      </div>
-                      {t('overdueAlerts', lang)}
-                    </div>
-                    <span className="bg-rose-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">{overdueLoans.length}</span>
-                  </div>
-                  <div className="divide-y divide-slate-50 max-h-[220px] overflow-y-auto no-scrollbar">
-                    {overdueLoans.length === 0 ? (
-                      <div className="py-8 text-center">
-                        <div className="text-2xl mb-1">🎉</div>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t('noOverdueAccounts', lang)}</p>
-                      </div>
-                    ) : (
-                      <div ref={overdueListRef}>
-                        {overdueLoans.sort((a, b) => b.daysLate - a.daysLate).map(l => (
-                          <div
-                            key={l.id}
-                            onClick={() => setSelectedLoan(l)}
-                            className="flex justify-between items-center px-4 py-3 active:bg-rose-50 transition-colors cursor-pointer border-l-[3px] border-rose-500"
-                            style={{ touchAction: 'manipulation' }}
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center flex-shrink-0">
-                                <span className="text-rose-700 text-xs font-black">{l.name.charAt(0).toUpperCase()}</span>
-                              </div>
-                              <div>
-                                <div className="font-bold text-slate-800 text-sm leading-tight">{l.name}</div>
-                                <div className="text-[10px] font-bold text-rose-600">{l.daysLate} {t('daysOverdue', lang)}</div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="text-right">
-                                <div className="font-black text-rose-600 text-sm">{formatCurrency(l.totalExpected)}</div>
-                                <div className="text-[9px] text-slate-400">{l.dueDate}</div>
-                              </div>
-                              <span className="text-slate-300">›</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {/* Analytics Content with Animation */}
-          {(isDesktop || activeMobileTab === 'analytics') && (
-            <motion.div
-              key="analytics"
-              initial={isDesktop ? false : { opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={isDesktop ? undefined : { opacity: 0, x: -20 }}
-              transition={{ duration: 0.3, ease: "easeOut" }}
-              className="md:block"
-            >
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-base font-black text-slate-800">{t('portfolioAnalytics', lang)}</h2>
-                <span className="md:hidden text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-full uppercase tracking-wider border border-slate-200">
-                  {new Date().toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { month: 'short', year: 'numeric' })}
-                </span>
-              </div>
-
-              <div
-                className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col cursor-pointer group hover:border-indigo-300 hover:shadow-md transition-all mb-4"
-                onClick={() => setShowExpandedTrend(true)}
-              >
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">{t('cashflowTrend', lang)}</h3>
-                  <span className="text-xs text-indigo-500 bg-indigo-50 px-3 py-1 rounded-full font-bold border border-indigo-100 opacity-0 group-hover:opacity-100 transition-opacity">{t('clickToExpand', lang)}</span>
-                </div>
-                <div className="h-[160px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={trendData14}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94A3B8' }} />
-                      <YAxis axisLine={false} tickLine={false} hide />
-                      <Bar dataKey="Expected" barSize={12} fill="#CBD5E1" radius={[4, 4, 0, 0]} />
-                      <Line type="monotone" dataKey="Received" stroke="#10B981" strokeWidth={3} dot={false} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Monthly Summary */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-4">
-                <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 bg-amber-500 rounded-full"></div>
-                  {lang === 'th' ? 'สรุปรายเดือน' : 'Monthly Summary'}
-                </div>
-                {monthlySummary.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-slate-400">{lang === 'th' ? 'ยังไม่มีข้อมูล' : 'No data yet'}</div>
-                ) : (
-                  <div className="divide-y divide-slate-100">
-                    {monthlySummary.map(m => {
-                      const d = new Date(m.year, m.month, 1);
-                      const label = d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { month: 'short', year: 'numeric' });
-                      const net = m.interest - m.scam - m.withdrawn;
-                      return (
-                        <div key={m.key} className="px-4 py-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <div>
-                              <div className="font-bold text-slate-800 text-sm">{label}</div>
-                              <div className="text-[10px] text-slate-400">{m.count} {lang === 'th' ? 'รายการ' : 'records'}</div>
-                            </div>
-                            <div className={`px-2.5 py-1 rounded-full text-xs font-black ${net >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                              {net >= 0 ? '+' : ''}{formatCurrency(net)}
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-3 gap-2">
-                            <div className="bg-emerald-50 rounded-xl px-2 py-2 text-center">
-                              <div className="text-[9px] font-bold text-emerald-600 uppercase tracking-wide mb-0.5">{lang === 'th' ? 'รายได้' : 'Income'}</div>
-                              <div className="text-xs font-black text-emerald-700">{formatCurrency(m.interest)}</div>
-                            </div>
-                            <div className="bg-rose-50 rounded-xl px-2 py-2 text-center">
-                              <div className="text-[9px] font-bold text-rose-600 uppercase tracking-wide mb-0.5">{lang === 'th' ? 'โดนบิด' : 'Default'}</div>
-                              <div className="text-xs font-black text-rose-700">{formatCurrency(m.scam)}</div>
-                            </div>
-                            <div className="bg-amber-50 rounded-xl px-2 py-2 text-center">
-                              <div className="text-[9px] font-bold text-amber-600 uppercase tracking-wide mb-0.5">{lang === 'th' ? 'เบิก' : 'Withdraw'}</div>
-                              <div className="text-xs font-black text-amber-700">{formatCurrency(m.withdrawn)}</div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+          {/* KPI strip */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
+                        borderBottom: `1px solid ${D_T.line}`, background: D_T.surface }}>
+            {([
+              [lang === 'th' ? 'พอร์ตรวม' : 'Total portfolio', formatCurrency(s.totalLimit), null, null],
+              [lang === 'th' ? 'กำไรสุทธิ' : 'Net profit', formatCurrency(s.netProfit), s.netProfit >= 0 ? '↗' : '↘', s.netProfit >= 0],
+              [lang === 'th' ? 'หนี้เสีย' : 'NPL ratio', nplRatio.toFixed(1) + '%', null, false],
+              [lang === 'th' ? 'เงินสดว่าง' : 'Available cash', formatCurrency(s.available), null, null],
+            ] as [string, string, string | null, boolean | null][]).map(([label, value, arrow, pos], i) => (
+              <div key={label}
+                onClick={i === 1 ? () => setShowProfitModal(true) : undefined}
+                style={{ padding: '20px 24px', borderRight: i < 3 ? `1px solid ${D_T.line}` : 'none',
+                         display: 'flex', flexDirection: 'column', gap: 10,
+                         cursor: i === 1 ? 'pointer' : 'default' }}>
+                <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
+                              letterSpacing: '.06em', textTransform: 'uppercase' }}>{label}</div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: D_T.ink,
+                              letterSpacing: '-.025em', fontVariantNumeric: 'tabular-nums', lineHeight: 1,
+                              fontFamily: mono }}>{value}</div>
+                {arrow && (
+                  <DChip tone={pos ? 'mint' : 'blush'}>{arrow} {pos ? '+' : ''}{s.profitPct.toFixed(1)}%</DChip>
                 )}
               </div>
+            ))}
+          </div>
 
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
-                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">{t('totalExpectedValue', lang)}</div>
-                    <div className="text-xl font-black text-slate-800">{formatCurrency(s.totalExpected)}</div>
-                  </div>
-                  <div className="bg-emerald-600 p-4 rounded-2xl border border-emerald-500 shadow-lg shadow-emerald-100 flex flex-col items-center text-center">
-                    <div className="text-[10px] font-black text-emerald-100 uppercase tracking-widest mb-2">{t('totalCollected', lang)}</div>
-                    <div className="text-xl font-black text-white">{formatCurrency(s.totalPaid)}</div>
-                  </div>
-                </div>
+          {/* Body: main + right rail */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', flex: 1, overflow: 'hidden' }}>
 
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div>
-                    {t('principalBreakdown', lang)}
-                  </div>
-                  <div className="p-4 space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-slate-600">{t('principalLentOut', lang)}</span>
-                      <span className="text-sm font-black text-slate-800">{formatCurrency(s.totalBorrowed)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pl-3 border-l-2 border-emerald-400">
-                      <span className="text-xs font-bold text-emerald-600">{t('principalCollected', lang)}</span>
-                      <span className="text-sm font-black text-emerald-700">{formatCurrency(s.paidPrincipal)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pl-3 border-l-2 border-amber-400">
-                      <span className="text-xs font-bold text-amber-600">{t('principalRemaining', lang)}</span>
-                      <span className="text-sm font-black text-amber-700">{formatCurrency(s.unpaidPrincipal)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pl-3 border-l-2 border-rose-400">
-                      <span className="text-xs font-bold text-rose-600">{t('principalLost', lang)}</span>
-                      <span className="text-sm font-black text-rose-700">{formatCurrency(s.scamPrincipal)}</span>
-                    </div>
-                  </div>
-                </div>
+            {/* Left: content area — switches by tab */}
+            <section style={{ padding: '22px 28px', overflowY: 'auto' }}>
 
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
-                    {t('interestBreakdown', lang)}
-                  </div>
-                  <div className="p-4 space-y-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-slate-600">{t('interestExpected', lang)}</span>
-                      <span className="text-sm font-black text-slate-800">{formatCurrency(s.totalInterest)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pl-3 border-l-2 border-emerald-400">
-                      <span className="text-xs font-bold text-emerald-600">{t('interestCollected', lang)}</span>
-                      <span className="text-sm font-black text-emerald-700">{formatCurrency(s.paidInterest)}</span>
-                    </div>
-                    <div className="flex justify-between items-center pl-3 border-l-2 border-amber-400">
-                      <span className="text-xs font-bold text-amber-600">{t('interestRemaining', lang)}</span>
-                      <span className="text-sm font-black text-amber-700">{formatCurrency(s.unpaidInterest)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Portfolio Analysis */}
-                {(() => {
-                  const principalRecovery = s.totalBorrowed > 0 ? (s.paidPrincipal / s.totalBorrowed) * 100 : 0;
-                  const interestCollection = s.totalInterest > 0 ? (s.paidInterest / s.totalInterest) * 100 : 0;
-                  const nplRate = s.totalBorrowed > 0 ? (s.scamPrincipal / s.totalBorrowed) * 100 : 0;
-                  const realizedYield = s.paidPrincipal > 0 ? (s.paidInterest / s.paidPrincipal) * 100 : 0;
-                  const overdueCapital = data.loans.filter(l => l.isOverdue && !l.isPaid && !l.isScam).reduce((sum, l) => sum + l.principal, 0);
-                  const activeCount = data.loans.filter(l => !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn).length;
-                  const overdueCount = data.loans.filter(l => l.isOverdue && !l.isPaid && !l.isScam).length;
-
-                  let healthMsg = '';
-                  let healthColor = '';
-                  if (nplRate === 0 && overdueCount === 0) {
-                    healthMsg = lang === 'th' ? '✅ พอร์ตสุขภาพดีมาก ไม่มีหนี้เสียและค้างชำระ' : '✅ Excellent portfolio health — no defaults or overdue.';
-                    healthColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                  } else if (nplRate > 20 || overdueCount > activeCount * 0.5) {
-                    healthMsg = lang === 'th' ? '⚠️ ความเสี่ยงสูง ควรติดตามลูกหนี้ที่ค้างชำระอย่างเร่งด่วน' : '⚠️ High risk — follow up on overdue accounts urgently.';
-                    healthColor = 'bg-rose-50 text-rose-700 border-rose-200';
-                  } else if (nplRate > 10 || overdueCount > 0) {
-                    healthMsg = lang === 'th' ? `🔶 ควรติดตาม ${overdueCount} รายการที่ค้างชำระ NPL ${nplRate.toFixed(1)}%` : `🔶 Monitor ${overdueCount} overdue accounts. NPL ${nplRate.toFixed(1)}%`;
-                    healthColor = 'bg-amber-50 text-amber-700 border-amber-200';
-                  } else {
-                    healthMsg = lang === 'th' ? `✅ พอร์ตอยู่ในเกณฑ์ดี อัตราเรียกคืน ${principalRecovery.toFixed(0)}%` : `✅ Portfolio in good shape. Recovery rate ${principalRecovery.toFixed(0)}%`;
-                    healthColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                  }
-
-                  return (
-                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                      <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 bg-violet-500 rounded-full" />
-                        {lang === 'th' ? 'การวิเคราะห์พอร์ต' : 'Portfolio Analysis'}
+              {activeMobileTab === 'analytics' ? (
+                /* ── ANALYTICS TAB ── */
+                <>
+                  {/* Interest received chart */}
+                  <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
+                                borderRadius: 18, padding: '20px 22px 16px', marginBottom: 20 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14 }}>
+                      <div>
+                        <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
+                                      letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                          {lang === 'th' ? 'ดอกเบี้ยที่ได้รับ · 30 วันล่าสุด' : 'Interest received · last 30 days'}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 6 }}>
+                          <span style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-.02em',
+                                         fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
+                            {formatCurrency(s.paidInterest)}
+                          </span>
+                          <DChip tone="mint">↗ {s.profitPct.toFixed(1)}%</DChip>
+                        </div>
                       </div>
-                      <div className="p-4 space-y-4">
-                        <div className="space-y-3">
-                          {[
-                            { label: lang === 'th' ? 'เรียกคืนต้นทุน' : 'Principal Recovery', value: principalRecovery, color: 'bg-emerald-500', textColor: 'text-emerald-700' },
-                            { label: lang === 'th' ? 'เก็บดอกเบี้ย' : 'Interest Collected', value: interestCollection, color: 'bg-indigo-500', textColor: 'text-indigo-700' },
-                            { label: lang === 'th' ? 'หนี้เสีย (NPL)' : 'NPL Rate', value: nplRate, color: nplRate > 20 ? 'bg-rose-500' : nplRate > 10 ? 'bg-amber-500' : 'bg-emerald-500', textColor: nplRate > 20 ? 'text-rose-700' : nplRate > 10 ? 'text-amber-700' : 'text-emerald-700' },
-                          ].map(item => (
-                            <div key={item.label}>
-                              <div className="flex justify-between items-center mb-1.5">
-                                <span className="text-xs font-bold text-slate-600">{item.label}</span>
-                                <span className={`text-xs font-black ${item.textColor}`}>{item.value.toFixed(1)}%</span>
+                      <button onClick={() => setShowExpandedTrend(true)}
+                        style={{ padding: '5px 12px', borderRadius: 999, background: D_T.ink, color: D_T.bg,
+                                 fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', fontFamily: font }}>
+                        {lang === 'th' ? 'ขยาย' : 'Expand'}
+                      </button>
+                    </div>
+                    <div style={{ overflowX: 'auto' }}>
+                      <DAreaChart sparkData={trendData30} w={640} h={160} showYAxis />
+                    </div>
+                    {trendData30.length > 0 && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6,
+                                    fontFamily: mono, fontSize: 10, color: D_T.mute2, paddingLeft: 56 }}>
+                        {trendData30.filter((_, i) => i % Math.ceil(trendData30.length / 6) === 0).map(m => (
+                          <span key={m.date}>{m.date}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Monthly summary with breakdown */}
+                  {monthlySummary.length > 0 && (
+                    <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
+                                  borderRadius: 18, overflow: 'hidden' }}>
+                      <div style={{ padding: '14px 22px', borderBottom: `1px solid ${D_T.line}`,
+                                    fontSize: 11, fontWeight: 700, color: D_T.mute,
+                                    letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                        {lang === 'th' ? 'สรุปรายเดือน' : 'Monthly Summary'}
+                      </div>
+                      {monthlySummary.map(m => {
+                        const d = new Date(m.year, m.month, 1);
+                        const label = d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { month: 'long', year: 'numeric' });
+                        const net = m.interest - m.scam - m.withdrawn;
+                        return (
+                          <div key={m.key} style={{ padding: '14px 22px', borderBottom: `1px solid ${D_T.line2}` }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 700, color: D_T.ink }}>{label}</div>
+                                <div style={{ fontSize: 11, color: D_T.mute, marginTop: 2 }}>
+                                  {m.count} {lang === 'th' ? 'รายการ' : 'records'}
+                                </div>
                               </div>
-                              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                                <div className={`h-full rounded-full transition-all duration-700 ${item.color}`} style={{ width: `${Math.min(100, item.value)}%` }} />
-                              </div>
+                              <DChip tone={net >= 0 ? 'mint' : 'blush'}>
+                                {net >= 0 ? '+' : ''}{formatCurrency(net)} net
+                              </DChip>
                             </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8 }}>
+                              {([
+                                [lang === 'th' ? 'รายได้ดอก' : 'Income', m.interest, D_T.mintDeep, D_T.mint],
+                                [lang === 'th' ? 'หนี้บิด' : 'Defaults', m.scam, D_T.blushDeep, D_T.blush],
+                                [lang === 'th' ? 'เบิก' : 'Withdrawn', m.withdrawn, D_T.butterDeep, D_T.butter],
+                                [lang === 'th' ? 'สุทธิ' : 'Total net', net, net >= 0 ? D_T.mintDeep : D_T.blushDeep, net >= 0 ? D_T.mint : D_T.blush],
+                              ] as [string, number, string, string][]).map(([lbl, val, fg, bg]) => (
+                                <div key={lbl} style={{ padding: '8px 10px', borderRadius: 10, background: bg + '40' }}>
+                                  <div style={{ fontSize: 9.5, fontWeight: 700, color: fg, letterSpacing: '.04em',
+                                                textTransform: 'uppercase', marginBottom: 4 }}>{lbl}</div>
+                                  <div style={{ fontSize: 13, fontWeight: 800, color: fg,
+                                                fontFamily: mono, fontVariantNumeric: 'tabular-nums' }}>
+                                    {formatCurrency(val)}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* ── OVERVIEW / LOANS TAB ── */
+                <>
+                  {/* Interest chart — dashboard tab only */}
+                  {activeMobileTab !== 'loans' && (
+                    <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
+                                  borderRadius: 18, padding: '20px 22px 16px', marginBottom: 22 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14 }}>
+                        <div>
+                          <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
+                                        letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                            {lang === 'th' ? 'ดอกเบี้ยที่ได้รับ · 30 วันล่าสุด' : 'Interest received · last 30 days'}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 6 }}>
+                            <span style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-.02em',
+                                           fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
+                              {formatCurrency(s.paidInterest)}
+                            </span>
+                            <DChip tone="mint">↗ {s.profitPct.toFixed(1)}%</DChip>
+                          </div>
+                        </div>
+                        <button onClick={() => setShowExpandedTrend(true)}
+                          style={{ padding: '5px 12px', borderRadius: 999, background: D_T.ink, color: D_T.bg,
+                                   fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', fontFamily: font }}>
+                          {lang === 'th' ? 'ขยาย' : 'Expand'}
+                        </button>
+                      </div>
+                      <div style={{ overflowX: 'auto' }}>
+                        <DAreaChart sparkData={trendData30} w={640} h={150} showYAxis />
+                      </div>
+                      {trendData30.length > 0 && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6,
+                                      fontFamily: mono, fontSize: 10, color: D_T.mute2, paddingLeft: 56 }}>
+                          {trendData30.filter((_, i) => i % Math.ceil(trendData30.length / 6) === 0).map(m => (
+                            <span key={m.date}>{m.date}</span>
                           ))}
                         </div>
-                        <div className="grid grid-cols-2 gap-2 pt-1">
-                          <div className="bg-violet-50 rounded-xl p-3 border border-violet-100">
-                            <div className="text-lg font-black text-violet-700">{realizedYield.toFixed(1)}%</div>
-                            <div className="text-[10px] font-bold text-violet-500 uppercase tracking-wide mt-0.5">{lang === 'th' ? 'ผลตอบแทนจริง' : 'Realized Yield'}</div>
-                          </div>
-                          <div className={`rounded-xl p-3 border ${overdueCapital > 0 ? 'bg-rose-50 border-rose-100' : 'bg-emerald-50 border-emerald-100'}`}>
-                            <div className={`text-lg font-black ${overdueCapital > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>{formatCurrency(overdueCapital)}</div>
-                            <div className={`text-[10px] font-bold uppercase tracking-wide mt-0.5 ${overdueCapital > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                              {lang === 'th' ? 'ต้นที่ค้างชำระ' : 'Overdue Capital'}
-                            </div>
-                            <div className={`text-[10px] mt-0.5 ${overdueCapital > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>{overdueCount} / {activeCount} {lang === 'th' ? 'รายการ' : 'accounts'}</div>
-                          </div>
-                        </div>
-                        <div className={`rounded-xl p-3 border text-xs font-semibold leading-relaxed ${healthColor}`}>{healthMsg}</div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Table card */}
+                  <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 18, padding: '18px 22px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {([
+                          ['all', lang === 'th' ? 'ทั้งหมด' : 'All', tabCounts.all],
+                          ['renewals', lang === 'th' ? 'ต่อสัญญา' : 'Renewed', tabCounts.renewals],
+                          ['paid', lang === 'th' ? 'จ่ายแล้ว' : 'Paid', tabCounts.paid],
+                          ['defaulted', lang === 'th' ? 'หนี้เสีย' : 'Defaulted', tabCounts.defaulted],
+                          ['withdrawn', lang === 'th' ? 'เบิก' : 'Withdrawn', tabCounts.withdrawn],
+                        ] as [string, string, number][]).map(([tab, label, count]) => (
+                          <span key={tab} onClick={() => { setActiveTab(tab as any); setSearchQuery(''); }}
+                            style={{ padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
+                                     background: activeTab === tab ? D_T.ink : D_T.surface2,
+                                     color: activeTab === tab ? D_T.bg : D_T.ink2,
+                                     fontSize: 11.5, fontWeight: 700,
+                                     display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            {label}
+                            {count > 0 && <span style={{ fontSize: 10, opacity: 0.7 }}>{count}</span>}
+                          </span>
+                        ))}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                          placeholder={lang === 'th' ? 'ค้นหา...' : 'Search...'}
+                          style={{ padding: '6px 12px', borderRadius: 999, border: `1px solid ${D_T.line}`,
+                                   background: D_T.surface2, fontSize: 11, color: D_T.ink,
+                                   outline: 'none', fontFamily: font, width: 140 }} />
+                        <select value={sortBy} onChange={e => setSortBy(e.target.value as any)}
+                          style={{ padding: '6px 10px', borderRadius: 999, border: `1px solid ${D_T.line}`,
+                                   background: D_T.surface2, fontSize: 11, color: D_T.ink2,
+                                   outline: 'none', fontFamily: font, cursor: 'pointer' }}>
+                          <option value="default">{lang === 'th' ? 'ล่าสุด' : 'Latest'}</option>
+                          <option value="amount-desc">{lang === 'th' ? 'มากสุด' : 'Highest'}</option>
+                          <option value="amount-asc">{lang === 'th' ? 'น้อยสุด' : 'Lowest'}</option>
+                          <option value="overdue">{lang === 'th' ? 'ค้างนาน' : 'Most Overdue'}</option>
+                          <option value="name">A-Z</option>
+                        </select>
                       </div>
                     </div>
-                  );
-                })()}
-              </div>
-            </motion.div>
-          )}
-
-          {/* Loans Content with Animation */}
-          {(isDesktop || activeMobileTab === 'loans') && (
-            <motion.div
-              key="loans"
-              initial={isDesktop ? false : { opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={isDesktop ? undefined : { opacity: 0, x: -20 }}
-              transition={{ duration: 0.3, ease: "easeOut" }}
-              className="md:block"
-            >
-              <h2 className="text-base font-bold mb-3 text-slate-800">{t('dataManagement', lang)}</h2>
-
-              {/* Search + Sort bar */}
-              <div className="flex gap-2 mb-3">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                  <input
-                    type="text"
-                    placeholder={lang === 'th' ? 'ค้นหาชื่อหรือรหัส...' : 'Search name or ID...'}
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-8 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
-                  />
-                  {searchQuery && (
-                    <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-                <select
-                  value={sortBy}
-                  onChange={e => setSortBy(e.target.value as typeof sortBy)}
-                  className="border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-600 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
-                >
-                  <option value="default">{lang === 'th' ? 'ล่าสุด' : 'Latest'}</option>
-                  <option value="amount-desc">{lang === 'th' ? 'มากสุด ↓' : 'Highest ↓'}</option>
-                  <option value="amount-asc">{lang === 'th' ? 'น้อยสุด ↑' : 'Lowest ↑'}</option>
-                  <option value="overdue">{lang === 'th' ? 'ค้างนาน' : 'Most Overdue'}</option>
-                  <option value="name">{lang === 'th' ? 'ชื่อ A-Z' : 'Name A-Z'}</option>
-                </select>
-              </div>
-
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
-                <div className="flex border-b border-slate-200 bg-slate-50/50 overflow-x-auto">
-                  {(['all', 'renewals', 'paid', 'defaulted', 'withdrawn', 'raw'] as const).map(tab => (
-                    <button
-                      key={tab}
-                      className={`px-4 py-3 text-xs font-semibold capitalize border-b-2 transition-colors whitespace-nowrap flex items-center gap-1.5 ${activeTab === tab ? 'border-emerald-500 text-emerald-700 bg-white' : 'border-transparent text-slate-500'}`}
-                      onClick={() => { setActiveTab(tab); setSearchQuery(''); }}
-                    >
-                      {tab === 'all' ? t('tabAll', lang) :
-                        tab === 'renewals' ? t('tabRenewals', lang) :
-                          tab === 'paid' ? t('tabPaid', lang) :
-                            tab === 'defaulted' ? t('tabDefaulted', lang) :
-                              tab === 'withdrawn' ? t('tabWithdrawn', lang) :
-                                t('tabRaw', lang)}
-                      {tabCounts[tab] > 0 && (
-                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
-                          tab === 'defaulted' ? 'bg-rose-100 text-rose-700' :
-                          tab === 'paid' ? 'bg-cyan-100 text-cyan-700' :
-                          tab === 'renewals' ? 'bg-indigo-100 text-indigo-700' :
-                          tab === 'withdrawn' ? 'bg-amber-100 text-amber-700' :
-                          tab === 'all' ? 'bg-emerald-100 text-emerald-700' :
-                          'bg-slate-100 text-slate-600'
-                        }`}>{tabCounts[tab]}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="p-0 overflow-x-auto overflow-y-auto max-h-[600px] relative">
-                  <table className="hidden md:table w-full text-left whitespace-nowrap text-sm">
-                    <thead className="bg-slate-50 text-xs font-bold text-slate-500 uppercase sticky top-0 z-10 shadow-[0_1px_0_#E2E8F0]">
-                      <tr>
-                        <th className="px-4 py-3 text-left">{t('customerId', lang)}</th>
-                        <th className="px-4 py-3 text-left">{t('name', lang)}</th>
-                        <th className="px-4 py-3 text-right">{t('principal', lang)}</th>
-                        <th className="px-4 py-3 text-right">{t('interestRate', lang)}</th>
-                        <th className="px-4 py-3 text-center">{t('issueDate', lang)}</th>
-                        <th className="px-4 py-3 text-center">{t('dueDate', lang)}</th>
-                        <th className="px-4 py-3 text-left">{t('status', lang)}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100" ref={tableRef}>
-                      {filteredLoans.map((l) => (
-                        <tr key={l.id} onClick={() => setSelectedLoan(l)} className={`cursor-pointer hover:bg-slate-50 active:bg-slate-100 transition-colors ${l.isOverdue ? 'bg-rose-50/30' : ''}`}>
-                          <td className="px-4 py-3 font-mono text-slate-400 text-xs">{l.id}</td>
-                          <td className="px-4 py-3 font-semibold text-slate-800">
-                            {l.name}
-                            {l.isOverdue && <span className="ml-2 text-[10px] font-black text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded-full border border-rose-200">{l.daysLate}d overdue</span>}
-                          </td>
-                          <td className="px-4 py-3 text-right font-medium text-sm">{formatNumber(l.principal)}</td>
-                          <td className="px-4 py-3 text-right text-slate-500">{l.interestRate}%</td>
-                          <td className="px-4 py-3 text-center text-slate-500">{l.borrowDate}</td>
-                          <td className={`px-4 py-3 text-center text-sm font-medium ${l.isOverdue ? 'text-rose-600' : 'text-slate-500'}`}>{l.dueDate}</td>
-                          <td className="px-4 py-3">{renderStatusBadge(l.status)}</td>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ borderBottom: `1px solid ${D_T.line}` }}>
+                          {([
+                            ['ID', 'left'], [lang === 'th' ? 'ผู้กู้' : 'Borrower', 'left'],
+                            [lang === 'th' ? 'เงินต้น' : 'Principal', 'right'],
+                            [lang === 'th' ? 'ดอกเบี้ย' : 'Interest', 'right'],
+                            [lang === 'th' ? 'อัตรา' : 'Rate', 'right'],
+                            [lang === 'th' ? 'กำหนด' : 'Due', 'right'],
+                            [lang === 'th' ? 'สถานะ' : 'Status', 'right'],
+                          ] as [string, string][]).map(([h, align]) => (
+                            <th key={h} style={{ padding: '8px 8px', textAlign: align as any,
+                                                 fontSize: 10, color: D_T.mute2, fontWeight: 700,
+                                                 letterSpacing: '.06em', textTransform: 'uppercase' }}>{h}</th>
+                          ))}
                         </tr>
-                      ))}
-                      {filteredLoans.length === 0 && (
-                        <tr><td colSpan={7} className="py-16 text-center text-slate-400">
-                          <Search className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                          <p className="font-bold text-sm">{lang === 'th' ? 'ไม่พบรายการ' : 'No results found'}</p>
-                          {searchQuery && <p className="text-xs mt-1">"{searchQuery}"</p>}
-                        </td></tr>
-                      )}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody ref={tableRef}>
+                        {filteredLoans.map(l => (
+                          <tr key={l.id} onClick={() => setSelectedLoan(l)}
+                            style={{ borderBottom: `1px solid ${D_T.line2}`, cursor: 'pointer',
+                                     background: selectedLoan?.id === l.id ? D_T.surface2 : 'transparent',
+                                     transition: 'background .12s' }}
+                            onMouseEnter={e => (e.currentTarget.style.background = D_T.surface2)}
+                            onMouseLeave={e => (e.currentTarget.style.background = selectedLoan?.id === l.id ? D_T.surface2 : 'transparent')}>
+                            <td style={{ padding: '13px 8px', fontFamily: mono, fontSize: 11, color: D_T.mute2 }}>{l.id}</td>
+                            <td style={{ padding: '13px 8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <div style={{ width: 28, height: 28, borderRadius: 9, background: D_T.surface2,
+                                              border: `1px solid ${D_T.line}`, display: 'grid', placeItems: 'center',
+                                              fontSize: 10, color: D_T.ink, fontWeight: 700, flexShrink: 0 }}>
+                                  {l.name.charAt(0).toUpperCase()}
+                                </div>
+                                <span style={{ fontSize: 13, color: D_T.ink, fontWeight: 600 }}>{l.name}</span>
+                                {l.isOverdue && <DChip tone="blush">{l.daysLate}d</DChip>}
+                              </div>
+                            </td>
+                            <td style={{ padding: '13px 8px', fontFamily: mono, fontSize: 12, color: D_T.ink,
+                                         textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+                              {formatCurrency(l.principal)}
+                            </td>
+                            <td style={{ padding: '13px 8px', fontFamily: mono, fontSize: 12,
+                                         color: D_T.mintDeep, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                              +{formatCurrency(l.expectedInterest)}
+                            </td>
+                            <td style={{ padding: '13px 8px', fontFamily: mono, fontSize: 12, color: D_T.ink2, textAlign: 'right' }}>
+                              {l.interestRate}%
+                            </td>
+                            <td style={{ padding: '13px 8px', fontSize: 12, color: l.isOverdue ? D_T.blushDeep : D_T.ink2, textAlign: 'right' }}>
+                              {l.dueDate}
+                            </td>
+                            <td style={{ padding: '13px 8px', textAlign: 'right' }}>
+                              <DChip tone={getLoanTone(l)}>{getLoanStatusText(l)}</DChip>
+                            </td>
+                          </tr>
+                        ))}
+                        {filteredLoans.length === 0 && (
+                          <tr><td colSpan={7} style={{ padding: '48px 0', textAlign: 'center', color: D_T.mute, fontSize: 13 }}>
+                            {lang === 'th' ? 'ไม่พบรายการ' : 'No results found'}
+                            {searchQuery && <span> "{searchQuery}"</span>}
+                          </td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </section>
 
-                  <div className="md:hidden" ref={tableRef as any}>
-                    {filteredLoans.map((l) => {
-                      const stripeClass = l.isScam ? 'border-l-[3px] border-rose-500'
-                        : l.isPaid ? 'border-l-[3px] border-cyan-400'
-                        : l.isRenewed ? 'border-l-[3px] border-indigo-500'
-                        : l.isWithdrawn ? 'border-l-[3px] border-amber-400'
-                        : l.isOverdue ? 'border-l-[3px] border-red-500'
-                        : 'border-l-[3px] border-emerald-500';
-                      const avatarBg = l.isScam ? 'bg-rose-100 text-rose-700'
-                        : l.isPaid ? 'bg-cyan-100 text-cyan-700'
-                        : l.isRenewed ? 'bg-indigo-100 text-indigo-700'
-                        : l.isOverdue ? 'bg-red-100 text-red-700'
-                        : 'bg-emerald-100 text-emerald-700';
-                      return (
-                        <div
-                          key={l.id}
-                          onClick={() => setSelectedLoan(l)}
-                          style={{ touchAction: 'manipulation' }}
-                          className={`flex items-center gap-3 px-4 py-3.5 border-b border-slate-100 last:border-0 active:bg-slate-50 cursor-pointer ${stripeClass} ${l.isOverdue ? 'bg-rose-50/20' : ''}`}
-                        >
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 font-black text-sm ${avatarBg}`}>
-                            {l.name.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-bold text-slate-800 text-sm truncate">{l.name}</div>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              <span className="text-[10px] text-slate-400 font-medium">{l.id}</span>
-                              <span className="text-slate-300">·</span>
-                              {l.isOverdue
-                                ? <span className="text-[10px] font-black text-rose-500">{l.daysLate} {t('daysOverdue', lang)}</span>
-                                : <span className="text-[10px] text-slate-400">{t('due', lang)} {l.dueDate}</span>
-                              }
-                            </div>
-                          </div>
-                          <div className="text-right flex-shrink-0">
-                            <div className="font-black text-slate-900 text-sm">{formatCurrency(l.totalExpected)}</div>
-                            {renderStatusBadge(l.status)}
-                          </div>
+            {/* Right rail */}
+            <aside style={{ borderLeft: `1px solid ${D_T.line}`, padding: '22px 24px',
+                            background: D_T.bg, display: 'flex', flexDirection: 'column', gap: 18,
+                            overflowY: 'auto' }}>
+
+              {/* Today's collections */}
+              <div>
+                <div style={{ fontSize: 11, color: D_T.butterDeep, fontWeight: 700,
+                              letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 10 }}>
+                  {lang === 'th' ? 'วันนี้' : 'Today'} · {dueTodayLoans.length}
+                </div>
+                {dueTodayLoans.length === 0 ? (
+                  <div style={{ padding: 16, borderRadius: 14, background: D_T.surface2,
+                                border: `1px solid ${D_T.line}`, fontSize: 12, color: D_T.mute,
+                                textAlign: 'center' }}>
+                    {lang === 'th' ? 'ไม่มีนัดวันนี้ 🎉' : 'Nothing due today 🎉'}
+                  </div>
+                ) : (
+                  <div ref={dueListRef} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {dueTodayLoans.map(l => (
+                      <div key={l.id} style={{ padding: 16, borderRadius: 16, background: D_T.butter,
+                                              boxShadow: '0 1px 0 rgba(27,31,42,.05)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                          <span style={{ fontSize: 13.5, fontWeight: 800 }}>{l.name}</span>
+                          <DChip tone="ghost">{l.id}</DChip>
                         </div>
-                      );
-                    })}
-                    {filteredLoans.length === 0 && (
-                      <div className="py-16 text-center text-slate-400">
-                        <Search className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                        <p className="font-bold text-sm">{lang === 'th' ? 'ไม่พบรายการ' : 'No results found'}</p>
-                        {searchQuery && <p className="text-xs mt-1 text-slate-400">"{searchQuery}"</p>}
+                        <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-.025em',
+                                      fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
+                          {formatCurrency(l.totalExpected)}
+                        </div>
+                        <div style={{ fontSize: 11, color: D_T.ink2, marginTop: 2 }}>
+                          {formatCurrency(l.principal)} + {formatCurrency(l.expectedInterest)} {lang === 'th' ? 'ดอก' : 'interest'}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+                          <button onClick={() => setSelectedLoan(l)}
+                            style={{ flex: 1, padding: '8px 0', background: D_T.ink, color: D_T.bg,
+                                     border: 'none', borderRadius: 999, fontSize: 11.5, fontWeight: 700,
+                                     cursor: 'pointer', fontFamily: font }}>
+                            {lang === 'th' ? 'รับเงินแล้ว' : 'Got paid'}
+                          </button>
+                          <button onClick={() => setSelectedLoan(l)}
+                            style={{ flex: 1, padding: '8px 0', background: 'rgba(255,255,255,.6)',
+                                     color: D_T.ink, border: 'none', borderRadius: 999,
+                                     fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>
+                            {lang === 'th' ? 'ต่อสัญญา' : 'Renew'}
+                          </button>
+                        </div>
                       </div>
-                    )}
+                    ))}
                   </div>
-                </div>
+                )}
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
 
-      {/* Mobile Bottom Nav — 5-tab with center FAB */}
-      <div className="fixed bottom-0 left-0 right-0 md:hidden z-40">
-        <div className="bg-slate-900/95 backdrop-blur-xl border-t border-white/10 flex items-center shadow-[0_-8px_30px_rgba(0,0,0,0.3)]">
-          {/* Home */}
-          <button style={{ touchAction: 'manipulation' }} onClick={() => setActiveMobileTab('dashboard')} className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors ${activeMobileTab === 'dashboard' ? 'text-emerald-400' : 'text-white/40'}`}>
-            <Home className="w-5 h-5" />
-            <span className="text-[9px] font-bold uppercase tracking-wide">{t('navDashboard', lang)}</span>
-          </button>
-          {/* Loans */}
-          <button style={{ touchAction: 'manipulation' }} onClick={() => setActiveMobileTab('loans')} className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors relative ${activeMobileTab === 'loans' ? 'text-emerald-400' : 'text-white/40'}`}>
-            <List className="w-5 h-5" />
-            <span className="text-[9px] font-bold uppercase tracking-wide">{t('navLoans', lang)}</span>
-            {overdueLoans.length > 0 && <span className="absolute top-2 right-[calc(50%-10px)] w-4 h-4 bg-rose-500 text-white text-[8px] font-black rounded-full flex items-center justify-center">{overdueLoans.length}</span>}
-          </button>
-          {/* FAB */}
-          <div className="flex-1 flex justify-center items-center relative py-2">
-            <button
-              style={{ touchAction: 'manipulation' }}
-              onClick={() => setShowFabMenu(v => !v)}
-              className={`w-14 h-14 rounded-full flex items-center justify-center -mt-6 border-4 border-slate-900 shadow-xl shadow-emerald-900/40 active:scale-95 transition-all ${showFabMenu ? 'rotate-45 bg-slate-600' : 'bg-gradient-to-br from-emerald-400 to-emerald-600'}`}
-            >
-              <Plus className="w-6 h-6 text-white stroke-[3]" />
-            </button>
-          </div>
-          {/* Analytics */}
-          <button style={{ touchAction: 'manipulation' }} onClick={() => setActiveMobileTab('analytics')} className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors ${activeMobileTab === 'analytics' ? 'text-emerald-400' : 'text-white/40'}`}>
-            <BarChart2 className="w-5 h-5" />
-            <span className="text-[9px] font-bold uppercase tracking-wide">{t('navAnalytics', lang)}</span>
-          </button>
-          {/* Notifications */}
-          <button style={{ touchAction: 'manipulation' }} onClick={() => setShowNotifModal(true)} className={`flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors relative ${isSubscribed ? 'text-emerald-400' : 'text-white/40'}`}>
-            {isSubscribed ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
-            <span className="text-[9px] font-bold uppercase tracking-wide">{lang === 'th' ? 'แจ้งเตือน' : 'Alerts'}</span>
-          </button>
-        </div>
-        <div className="bg-slate-900/95 pb-safe" />
-      </div>
-
-      <AnimatePresence>
-        {selectedLoan && (
-          <div
-            className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm"
-            onClick={() => setSelectedLoan(null)}
-          >
-            <motion.div
-              className="bg-white w-full md:rounded-2xl md:max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh] rounded-t-3xl"
-              initial={{ translateY: '100%' }}
-              animate={{ translateY: 0 }}
-              exit={{ translateY: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              onClick={e => e.stopPropagation()}
-            >
-
-              <div className={`flex justify-between items-start px-5 py-4 border-b border-slate-100 ${
-                selectedLoan.isScam ? 'bg-gradient-to-r from-rose-50 to-white'
-                : selectedLoan.isOverdue ? 'bg-gradient-to-r from-red-50 to-white'
-                : selectedLoan.isPaid ? 'bg-gradient-to-r from-cyan-50 to-white'
-                : selectedLoan.isRenewed ? 'bg-gradient-to-r from-indigo-50 to-white'
-                : 'bg-gradient-to-r from-emerald-50 to-white'
-              }`}>
+              {/* Overdue */}
+              {overdueLoans.length > 0 && (
                 <div>
-                  <h2 className="text-xl font-black text-slate-800 flex items-center gap-2 flex-wrap">
-                    {selectedLoan.name}
-                    <button
-                      onClick={() => setIsEditingLoan(!isEditingLoan)}
-                      className={`text-xs px-2.5 py-1 rounded-full font-bold transition-colors ${
-                        isEditingLoan ? 'bg-indigo-100 text-indigo-700' : 'bg-white/80 text-slate-500 border border-slate-200'
-                      }`}
-                    >
-                      {isEditingLoan ? t('cancelEdit', lang) : t('editDetails', lang)}
-                    </button>
-                  </h2>
-                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    <span className="text-xs font-mono text-slate-400">ID: {selectedLoan.id}</span>
-                    {selectedLoan.isScam ? (
-                      <span className="inline-flex px-2 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black uppercase">💀 Defaulted</span>
-                    ) : selectedLoan.isWithdrawn ? (
-                      <span className="inline-flex px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold uppercase">Payout</span>
-                    ) : selectedLoan.isPaid ? (
-                      <span className="inline-flex px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-700 text-[10px] font-bold uppercase">✓ Paid</span>
-                    ) : selectedLoan.isRenewed ? (
-                      <span className="inline-flex px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold uppercase">Renewed</span>
-                    ) : selectedLoan.isOverdue ? (
-                      <span className="inline-flex px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-bold uppercase">⚠ {selectedLoan.daysLate}d overdue</span>
-                    ) : (
-                      <span className="inline-flex px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase">Active</span>
-                    )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                    <span style={{ fontSize: 11, color: D_T.blushDeep, fontWeight: 700,
+                                   letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                      {lang === 'th' ? 'ค้างชำระ' : 'Overdue'} · {overdueLoans.length}
+                    </span>
+                    <span style={{ fontSize: 11, color: D_T.blushDeep, fontWeight: 700, fontFamily: mono }}>
+                      −{formatCurrency(overdueLoans.reduce((a, l) => a + l.totalExpected, 0))}
+                    </span>
                   </div>
-                </div>
-                <button
-                  onClick={() => setSelectedLoan(null)}
-                  className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition-colors flex-shrink-0 ml-2"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-
-              <div className="p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-6 bg-white">
-                <div className="space-y-4">
-                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">{t('financialDetails', lang)}</h3>
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    {isEditingLoan ? (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-1">{t('principal', lang)}</label>
-                          <input
-                            type="number"
-                            value={editLoanForm.principal}
-                            onChange={e => setEditLoanForm({ ...editLoanForm, principal: e.target.value })}
-                            className="w-full border border-slate-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-1.5"
-                          />
-                          <div className="flex flex-wrap gap-1">
-                            {[10, 50, 100, 500, 1000].map(amt => (
-                              <button key={amt} type="button"
-                                onClick={() => setEditLoanForm(f => ({ ...f, principal: String(Math.max(0, parseFloat(f.principal || '0') + amt)) }))}
-                                className="px-2 py-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded border border-indigo-100 transition-colors">
-                                +{amt}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-1">{t('interestRateLabel', lang)}</label>
-                          <input
-                            type="number"
-                            value={editLoanForm.interestRate}
-                            onChange={e => setEditLoanForm({ ...editLoanForm, interestRate: Number(e.target.value) })}
-                            className="w-full border border-slate-300 rounded p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-                        <div className="flex justify-between items-center mt-4 pt-4 border-t border-slate-200">
-                          <span className="text-slate-700 font-bold">{t('newExpected', lang)}</span>
-                          <span className="font-black text-xl text-indigo-600">
-                            {formatCurrency(parseFloat(editLoanForm.principal) + ((parseFloat(editLoanForm.principal) * editLoanForm.interestRate) / 100))}
+                  <div ref={overdueListRef} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {overdueLoans.map(l => (
+                      <div key={l.id} onClick={() => setSelectedLoan(l)}
+                        style={{ padding: 14, borderRadius: 14, background: D_T.blush, cursor: 'pointer' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700 }}>{l.name}</span>
+                          <span style={{ fontSize: 11, color: D_T.blushDeep, fontWeight: 700 }}>
+                            {lang === 'th' ? `ช้า ${l.daysLate} วัน` : `${l.daysLate}d late`}
                           </span>
                         </div>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-slate-500 text-sm">{t('principal', lang)}</span>
-                          <span className="font-semibold text-slate-800">{formatCurrency(selectedLoan.principal)}</span>
+                        <div style={{ fontSize: 11, color: D_T.ink2 }}>
+                          {formatCurrency(l.principal)} + {formatCurrency(l.expectedInterest)} · {l.dueDate}
                         </div>
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-slate-500 text-sm">{t('interestRate', lang)}</span>
-                          <span className="font-semibold text-slate-800">{selectedLoan.interestRate}%</span>
-                        </div>
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-slate-500 text-sm">{t('expectedInterest', lang)}</span>
-                          <span className="font-semibold text-emerald-600">+{formatCurrency(selectedLoan.expectedInterest)}</span>
-                        </div>
-                        <div className="flex justify-between items-center mb-4 pb-4 border-b border-slate-200">
-                          <span className="text-slate-500 text-sm">{t('penaltyFee', lang)}</span>
-                          <span className="font-semibold text-amber-600">+{formatCurrency(selectedLoan.penalty)}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-700 font-bold">{t('totalExpected', lang)}</span>
-                          <span className="font-black text-xl text-slate-900">{formatCurrency(selectedLoan.totalExpected)}</span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">{t('paymentsAndDates', lang)}</h3>
-                  <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 mb-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-emerald-700 text-sm">{t('totalPaid', lang)}</span>
-                      <span className="font-bold text-emerald-700">{formatCurrency(selectedLoan.paidAmount)}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-xs text-emerald-600/80 pl-2 border-l-2 border-emerald-200 ml-1">
-                      <span>{t('principalPaid', lang)}</span>
-                      <span>{formatCurrency(selectedLoan.paidPrincipal)}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-xs text-emerald-600/80 pl-2 border-l-2 border-emerald-200 ml-1 mt-1">
-                      <span>{t('interestPaid', lang)}</span>
-                      <span>{formatCurrency(selectedLoan.paidInterest)}</span>
-                    </div>
-                  </div>
-
-                  {selectedLoan.historicalRenewalCount > 0 && (
-                    <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 mb-4">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-indigo-800 text-sm font-semibold">{t('renewalHistory', lang)}</span>
-                        <span className="bg-indigo-200 text-indigo-800 text-xs px-2 py-0.5 rounded-full font-bold">{selectedLoan.historicalRenewalCount} {t('times', lang)}</span>
                       </div>
-                      <div className="flex justify-between items-center text-sm">
-                        <span className="text-indigo-600">{t('totalInterestAccumulated', lang)}</span>
-                        <span className="font-black text-indigo-700">{formatCurrency(selectedLoan.historicalRenewalInterest)}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {selectedLoan.penaltyHistory && selectedLoan.penaltyHistory.length > 0 && (
-                    <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 mb-4">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-amber-800 text-sm font-semibold">{t('penaltyHistory', lang)}</span>
-                        <span className="bg-amber-200 text-amber-800 text-xs px-2 py-0.5 rounded-full font-bold">
-                          {formatCurrency(selectedLoan.penaltyHistory.reduce((sum, p) => sum + p.amount, 0))}
-                        </span>
-                      </div>
-                      <div className="space-y-1">
-                        {selectedLoan.penaltyHistory.map((p, i) => (
-                          <div key={i} className="flex justify-between text-xs text-amber-700">
-                            <span>{t('round', lang)} {i + 1} · {p.date}</span>
-                            <span className="font-bold">{formatCurrency(p.amount)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                      {isEditingLoan ? (
-                        <>
-                          <div className="text-xs font-bold text-slate-500 mb-1">{t('issueDate', lang)}</div>
-                          <DatePicker
-                            selected={editLoanForm.borrowDate}
-                            onChange={(date: Date | null) => {
-                              if (!date) return;
-                              const dDate = new Date(date.getTime() + editLoanForm.daysBorrowed * 86400000);
-                              setEditLoanForm(f => ({ ...f, borrowDate: date, dueDate: dDate }));
-                            }}
-                            dateFormat="dd/MM/yyyy"
-                            className="w-full border border-slate-300 rounded p-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
-                          />
-                        </>
-                      ) : (
-                        <>
-                          <div className="text-xs text-slate-500 mb-1">{t('issueDate', lang)}</div>
-                          <div className="font-semibold text-slate-800">{selectedLoan.borrowDate}</div>
-                        </>
-                      )}
-                    </div>
-                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
-                      {isEditingLoan ? (
-                        <>
-                          <div className="text-xs font-bold text-slate-500 mb-1">{t('dueDateLabel', lang)}</div>
-                          <DatePicker
-                            selected={editLoanForm.dueDate}
-                            onChange={handleEditDueDateChange}
-                            dateFormat="dd/MM/yyyy"
-                            className="w-full border border-slate-300 rounded p-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
-                          />
-                        </>
-                      ) : (
-                        <>
-                          <div className="text-xs text-slate-500 mb-1">{t('dueDateLabel', lang)}</div>
-                          <div className={`font-semibold ${selectedLoan.isOverdue ? 'text-rose-600' : 'text-slate-800'}`}>
-                            {selectedLoan.dueDate}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 border-t border-slate-100 bg-white">
-                {isEditingLoan ? (
-                  <button
-                    onClick={handleSaveEdit}
-                    disabled={isSyncing}
-                    className="w-full py-3.5 font-bold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50 text-white text-sm"
-                    style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
-                  >
-                    {isSyncing ? t('saving', lang) : t('saveChanges', lang)}
-                  </button>
-                ) : (
-                  <div className="flex flex-col gap-3">
-                    <div className="flex items-center gap-3">
-                      <label className="text-xs font-bold text-slate-500 whitespace-nowrap">{t('actionDate', lang)}</label>
-                      <DatePicker
-                        selected={actionDate}
-                        onChange={(date) => date && setActionDate(date)}
-                        dateFormat="dd/MM/yyyy"
-                        className="border border-slate-200 rounded-xl p-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 cursor-pointer bg-slate-50 w-32 font-medium"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs font-bold text-slate-500 whitespace-nowrap">{lang === 'th' ? 'ค่าปรับ' : 'Penalty'}</label>
-                        <div className="flex rounded-xl overflow-hidden border border-slate-200 text-xs font-bold">
-                          <button
-                            onClick={() => setHasPenalty(false)}
-                            className={`px-3 py-1.5 transition-colors ${!hasPenalty ? 'bg-slate-700 text-white' : 'bg-white text-slate-400 hover:bg-slate-50'}`}
-                          >{lang === 'th' ? 'ไม่มี' : 'None'}</button>
-                          <button
-                            onClick={() => {
-                              const days = selectedLoan?.daysLate ?? 0;
-                              setPenaltyAmount(Math.max(1, days) * 200);
-                              setHasPenalty(true);
-                            }}
-                            className={`px-3 py-1.5 transition-colors ${hasPenalty ? 'bg-amber-500 text-white' : 'bg-white text-slate-400 hover:bg-slate-50'}`}
-                          >{lang === 'th' ? 'มี' : 'Yes'}</button>
-                        </div>
-                        {hasPenalty && (
-                          <div className="flex items-center gap-1 flex-1">
-                            <input
-                              type="number"
-                              value={penaltyAmount}
-                              onChange={e => setPenaltyAmount(Math.max(0, parseInt(e.target.value) || 0))}
-                              className="border border-amber-300 rounded-xl px-3 py-1.5 text-sm w-24 text-center font-black text-amber-700 bg-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                            />
-                            <span className="text-xs font-bold text-amber-600">฿</span>
-                          </div>
-                        )}
-                      </div>
-                      {hasPenalty && selectedLoan && (
-                        <div className="text-[10px] text-amber-500 font-semibold pl-1">
-                          {Math.max(1, selectedLoan.daysLate)} {lang === 'th' ? 'วัน' : 'd'} × ฿200 = ฿{Math.max(1, selectedLoan.daysLate) * 200}
-                          {penaltyAmount !== Math.max(1, selectedLoan.daysLate) * 200 && (
-                            <span className="ml-1 text-slate-400">{lang === 'th' ? '(แก้ไขแล้ว)' : '(edited)'}</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <button
-                        onClick={() => handleUpdateStatus('ชำระแล้ว')}
-                        className="py-3.5 font-bold rounded-xl text-white text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
-                        style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
-                      >
-                        <CheckCircle2 className="w-4 h-4" /> {t('markPaid', lang)}
-                      </button>
-                      <button
-                        onClick={() => handleUpdateStatus('ต่อดอก')}
-                        className="py-3.5 font-bold rounded-xl text-white text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
-                        style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
-                      >
-                        <Activity className="w-4 h-4" /> {t('renew', lang)}
-                      </button>
-                      <button
-                        onClick={() => setShowConfirmDefault(true)}
-                        className="py-3.5 font-bold rounded-xl text-white text-sm flex items-center justify-center gap-1.5 active:scale-95 transition-transform"
-                        style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}
-                      >
-                        <UserX className="w-4 h-4" /> {t('default', lang)}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {showExpandedTrend && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4 lg:p-8 bg-slate-900/70 backdrop-blur-sm"
-          onClick={() => { setShowExpandedTrend(false); setInsightDate(null); }}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[95vh] lg:h-[85vh] overflow-hidden flex flex-col animate-[slideIn_0.2s_ease-out]"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center p-5 lg:p-6 border-b border-slate-200 bg-white">
-              <div>
-                <h2 className="text-xl lg:text-2xl font-black text-slate-800 flex items-center gap-2">
-                  <Activity className="w-6 h-6 lg:w-7 lg:h-7 text-indigo-600" /> {t('advancedCashflow', lang)}
-                </h2>
-                <p className="text-sm text-slate-500 mt-1 font-medium">{t('cashflow30History', lang)}</p>
-              </div>
-              <button onClick={() => { setShowExpandedTrend(false); setInsightDate(null); }} className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition-colors"><X size={24} /></button>
-            </div>
-
-            <div className="flex flex-col lg:flex-row flex-1 overflow-hidden bg-slate-50">
-              <div className="w-full lg:w-2/3 p-6 flex flex-col bg-white border-r border-slate-200 shadow-[2px_0_10px_rgba(0,0,0,0.02)] z-10">
-                <div className="flex justify-between items-center mb-6">
-                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">{t('trend30day', lang)}</h3>
-                  <span className="text-xs text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full font-bold border border-indigo-100 animate-pulse">{t('clickBarToViewDetails', lang)}</span>
-                </div>
-                <div className="flex-1 w-full min-h-[250px] cursor-pointer">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart
-                      data={trendData30}
-                      margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                      onClick={(e: any) => {
-                        if (e && e.activeLabel) {
-                          setInsightDate(labelToFullDate.get(e.activeLabel) ?? e.activeLabel);
-                        }
-                      }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#64748B' }} />
-                      <RechartsTooltip cursor={{ fill: '#F8FAFC' }} contentStyle={{ borderRadius: '8px', border: '1px solid #E2E8F0', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-                      <Bar dataKey="Expected" barSize={16} fill="#94A3B8" radius={[4, 4, 0, 0]} />
-                      <Line type="monotone" dataKey="Received" stroke="#10B981" strokeWidth={4} dot={{ r: 4, fill: '#10B981', strokeWidth: 0 }} activeDot={{ r: 8, stroke: '#fff', strokeWidth: 2 }} />
-                      <Legend verticalAlign="top" wrapperStyle={{ paddingBottom: '20px' }} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              <div className="w-full lg:w-1/3 p-0 flex flex-col overflow-y-auto">
-                {!insightDate ? (
-                  <div className="flex-1 flex flex-col items-center justify-center p-8 text-center opacity-60">
-                    <div className="w-20 h-20 bg-indigo-100 text-indigo-500 rounded-full flex items-center justify-center mb-4">
-                      <Activity className="w-10 h-10" />
-                    </div>
-                    <p className="font-extrabold text-lg text-slate-700">{t('noDateSelected', lang)}</p>
-                    <p className="text-sm text-slate-500 mt-2 leading-relaxed">{t('selectDateOnGraph', lang)}</p>
-                  </div>
-                ) : (
-                  <div className="p-6 space-y-6 animate-[fadeIn_0.2s_ease-out]">
-                    <div className="flex items-center gap-3 border-b border-slate-200 pb-4">
-                      <div className="bg-indigo-600 text-white p-2 rounded-lg"><CalendarClock className="w-5 h-5" /></div>
-                      <div>
-                        <h2 className="text-xl font-black text-slate-800">{insightDate}</h2>
-                        <p className="text-xs font-bold text-indigo-600 uppercase">{t('dailyInsightReport', lang)}</p>
-                      </div>
-                    </div>
-
-                    <div>
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">{t('expectedInterestDue', lang)}</h3>
-                      <div className="space-y-2">
-                        {data.loans.filter(l => l.dueDate === insightDate).length === 0 ? (
-                          <p className="text-xs text-slate-400 italic py-2 px-1">{t('noExpectedForDate', lang)}</p>
-                        ) : data.loans.filter(l => l.dueDate === insightDate).map(l => (
-                          <div key={'exp-' + l.id} className="flex justify-between p-3 bg-white rounded-lg border border-slate-200 shadow-sm hover:border-indigo-300 transition-colors">
-                            <div>
-                              <div className="font-bold text-slate-800 text-sm">{l.name} <span className="text-xs text-slate-400 font-normal">({l.id})</span></div>
-                              <div className="text-[10px] text-slate-500 mt-0.5">{t('principal', lang)}: {formatCurrency(l.principal)}</div>
-                            </div>
-                            <div className="flex flex-col items-end justify-center">
-                              <span className="font-black text-slate-700">{formatCurrency(l.expectedInterest)}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div>
-                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">{t('actualPaymentsReceived', lang)}</h3>
-                      <div className="space-y-2">
-                        {data.loans.filter(l => l.actualDate === insightDate && (l.isPaid || l.isRenewed)).length === 0 ? (
-                          <p className="text-xs text-slate-400 italic py-2 px-1">{t('noPaymentsForDate', lang)}</p>
-                        ) : data.loans.filter(l => l.actualDate === insightDate && (l.isPaid || l.isRenewed)).map(l => (
-                          <div key={'act-' + l.id} className="flex justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-200 shadow-sm">
-                            <div>
-                              <div className="font-bold text-slate-800 text-sm">{l.name} <span className="text-xs text-slate-400 font-normal">({l.id})</span></div>
-                              <div className="mt-1">{renderStatusBadge(l.status)}</div>
-                            </div>
-                            <div className="flex flex-col items-end justify-center gap-0.5">
-                              <span className="font-black text-emerald-700">{formatCurrency(l.paidInterest)}</span>
-                              <span className="text-[10px] text-emerald-600">{t('principalPaid', lang)}: {formatCurrency(l.paidPrincipal)}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Withdraw Modal — slide-up sheet on mobile */}
-      {showWithdrawModal && (
-        <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowWithdrawModal(false)}>
-          <div className="bg-white w-full md:max-w-md md:rounded-2xl shadow-2xl overflow-hidden rounded-t-3xl animate-sheet-up md:animate-slide-up" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-center pt-3 pb-1 md:hidden"><div className="w-10 h-1 bg-slate-200 rounded-full" /></div>
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}>
-                  <Wallet className="w-4.5 h-4.5 text-white" style={{ width: '18px', height: '18px' }} />
-                </div>
-                <h3 className="text-lg font-black text-slate-800">{t('newPayout', lang)}</h3>
-              </div>
-              <button onClick={() => setShowWithdrawModal(false)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100"><X size={20} /></button>
-            </div>
-
-            <form onSubmit={handleWithdrawSubmit} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('payoutAmount', lang)}</label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  value={withdrawForm.principal}
-                  onChange={e => setWithdrawForm({ ...withdrawForm, principal: e.target.value })}
-                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
-                  placeholder="ระบุจำนวนเงิน"
-                />
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {[10, 50, 100, 500, 1000].map(amt => (
-                    <button
-                      key={amt} type="button"
-                      onClick={() => setWithdrawForm(f => ({ ...f, principal: String(Math.max(0, parseFloat(f.principal || '0') + amt)) }))}
-                      className="px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors border border-rose-100"
-                    >
-                      +{formatNumber(amt)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('withdrawalDate', lang)}</label>
-                <DatePicker
-                  selected={withdrawForm.date}
-                  onChange={(date: Date | null) => setWithdrawForm({ ...withdrawForm, date: date ?? new Date() })}
-                  dateFormat="dd/MM/yyyy"
-                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500 cursor-pointer bg-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('withdrawalName', lang)}</label>
-                <input
-                  type="text"
-                  value={withdrawForm.name}
-                  onChange={e => setWithdrawForm({ ...withdrawForm, name: e.target.value })}
-                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500"
-                  placeholder="Withdrawal (default)"
-                />
-              </div>
-
-              <div className="pt-4 border-t border-slate-100 mt-2 px-0 pb-0 flex justify-end gap-3">
-                <button type="button" onClick={() => setShowWithdrawModal(false)} className="px-4 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors text-sm">{t('cancel', lang)}</button>
-                <button type="submit" disabled={isSyncing} className="px-5 py-2.5 text-white font-bold rounded-xl transition-colors shadow-sm disabled:opacity-50 text-sm" style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}>
-                  {isSyncing ? t('saving', lang) : t('confirmPayout', lang)}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* New Loan Modal — slide-up sheet on mobile */}
-      {showNewLoanModal && (
-        <div className="fixed inset-0 z-[70] flex items-end md:items-center justify-center bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowNewLoanModal(false)}>
-          <div className="bg-white w-full md:max-w-md md:rounded-2xl shadow-2xl overflow-hidden rounded-t-3xl animate-sheet-up md:animate-slide-up" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-center pt-3 pb-1 md:hidden"><div className="w-10 h-1 bg-slate-200 rounded-full" /></div>
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}>
-                  <Activity className="w-4.5 h-4.5 text-white" style={{ width: '18px', height: '18px' }} />
-                </div>
-                <h3 className="text-lg font-black text-slate-800">{t('issueNewLoan', lang)}</h3>
-              </div>
-              <button onClick={() => setShowNewLoanModal(false)} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100"><X size={20} /></button>
-            </div>
-
-            <form onSubmit={handleCreateNewLoan} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('borrowerName', lang)}</label>
-                <input
-                  type="text"
-                  required
-                  value={newLoanForm.name}
-                  onChange={e => setNewLoanForm({ ...newLoanForm, name: e.target.value })}
-                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="e.g. John Doe"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('principalAmount', lang)}</label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  value={newLoanForm.principal}
-                  onChange={e => setNewLoanForm({ ...newLoanForm, principal: e.target.value })}
-                  className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-2"
-                  placeholder="฿"
-                />
-                <div className="flex flex-wrap gap-2">
-                  {[10, 50, 100, 500, 1000].map(amt => (
-                    <button
-                      key={amt} type="button"
-                      onClick={() => setNewLoanForm(f => ({ ...f, principal: String(Math.max(0, parseFloat(f.principal || '0') + amt)) }))}
-                      className="px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors border border-indigo-100"
-                    >
-                      +{formatNumber(amt)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 relative">
-                <div className="flex flex-col relative z-20">
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('borrowDate', lang)}</label>
-                  <DatePicker
-                    selected={newLoanForm.borrowDate}
-                    onChange={handleBorrowDateChange}
-                    dateFormat="dd/MM/yyyy"
-                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
-                  />
-                </div>
-                <div className="flex flex-col relative z-20">
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('dueDateLabel', lang)}</label>
-                  <DatePicker
-                    selected={newLoanForm.dueDate}
-                    onChange={handleDueDateChange}
-                    dateFormat="dd/MM/yyyy"
-                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer bg-white"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('daysBorrowed', lang)}</label>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => handleDaysChange(newLoanForm.daysBorrowed - 1)}
-                      disabled={newLoanForm.daysBorrowed <= 1}
-                      className="w-9 h-10 rounded-lg border border-slate-200 flex items-center justify-center text-slate-600 font-bold text-lg disabled:opacity-30 disabled:cursor-not-allowed bg-white hover:bg-slate-50 transition-colors flex-shrink-0"
-                    >−</button>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      value={newLoanForm.daysBorrowed}
-                      onChange={e => handleDaysChange(Number(e.target.value))}
-                      className="flex-1 border border-slate-200 rounded-lg p-3 text-slate-800 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-0"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleDaysChange(newLoanForm.daysBorrowed + 1)}
-                      className="w-9 h-10 rounded-lg border border-slate-200 flex items-center justify-center text-slate-600 font-bold text-lg bg-white hover:bg-slate-50 transition-colors flex-shrink-0"
-                    >+</button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{t('interestRateLabel', lang)}</label>
-                  <input
-                    type="number"
-                    required
-                    min="0"
-                    value={newLoanForm.interestRate}
-                    onChange={e => setNewLoanForm({ ...newLoanForm, interestRate: Number(e.target.value) })}
-                    className="w-full border border-slate-200 rounded-lg p-3 text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-4 border-t border-slate-100 mt-2 px-0 pb-0 flex justify-end gap-3">
-                <button type="button" onClick={() => setShowNewLoanModal(false)} className="px-4 py-2.5 text-slate-600 font-bold hover:bg-slate-100 rounded-xl transition-colors text-sm">{t('cancel', lang)}</button>
-                <button type="submit" disabled={isSyncing} className="px-5 py-2.5 text-white font-bold rounded-xl transition-colors shadow-sm disabled:opacity-50 text-sm" style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}>
-                  {isSyncing ? t('saving', lang) : t('addLoan', lang)}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {showNotifModal && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowNotifModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-              <h2 className="text-xl font-extrabold text-slate-800">{t('notifTitle', lang)}</h2>
-              <button onClick={() => setShowNotifModal(false)} className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100"><X size={20} /></button>
-            </div>
-            <div className="p-6 space-y-5">
-              <div className={`p-4 rounded-xl border text-center font-bold text-sm ${isSubscribed ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : notifPermission === 'denied' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
-                {isSubscribed ? t('notifEnabled', lang) : notifPermission === 'denied' ? t('notifBlocked', lang) : t('notifDisabled', lang)}
-                <p className="font-normal text-xs mt-1 opacity-80">
-                  {isSubscribed ? t('notifEnabledDesc', lang) : notifPermission === 'denied' ? t('notifBlockedDesc', lang) : t('notifDisabledDesc', lang)}
-                </p>
-              </div>
-              {isSubscribed && (
-                <div className="space-y-2">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t('testNotif', lang)}</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => handleTestNotif('morning')} disabled={isSendingTestNotif} className="py-2.5 text-sm font-bold rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-colors disabled:opacity-50">{t('testMorning', lang)}</button>
-                    <button onClick={() => handleTestNotif('afternoon')} disabled={isSendingTestNotif} className="py-2.5 text-sm font-bold rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-colors disabled:opacity-50">{t('testAfternoon', lang)}</button>
+                    ))}
                   </div>
                 </div>
               )}
-              <div className="pt-2 flex flex-col gap-2">
-                {!isSubscribed && notifPermission !== 'denied' && (
-                  <button onClick={handleEnableNotif} className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors text-sm">{t('enableNotif', lang)}</button>
-                )}
-                {isSubscribed && (
-                  <button onClick={handleDisableNotif} className="w-full py-3 bg-rose-50 text-rose-700 border border-rose-200 font-bold rounded-xl hover:bg-rose-100 transition-colors text-sm">{t('disableNotif', lang)}</button>
-                )}
-                <button onClick={() => setShowNotifModal(false)} className="w-full py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 transition-colors text-sm">{t('cancel', lang)}</button>
+
+              {/* Allocation bars */}
+              <div>
+                <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
+                              letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>
+                  {lang === 'th' ? 'เงินอยู่ที่ไหน' : 'Where the money is'}
+                </div>
+                {(() => {
+                  const total = Math.max(s.totalLimit, 1);
+                  const bars: [string, number, string][] = [
+                    [lang === 'th' ? 'กำลังทำงาน' : 'Out earning', s.totalBorrowed - s.scamPrincipal, D_T.mintDeep],
+                    [lang === 'th' ? 'พร้อมปล่อย' : 'Free to lend', s.available, D_T.butterDeep],
+                    [lang === 'th' ? 'หนี้เสีย' : 'Stuck (default)', s.scamPrincipal, D_T.blushDeep],
+                  ];
+                  return bars.map(([label, val, color]) => (
+                    <div key={label} style={{ marginBottom: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
+                        <span style={{ color: D_T.ink2, fontWeight: 600 }}>{label}</span>
+                        <span style={{ color: D_T.ink, fontWeight: 700, fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
+                          {formatCurrency(val)}
+                        </span>
+                      </div>
+                      <div style={{ height: 6, background: D_T.surface2, borderRadius: 99, overflow: 'hidden' }}>
+                        <div style={{ width: Math.min(100, (val / total) * 100) + '%', height: '100%',
+                                      background: color, borderRadius: 99 }} />
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+
+              <div style={{ marginTop: 'auto', fontSize: 11, color: D_T.mute2, fontStyle: 'italic', lineHeight: 1.5 }}>
+                {lang === 'th' ? '"การปล่อยกู้คือความอดทนที่มีตัวเลขกำกับ"' : '"Lending is patience with a number on it."'}
+              </div>
+            </aside>
+          </div>
+        </div>
+      </div>}
+
+      {/* ── MOBILE LAYOUT ──────────────────────────────── */}
+      {!isDesktop && <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', paddingBottom: 80 }}>
+
+        {/* Mobile header */}
+        <div style={{ padding: '10px 20px 6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      background: D_T.bg, borderBottom: `1px solid ${D_T.line}`, position: 'sticky', top: 0, zIndex: 30 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 30, height: 30, borderRadius: 10, background: D_T.ink, color: D_T.butter,
+                          display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 800 }}>P</div>
+            <div>
+              <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase' }}>
+                Pocket Bank
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 800, letterSpacing: '-.02em' }}>
+                {lang === 'th' ? 'สวัสดี' : 'Hey'}
               </div>
             </div>
           </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={toggleLang}
+              style={{ width: 32, height: 32, borderRadius: 10, background: D_T.surface,
+                       border: `1px solid ${D_T.line}`, fontSize: 10, fontWeight: 700,
+                       color: D_T.ink2, cursor: 'pointer', fontFamily: font }}>
+              {lang === 'th' ? 'EN' : 'TH'}
+            </button>
+            <button onClick={() => setShowNotifModal(true)}
+              style={{ width: 32, height: 32, borderRadius: 10, background: D_T.surface,
+                       border: `1px solid ${D_T.line}`, display: 'grid', placeItems: 'center',
+                       fontSize: 15, cursor: 'pointer', position: 'relative' }}>
+              {isSubscribed ? '🔔' : '🔕'}
+              {isSubscribed && overdueLoans.length > 0 && (
+                <span style={{ position: 'absolute', top: 4, right: 4, width: 7, height: 7,
+                               borderRadius: 99, background: D_T.blushDeep }} />
+              )}
+            </button>
+          </div>
         </div>
-      )}
 
-      {/* FAB Menu Overlay — mobile only */}
-      <AnimatePresence>
-        {showFabMenu && (
-          <motion.div
-            className="fixed inset-0 z-[55] md:hidden flex flex-col justify-end"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setShowFabMenu(false)}
-          >
-            <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" />
-            <motion.div
-              className="relative px-6 pb-28 flex flex-col gap-3"
-              initial={{ opacity: 0, y: 32 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 16 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-              onClick={e => e.stopPropagation()}
-            >
-              <button
-                onClick={() => { setShowFabMenu(false); setShowNewLoanModal(true); }}
-                className="w-full py-4 rounded-2xl text-white font-black text-base flex items-center justify-center gap-3 shadow-2xl active:scale-95 transition-transform"
-                style={{ background: 'linear-gradient(135deg, #6366f1, #4f46e5)' }}
-              >
-                <Activity className="w-5 h-5" /> {t('newLoan', lang)}
-              </button>
-              <button
-                onClick={() => { setShowFabMenu(false); setShowWithdrawModal(true); }}
-                className="w-full py-4 rounded-2xl text-white font-black text-base flex items-center justify-center gap-3 shadow-2xl active:scale-95 transition-transform"
-                style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}
-              >
-                <Wallet className="w-5 h-5" /> {t('withdraw', lang)}
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Confirm Default Dialog */}
-      <AnimatePresence>
-        {showConfirmDefault && (
-          <motion.div
-            className="fixed inset-0 z-[80] flex items-center justify-center p-6 bg-slate-900/70 backdrop-blur-sm"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setShowConfirmDefault(false)}
-          >
-            <motion.div
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="p-6 text-center">
-                <div className="w-14 h-14 bg-rose-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <UserX className="w-7 h-7 text-rose-600" />
+        {/* Dashboard tab */}
+        {activeMobileTab === 'dashboard' && (
+          <div style={{ padding: '10px 18px 0' }}>
+            {/* Hero card */}
+            <div style={{ padding: 20, borderRadius: 22, background: D_T.surface,
+                          border: `1px solid ${D_T.line}`, marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
+                            letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                {lang === 'th' ? 'พอร์ตรวม' : 'Total portfolio'}
+              </div>
+              <div style={{ fontSize: 36, fontWeight: 800, letterSpacing: '-.025em', marginTop: 4,
+                            lineHeight: 1, fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
+                {formatCurrency(s.totalLimit)}
+              </div>
+              <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
+                <DChip tone={s.netProfit >= 0 ? 'mint' : 'blush'}>
+                  {s.netProfit >= 0 ? '↗' : '↘'} {formatCurrency(Math.abs(s.netProfit))}
+                </DChip>
+                <span style={{ fontSize: 11, color: D_T.mute }}>{s.profitPct.toFixed(1)}% lifetime</span>
+              </div>
+              <div style={{ marginTop: 14, marginLeft: -4, marginRight: -4, overflowX: 'hidden' }}>
+                <DAreaChart sparkData={trendData30} w={320} h={70} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14 }}>
+                <div style={{ padding: 12, borderRadius: 12, background: D_T.surface2 }}>
+                  <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                    {lang === 'th' ? 'ว่าง' : 'Free'}
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 800, marginTop: 2,
+                                fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
+                    {formatCurrency(s.available)}
+                  </div>
                 </div>
-                <h3 className="text-lg font-black text-slate-800 mb-1">{lang === 'th' ? 'ยืนยันการบันทึก "โดนบิด"?' : 'Confirm Default?'}</h3>
-                <p className="text-sm text-slate-500 mb-6">{lang === 'th' ? 'รายการนี้จะถูกบันทึกว่าโดนบิด และไม่สามารถยกเลิกได้ง่าย ๆ' : 'This loan will be marked as defaulted. This is hard to undo.'}</p>
-                <div className="flex gap-3">
-                  <button onClick={() => setShowConfirmDefault(false)} className="flex-1 py-3 rounded-xl border border-slate-200 text-slate-600 font-bold text-sm hover:bg-slate-50 transition-colors">
-                    {t('cancel', lang)}
-                  </button>
-                  <button
-                    onClick={() => { setShowConfirmDefault(false); handleUpdateStatus('โดนบิด'); }}
-                    className="flex-1 py-3 rounded-xl text-white font-bold text-sm active:scale-95 transition-transform"
-                    style={{ background: 'linear-gradient(135deg, #f43f5e, #e11d48)' }}
-                  >
-                    {t('default', lang)}
-                  </button>
+                <div style={{ padding: 12, borderRadius: 12, background: D_T.surface2 }}>
+                  <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                    NPL
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 800, marginTop: 2, color: D_T.blushDeep,
+                                fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
+                    {nplRatio.toFixed(1)}%
+                  </div>
                 </div>
               </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </div>
 
-      {/* Profit Detail Modal */}
-      {showProfitModal && data && (() => {
-        const totalFutureProfit = s.paidInterest + s.unpaidInterest - s.scamPrincipal - s.withdrawn;
-        const rows = [
-          { label: lang === 'th' ? 'ดอกที่ได้รับแล้ว' : 'Interest Received', value: s.paidInterest, color: 'emerald', sign: '+' },
-          { label: lang === 'th' ? 'หักโดนบิด' : 'Deduct Defaults', value: -s.scamPrincipal, color: 'rose', sign: '-' },
-          { label: lang === 'th' ? 'หักเบิก' : 'Deduct Withdrawals', value: -s.withdrawn, color: 'amber', sign: '-' },
-        ];
-        return (
-          <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowProfitModal(false)}>
-            <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
-              <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-                <div>
-                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{lang === 'th' ? 'รายละเอียดกำไร' : 'Profit Breakdown'}</div>
-                  <div className={`text-2xl font-black mt-0.5 ${s.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{formatCurrency(s.netProfit)}</div>
+            {/* Collect today */}
+            {dueTodayLoans.length > 0 && (
+              <div style={{ padding: 16, borderRadius: 18, background: D_T.butter, marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: D_T.butterDeep, fontWeight: 800,
+                                  letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                      {lang === 'th' ? 'เก็บวันนี้' : 'Collect today'}
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-.025em', marginTop: 2,
+                                  fontFamily: mono }}>
+                      {formatCurrency(dueTodayLoans.reduce((a, l) => a + l.totalExpected, 0))}
+                    </div>
+                  </div>
+                  <DChip tone="ghost">{dueTodayLoans.length} {lang === 'th' ? 'ราย' : 'due'}</DChip>
                 </div>
-                <button onClick={() => setShowProfitModal(false)} className="p-2 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100"><X size={20} /></button>
-              </div>
-              <div className="p-5 space-y-3">
-                {rows.map(r => (
-                  <div key={r.label} className={`flex items-center justify-between px-3 py-2.5 rounded-xl bg-${r.color}-50`}>
-                    <span className={`text-xs font-bold text-${r.color}-700`}>{r.label}</span>
-                    <span className={`text-sm font-black text-${r.color}-700`}>{r.sign}{formatCurrency(Math.abs(r.value))}</span>
+                {dueTodayLoans.slice(0, 2).map(l => (
+                  <div key={l.id} onClick={() => setSelectedLoan(l)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 10,
+                             background: 'rgba(255,255,255,.6)', borderRadius: 12, marginTop: 8, cursor: 'pointer' }}>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: D_T.ink,
+                                  color: D_T.butter, display: 'grid', placeItems: 'center',
+                                  fontSize: 12, fontWeight: 800, flexShrink: 0 }}>
+                      {l.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{l.name}</div>
+                      <div style={{ fontSize: 10.5, color: D_T.ink2 }}>
+                        {formatCurrency(l.principal)} + {formatCurrency(l.expectedInterest)} · {l.id}
+                      </div>
+                    </div>
+                    <button onClick={e => { e.stopPropagation(); setSelectedLoan(l); }}
+                      style={{ padding: '7px 12px', borderRadius: 999, background: D_T.ink,
+                               color: D_T.bg, border: 'none', fontSize: 11, fontWeight: 700,
+                               fontFamily: font, cursor: 'pointer' }}>
+                      {lang === 'th' ? 'รับแล้ว' : 'Paid'}
+                    </button>
                   </div>
                 ))}
-                <div className="border-t border-slate-100 pt-3 flex items-center justify-between px-3">
-                  <span className="text-xs font-black text-slate-700 uppercase tracking-wide">{lang === 'th' ? 'กำไรสุทธิ' : 'Net Profit'}</span>
-                  <span className={`text-base font-black ${s.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{formatCurrency(s.netProfit)}</span>
+              </div>
+            )}
+
+            {/* Overdue */}
+            {overdueLoans.length > 0 && (
+              <div style={{ padding: 16, borderRadius: 18, background: D_T.blush + '60',
+                            border: `1px solid ${D_T.blush}`, marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: D_T.blushDeep, fontWeight: 800,
+                                  letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                      {lang === 'th' ? 'เกินกำหนด' : 'Overdue'}
+                    </div>
+                    <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-.025em', marginTop: 2,
+                                  fontFamily: mono, color: D_T.blushDeep }}>
+                      {formatCurrency(overdueLoans.reduce((a, l) => a + l.totalExpected, 0))}
+                    </div>
+                  </div>
+                  <DChip tone="blush">{overdueLoans.length} {lang === 'th' ? 'ราย' : 'overdue'}</DChip>
+                </div>
+                <div ref={overdueListRef} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {overdueLoans.slice(0, 3).map(l => (
+                    <div key={l.id} onClick={() => setSelectedLoan(l)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
+                               background: 'rgba(255,255,255,.55)', borderRadius: 12, cursor: 'pointer' }}>
+                      <div style={{ width: 32, height: 32, borderRadius: 9, background: D_T.blushDeep,
+                                    color: '#fff', display: 'grid', placeItems: 'center',
+                                    fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
+                        {l.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: D_T.ink }}>{l.name}</div>
+                        <div style={{ fontSize: 10.5, color: D_T.blushDeep, fontWeight: 600 }}>
+                          {l.daysLate} {lang === 'th' ? 'วัน' : 'd'} · {formatCurrency(l.totalExpected)}
+                        </div>
+                      </div>
+                      <DChip tone="blush">{l.daysLate}{lang === 'th' ? 'ว' : 'd'}</DChip>
+                    </div>
+                  ))}
+                  {overdueLoans.length > 3 && (
+                    <div style={{ textAlign: 'center', fontSize: 11, color: D_T.blushDeep, fontWeight: 700, paddingTop: 2 }}>
+                      +{overdueLoans.length - 3} {lang === 'th' ? 'รายเพิ่มเติม' : 'more'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* Loans tab */}
+        {activeMobileTab === 'loans' && (
+          <div style={{ padding: '12px 18px 0' }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <div style={{ flex: 1, position: 'relative' }}>
+                <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                  placeholder={lang === 'th' ? 'ค้นหา...' : 'Search...'}
+                  style={{ width: '100%', padding: '10px 36px 10px 14px', borderRadius: 12,
+                           border: `1px solid ${D_T.line}`, background: D_T.surface, fontSize: 13,
+                           color: D_T.ink, outline: 'none', fontFamily: font, boxSizing: 'border-box' }} />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery('')}
+                    style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+                             background: 'none', border: 'none', cursor: 'pointer', color: D_T.mute, fontSize: 14 }}>✕</button>
+                )}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 12, paddingBottom: 4 }} className="no-scrollbar">
+              {(['all', 'renewals', 'paid', 'defaulted', 'withdrawn'] as const).map(tab => (
+                <span key={tab} onClick={() => { setActiveTab(tab); setSearchQuery(''); }}
+                  style={{ padding: '6px 14px', borderRadius: 999, flexShrink: 0, cursor: 'pointer',
+                           background: activeTab === tab ? D_T.ink : D_T.surface,
+                           color: activeTab === tab ? D_T.bg : D_T.ink2,
+                           fontSize: 11.5, fontWeight: 700, border: `1px solid ${D_T.line}`,
+                           display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  {tab === 'all' ? (lang === 'th' ? 'ทั้งหมด' : 'All') :
+                   tab === 'renewals' ? (lang === 'th' ? 'ต่อสัญญา' : 'Renewed') :
+                   tab === 'paid' ? (lang === 'th' ? 'จ่ายแล้ว' : 'Paid') :
+                   tab === 'defaulted' ? (lang === 'th' ? 'หนี้เสีย' : 'Default') :
+                   (lang === 'th' ? 'เบิก' : 'Payout')}
+                  {tabCounts[tab] > 0 && <span style={{ fontSize: 10, opacity: .7 }}>{tabCounts[tab]}</span>}
+                </span>
+              ))}
+            </div>
+            <div ref={tableRef as any}>
+              {filteredLoans.map(l => (
+                <div key={l.id} onClick={() => setSelectedLoan(l)}
+                  style={{ background: D_T.surface, borderRadius: 14, padding: '12px 14px', marginBottom: 8,
+                           display: 'flex', alignItems: 'center', gap: 12,
+                           border: `1px solid ${l.isOverdue ? D_T.blush : D_T.line2}`, cursor: 'pointer' }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 11, flexShrink: 0,
+                                background: getLoanTone(l) === 'blush' ? D_T.blush : getLoanTone(l) === 'mint' ? D_T.mint : D_T.surface2,
+                                border: `1px solid ${D_T.line}`, display: 'grid', placeItems: 'center',
+                                fontSize: 12, fontWeight: 800 }}>
+                    {l.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 700 }}>{l.name}</span>
+                      <DChip tone={getLoanTone(l)}>{getLoanStatusText(l)}</DChip>
+                    </div>
+                    <div style={{ fontSize: 11, color: D_T.mute, marginTop: 2 }}>
+                      {l.id} · {l.isOverdue ? (lang === 'th' ? `ช้า ${l.daysLate} วัน` : `${l.daysLate}d overdue`) : `${lang === 'th' ? 'กำหนด' : 'due'} ${l.dueDate}`}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 15, fontWeight: 800, fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
+                      {formatCurrency(l.totalExpected)}
+                    </div>
+                    <div style={{ fontSize: 10, color: D_T.mute, marginTop: 1 }}>{l.interestRate}%</div>
+                  </div>
+                </div>
+              ))}
+              {filteredLoans.length === 0 && (
+                <div style={{ padding: '48px 0', textAlign: 'center', color: D_T.mute, fontSize: 13 }}>
+                  {lang === 'th' ? 'ไม่พบรายการ' : 'No results found'}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Analytics tab */}
+        {activeMobileTab === 'analytics' && (
+          <div style={{ padding: '12px 18px 0' }}>
+            <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
+                          borderRadius: 18, padding: '16px 18px', marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
+                            letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 10 }}>
+                {lang === 'th' ? 'ดอกเบี้ยที่ได้รับ · 30 วัน' : 'Interest received · 30 days'}
+              </div>
+              <div style={{ overflowX: 'hidden' }}>
+                <DAreaChart sparkData={trendData30} w={320} h={110} showYAxis />
+              </div>
+              <button onClick={() => setShowExpandedTrend(true)}
+                style={{ marginTop: 10, width: '100%', padding: '8px 0', borderRadius: 999,
+                         background: D_T.ink, color: D_T.bg, border: 'none',
+                         fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>
+                {lang === 'th' ? 'ดูแบบละเอียด' : 'View full chart'}
+              </button>
+            </div>
+
+            {/* KPI grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+              {([
+                [lang === 'th' ? 'พอร์ตรวม' : 'Portfolio', formatCurrency(s.totalLimit), 'ghost'],
+                [lang === 'th' ? 'กำไรสุทธิ' : 'Net profit', formatCurrency(s.netProfit), s.netProfit >= 0 ? 'mint' : 'blush'],
+                [lang === 'th' ? 'หนี้เสีย' : 'NPL', nplRatio.toFixed(1) + '%', nplRatio > 10 ? 'blush' : 'mint'],
+                [lang === 'th' ? 'เงินสดว่าง' : 'Available', formatCurrency(s.available), 'butter'],
+              ] as [string, string, string][]).map(([label, value, tone]) => (
+                <div key={label} style={{ padding: '14px 16px', borderRadius: 14,
+                                          background: D_T.surface, border: `1px solid ${D_T.line}` }}>
+                  <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700,
+                                letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>{label}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, fontVariantNumeric: 'tabular-nums',
+                                letterSpacing: '-.02em', fontFamily: mono }}>{value}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Monthly summary */}
+            {monthlySummary.length > 0 && (
+              <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
+                            borderRadius: 18, overflow: 'hidden', marginBottom: 12 }}>
+                <div style={{ padding: '12px 18px', borderBottom: `1px solid ${D_T.line}`,
+                              fontSize: 11, fontWeight: 700, color: D_T.mute,
+                              letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                  {lang === 'th' ? 'สรุปรายเดือน' : 'Monthly Summary'}
+                </div>
+                {monthlySummary.slice(0, 6).map(m => {
+                  const d = new Date(m.year, m.month, 1);
+                  const label = d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { month: 'short', year: 'numeric' });
+                  const net = m.interest - m.scam - m.withdrawn;
+                  return (
+                    <div key={m.key} style={{ padding: '12px 18px', borderBottom: `1px solid ${D_T.line2}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: D_T.ink }}>{label}</div>
+                          <div style={{ fontSize: 11, color: D_T.mute, marginTop: 1 }}>
+                            {m.count} {lang === 'th' ? 'รายการ' : 'records'}
+                          </div>
+                        </div>
+                        <DChip tone={net >= 0 ? 'mint' : 'blush'}>{net >= 0 ? '+' : ''}{formatCurrency(net)}</DChip>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 6 }}>
+                        {([
+                          [lang === 'th' ? 'รายได้ดอก' : 'Income', m.interest, D_T.mintDeep, D_T.mint],
+                          [lang === 'th' ? 'หนี้บิด' : 'Defaults', m.scam, D_T.blushDeep, D_T.blush],
+                          [lang === 'th' ? 'เบิก' : 'Withdrawn', m.withdrawn, D_T.butterDeep, D_T.butter],
+                          [lang === 'th' ? 'สุทธิ' : 'Net', net, net >= 0 ? D_T.mintDeep : D_T.blushDeep, net >= 0 ? D_T.mint : D_T.blush],
+                        ] as [string, number, string, string][]).map(([lbl, val, fg, bg]) => (
+                          <div key={lbl} style={{ padding: '6px 8px', borderRadius: 8, background: bg + '40' }}>
+                            <div style={{ fontSize: 9, fontWeight: 700, color: fg, letterSpacing: '.04em',
+                                          textTransform: 'uppercase', marginBottom: 2 }}>{lbl}</div>
+                            <div style={{ fontSize: 12, fontWeight: 800, color: fg,
+                                          fontFamily: mono, fontVariantNumeric: 'tabular-nums' }}>
+                              {formatCurrency(val)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Mobile bottom tab bar */}
+        <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, display: 'flex',
+                      justifyContent: 'space-around', alignItems: 'center',
+                      padding: '10px 16px 20px', borderTop: `1px solid ${D_T.line}`,
+                      background: D_T.surface, zIndex: 40 }}>
+          {([
+            ['dashboard', lang === 'th' ? 'หน้าหลัก' : 'Home', '◉'],
+            ['loans', lang === 'th' ? 'สินเชื่อ' : 'Loans', '◇'],
+            ['fab', '+', '+'],
+            ['analytics', lang === 'th' ? 'รายงาน' : 'Reports', '◑'],
+            ['you', lang === 'th' ? 'คุณ' : 'You', '○'],
+          ] as [string, string, string][]).map(([id, label, icon]) => {
+            const isPrimary = id === 'fab';
+            const isActive = activeMobileTab === id;
+            return (
+              <div key={id}
+                onClick={() => {
+                  if (id === 'fab') setShowFabMenu(v => !v);
+                  else if (id === 'you') setShowNotifModal(true);
+                  else setActiveMobileTab(id as any);
+                }}
+                style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                <div style={{ width: isPrimary ? 44 : 26, height: isPrimary ? 44 : 26,
+                               borderRadius: isPrimary ? 14 : 0,
+                               background: isPrimary ? D_T.ink : 'transparent',
+                               color: isPrimary ? D_T.butter : isActive ? D_T.mintDeep : D_T.mute2,
+                               display: 'grid', placeItems: 'center',
+                               fontSize: isPrimary ? 22 : 16, fontWeight: 800 }}>
+                  {icon}
+                  {id === 'loans' && overdueLoans.length > 0 && (
+                    <span style={{ position: 'absolute', top: -2, right: -6, width: 14, height: 14,
+                                   borderRadius: 99, background: D_T.blushDeep, color: '#fff',
+                                   fontSize: 8, fontWeight: 800, display: 'grid', placeItems: 'center' }}>
+                      {overdueLoans.length}
+                    </span>
+                  )}
+                </div>
+                {!isPrimary && (
+                  <span style={{ fontSize: 9.5, color: isActive ? D_T.ink : D_T.mute2,
+                                 fontWeight: 700, letterSpacing: '.04em' }}>{label}</span>
+                )}
+              </div>
+            );
+          })}
+        </nav>
+      </div>}
+      {/* Loan detail drawer / modal */}
+      <AnimatePresence>
+        {selectedLoan && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex',
+                        alignItems: 'flex-end', justifyContent: 'flex-end',
+                        background: 'rgba(27,31,42,.45)', backdropFilter: 'blur(4px)' }}
+            onClick={() => setSelectedLoan(null)}>
+            <motion.div
+              style={{ width: '100%', maxWidth: 480, height: '94vh', background: D_T.surface,
+                       color: D_T.ink, fontFamily: font, overflow: 'hidden',
+                       borderLeft: `1px solid ${D_T.line}`, display: 'flex', flexDirection: 'column',
+                       boxShadow: '-12px 0 30px -16px rgba(27,31,42,.18)' }}
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              onClick={e => e.stopPropagation()}>
+
+              {/* Header */}
+              <div style={{ padding: '22px 24px 18px', borderBottom: `1px solid ${D_T.line}`,
+                            background: D_T.surface2 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <DChip tone="ghost">{selectedLoan.id}</DChip>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button onClick={() => setIsEditingLoan(!isEditingLoan)}
+                      style={{ width: 30, height: 30, borderRadius: 99, border: `1px solid ${D_T.line}`,
+                               background: isEditingLoan ? D_T.lavender : D_T.surface,
+                               color: isEditingLoan ? D_T.lavDeep : D_T.ink,
+                               fontSize: 13, cursor: 'pointer' }}>✎</button>
+                    <button onClick={() => setSelectedLoan(null)}
+                      style={{ width: 30, height: 30, borderRadius: 99, border: 'none',
+                               background: 'rgba(27,31,42,.06)', fontSize: 14, cursor: 'pointer' }}>✕</button>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 14 }}>
+                  <div style={{ width: 52, height: 52, borderRadius: 16,
+                                background: getLoanTone(selectedLoan) === 'blush' ? D_T.blush :
+                                            getLoanTone(selectedLoan) === 'mint' ? D_T.mint :
+                                            getLoanTone(selectedLoan) === 'lav' ? D_T.lavender : D_T.butter,
+                                color: getLoanTone(selectedLoan) === 'blush' ? D_T.blushDeep :
+                                       getLoanTone(selectedLoan) === 'mint' ? D_T.mintDeep :
+                                       getLoanTone(selectedLoan) === 'lav' ? D_T.lavDeep : D_T.butterDeep,
+                                display: 'grid', placeItems: 'center', fontSize: 19, fontWeight: 800, flexShrink: 0 }}>
+                    {selectedLoan.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-.02em' }}>{selectedLoan.name}</div>
+                    <div style={{ fontSize: 12, color: D_T.mute, marginTop: 2 }}>
+                      {selectedLoan.historicalRenewalCount > 0
+                        ? `${lang === 'th' ? 'ต่อสัญญา' : 'Renewed'} ${selectedLoan.historicalRenewalCount} ${lang === 'th' ? 'ครั้ง' : 'time(s)'}`
+                        : lang === 'th' ? 'ไม่มีประวัติการต่อสัญญา' : 'No renewals on record'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+                {isEditingLoan ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                      {lang === 'th' ? 'แก้ไขรายการ' : 'Edit loan'}
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                        {lang === 'th' ? 'เงินต้น' : 'Principal'}
+                      </label>
+                      <input type="number" value={editLoanForm.principal}
+                        onChange={e => setEditLoanForm({ ...editLoanForm, principal: e.target.value })}
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${D_T.line}`,
+                                 background: D_T.surface2, fontSize: 16, fontWeight: 700, color: D_T.ink,
+                                 outline: 'none', fontFamily: mono, boxSizing: 'border-box' }} />
+                      <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
+                        {[10, 50, 100, 500, 1000].map(amt => (
+                          <button key={amt} type="button"
+                            onClick={() => setEditLoanForm(f => ({ ...f, principal: String(Math.max(0, parseFloat(f.principal || '0') + amt)) }))}
+                            style={{ padding: '5px 10px', borderRadius: 999, background: D_T.surface2,
+                                     color: D_T.ink2, fontSize: 11, fontWeight: 700, border: `1px solid ${D_T.line}`, cursor: 'pointer' }}>
+                            +{amt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                        {lang === 'th' ? 'อัตราดอก (%)' : 'Interest rate (%)'}
+                      </label>
+                      <input type="number" value={editLoanForm.interestRate}
+                        onChange={e => setEditLoanForm({ ...editLoanForm, interestRate: Number(e.target.value) })}
+                        style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${D_T.line}`,
+                                 background: D_T.surface2, fontSize: 16, fontWeight: 700, color: D_T.ink,
+                                 outline: 'none', fontFamily: mono, boxSizing: 'border-box' }} />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div>
+                        <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, display: 'block', marginBottom: 6 }}>
+                          {lang === 'th' ? 'วันที่กู้' : 'Issue date'}
+                        </label>
+                        <DatePicker selected={editLoanForm.borrowDate}
+                          onChange={(date: Date | null) => {
+                            if (!date) return;
+                            const dDate = new Date(date.getTime() + editLoanForm.daysBorrowed * 86400000);
+                            setEditLoanForm(f => ({ ...f, borrowDate: date, dueDate: dDate }));
+                          }}
+                          dateFormat="dd/MM/yyyy"
+                          className="w-full" />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, display: 'block', marginBottom: 6 }}>
+                          {lang === 'th' ? 'กำหนดชำระ' : 'Due date'}
+                        </label>
+                        <DatePicker selected={editLoanForm.dueDate}
+                          onChange={handleEditDueDateChange}
+                          dateFormat="dd/MM/yyyy"
+                          className="w-full" />
+                      </div>
+                    </div>
+                    <div style={{ padding: 16, borderRadius: 14, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                        <span style={{ fontSize: 12, color: D_T.mute }}>{lang === 'th' ? 'ยอดที่คาดว่าจะรับ' : 'Expected total'}</span>
+                        <span style={{ fontSize: 20, fontWeight: 800, fontFamily: mono }}>
+                          {formatCurrency(parseFloat(editLoanForm.principal || '0') + ((parseFloat(editLoanForm.principal || '0') * editLoanForm.interestRate) / 100))}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Amount */}
+                    <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                      {lang === 'th' ? 'เขาเป็นหนี้คุณ' : 'They owe you'}
+                    </div>
+                    <div style={{ fontSize: 42, fontWeight: 800, letterSpacing: '-.025em', marginTop: 4,
+                                  lineHeight: 1, fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
+                      {formatCurrency(selectedLoan.totalExpected)}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
+                      <DChip tone={getLoanTone(selectedLoan)}>{getLoanStatusText(selectedLoan)}</DChip>
+                      <span style={{ fontSize: 12, color: D_T.mute }}>
+                        {lang === 'th' ? 'กำหนด' : 'due'} {selectedLoan.dueDate}
+                        {selectedLoan.isOverdue ? ` · ${lang === 'th' ? 'ช้า' : ''} ${selectedLoan.daysLate} ${lang === 'th' ? 'วัน' : 'd late'}` : ''}
+                      </span>
+                    </div>
+
+                    {/* Breakdown */}
+                    <div style={{ marginTop: 22, padding: 18, borderRadius: 16, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
+                      {[
+                        [lang === 'th' ? 'เงินต้น' : 'Principal', formatCurrency(selectedLoan.principal), D_T.ink],
+                        [`${lang === 'th' ? 'ดอก' : 'Interest'} @ ${selectedLoan.interestRate}%`, '+' + formatCurrency(selectedLoan.expectedInterest), D_T.mintDeep],
+                        [lang === 'th' ? 'ค่าปรับ' : 'Penalty', formatCurrency(selectedLoan.penalty), D_T.mute],
+                      ].map(([k, v, c], i, arr) => (
+                        <div key={k as string} style={{ display: 'flex', justifyContent: 'space-between',
+                                          padding: '10px 0',
+                                          borderBottom: i < arr.length - 1 ? `1px dashed ${D_T.line}` : 'none' }}>
+                          <span style={{ fontSize: 13, color: D_T.ink2, fontWeight: 600 }}>{k}</span>
+                          <span style={{ fontSize: 14, fontWeight: 800, color: c as string, fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>{v}</span>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
+                                    marginTop: 12, paddingTop: 12, borderTop: `1.5px solid ${D_T.ink}` }}>
+                        <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase' }}>
+                          {lang === 'th' ? 'รวม' : 'Total'}
+                        </span>
+                        <span style={{ fontSize: 20, fontWeight: 800, fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
+                          {formatCurrency(selectedLoan.totalExpected)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Dates */}
+                    <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      <div style={{ padding: '12px 14px', borderRadius: 12, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
+                        <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>
+                          {lang === 'th' ? 'วันที่กู้' : 'Borrowed'}
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 700, fontFamily: mono }}>{selectedLoan.borrowDate}</div>
+                      </div>
+                      <div style={{ padding: '12px 14px', borderRadius: 12, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
+                        <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>
+                          {lang === 'th' ? 'กำหนดคืน' : 'Due back'}
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 700, fontFamily: mono, color: selectedLoan.isOverdue ? D_T.blushDeep : D_T.ink }}>
+                          {selectedLoan.dueDate}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Renewal history */}
+                    {selectedLoan.historicalRenewalCount > 0 && (
+                      <div style={{ marginTop: 16, padding: 14, borderRadius: 12, background: D_T.lavender + '40', border: `1px solid ${D_T.lavender}` }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: D_T.lavDeep }}>
+                            {lang === 'th' ? 'ต่อสัญญา' : 'Renewed'} {selectedLoan.historicalRenewalCount} {lang === 'th' ? 'ครั้ง' : 'time(s)'}
+                          </span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: D_T.lavDeep, fontFamily: mono }}>
+                            +{formatCurrency(selectedLoan.historicalRenewalInterest)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Note */}
+                    {selectedLoan.note && (
+                      <div style={{ marginTop: 18, padding: '10px 14px', borderRadius: 12,
+                                    background: D_T.butter + '60', border: `1px solid ${D_T.line}` }}>
+                        <div style={{ fontSize: 10, color: D_T.butterDeep, fontWeight: 700,
+                                      letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4 }}>
+                          {lang === 'th' ? 'หมายเหตุ' : 'Note'}
+                        </div>
+                        <div style={{ fontSize: 13, color: D_T.ink, lineHeight: 1.5 }}>{selectedLoan.note}</div>
+                      </div>
+                    )}
+
+                    {/* Timeline */}
+                    <div style={{ marginTop: 22 }}>
+                      <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>
+                        {lang === 'th' ? 'ไทม์ไลน์' : 'Timeline'}
+                      </div>
+                      {[
+                        [selectedLoan.borrowDate, lang === 'th' ? 'ปล่อยกู้' : 'Borrowed',
+                          `${formatCurrency(selectedLoan.principal)} · ${selectedLoan.daysBorrowed} ${lang === 'th' ? 'วัน' : 'days'}`, 'done'],
+                        [selectedLoan.dueDate, lang === 'th' ? 'กำหนดคืน' : 'Due back',
+                          `${formatCurrency(selectedLoan.totalExpected)} ${lang === 'th' ? 'ที่คาด' : 'expected'}`,
+                          selectedLoan.isPaid || selectedLoan.isRenewed || selectedLoan.isScam ? 'done' : selectedLoan.isOverdue ? 'done' : 'next'],
+                        ['—', lang === 'th' ? 'ปิดบัญชี' : 'Settle',
+                          lang === 'th' ? 'รับแล้ว · ต่อสัญญา · หนี้เสีย' : 'Mark paid · renew · default',
+                          selectedLoan.isPaid || selectedLoan.isRenewed || selectedLoan.isScam ? 'done' : 'future'],
+                      ].map(([date, title, sub, state], i) => (
+                        <div key={i} style={{ display: 'flex', gap: 14, paddingBottom: 14, position: 'relative' }}>
+                          {i < 2 && <div style={{ position: 'absolute', left: 6, top: 18, bottom: -4, width: 1.5, background: D_T.line }} />}
+                          <div style={{ width: 14, height: 14, borderRadius: 99, flexShrink: 0, marginTop: 4, position: 'relative', zIndex: 1,
+                                        background: state === 'done' ? D_T.mintDeep : state === 'next' ? D_T.butter : D_T.surface,
+                                        border: state === 'future' ? `1.5px dashed ${D_T.mute2}` : 'none' }} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: state === 'future' ? D_T.mute : D_T.ink }}>{title}</span>
+                              <span style={{ fontSize: 11, color: D_T.mute, fontFamily: mono }}>{date}</span>
+                            </div>
+                            <div style={{ fontSize: 11.5, color: D_T.mute, marginTop: 2 }}>{sub}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {/* Penalty toggle */}
+                {!isEditingLoan && !selectedLoan.isPaid && !selectedLoan.isScam && !selectedLoan.isRenewed && (
+                  <div style={{ marginTop: 16, padding: 14, borderRadius: 12, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: hasPenalty ? 10 : 0 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: D_T.ink2, flex: 1 }}>
+                        {lang === 'th' ? 'ค่าปรับ' : 'Penalty'}
+                      </span>
+                      <div style={{ display: 'flex', borderRadius: 99, overflow: 'hidden', border: `1px solid ${D_T.line}` }}>
+                        <button onClick={() => setHasPenalty(false)}
+                          style={{ padding: '5px 12px', background: !hasPenalty ? D_T.ink : 'transparent',
+                                   color: !hasPenalty ? D_T.bg : D_T.ink2, fontSize: 11, fontWeight: 700,
+                                   border: 'none', cursor: 'pointer', fontFamily: font }}>
+                          {lang === 'th' ? 'ไม่มี' : 'None'}
+                        </button>
+                        <button onClick={() => { setPenaltyAmount(Math.max(1, selectedLoan.daysLate) * 200); setHasPenalty(true); }}
+                          style={{ padding: '5px 12px', background: hasPenalty ? D_T.butter : 'transparent',
+                                   color: hasPenalty ? D_T.butterDeep : D_T.ink2, fontSize: 11, fontWeight: 700,
+                                   border: 'none', cursor: 'pointer', fontFamily: font }}>
+                          {lang === 'th' ? 'มี' : 'Yes'}
+                        </button>
+                      </div>
+                    </div>
+                    {hasPenalty && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <input type="number" value={penaltyAmount}
+                          onChange={e => setPenaltyAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                          style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border: `1px solid ${D_T.butter}`,
+                                   background: D_T.butter + '60', fontSize: 14, fontWeight: 700,
+                                   color: D_T.butterDeep, outline: 'none', fontFamily: mono }} />
+                        <span style={{ fontSize: 12, fontWeight: 700, color: D_T.butterDeep }}>฿</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Action date */}
+                {!isEditingLoan && !selectedLoan.isPaid && !selectedLoan.isScam && !selectedLoan.isRenewed && (
+                  <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: D_T.mute, whiteSpace: 'nowrap' }}>
+                      {lang === 'th' ? 'วันที่ดำเนินการ' : 'Action date'}
+                    </span>
+                    <DatePicker selected={actionDate}
+                      onChange={(date) => date && setActionDate(date)}
+                      dateFormat="dd/MM/yyyy"
+                      className="w-full" />
+                  </div>
+                )}
+              </div>
+
+              {/* Action bar */}
+              <div style={{ padding: '16px 24px 22px', display: 'flex', flexDirection: 'column', gap: 8,
+                            borderTop: `1px solid ${D_T.line}`, background: D_T.surface }}>
+                {isEditingLoan ? (
+                  <button onClick={handleSaveEdit} disabled={isSyncing}
+                    style={{ width: '100%', padding: '13px 0', borderRadius: 999, background: D_T.ink,
+                             color: D_T.bg, border: 'none', fontSize: 14, fontWeight: 800,
+                             fontFamily: font, cursor: 'pointer', opacity: isSyncing ? 0.5 : 1 }}>
+                    {isSyncing ? (lang === 'th' ? 'กำลังบันทึก...' : 'Saving...') : (lang === 'th' ? 'บันทึกการเปลี่ยนแปลง' : 'Save changes')}
+                  </button>
+                ) : selectedLoan.isPaid || selectedLoan.isScam || selectedLoan.isRenewed || selectedLoan.isWithdrawn ? (
+                  <div style={{ textAlign: 'center', fontSize: 13, color: D_T.mute, padding: '8px 0' }}>
+                    <DChip tone={getLoanTone(selectedLoan)}>{getLoanStatusText(selectedLoan)}</DChip>
+                    <div style={{ marginTop: 8 }}>{lang === 'th' ? 'รายการนี้ปิดแล้ว' : 'This loan is closed'}</div>
+                  </div>
+                ) : (
+                  <>
+                    <button onClick={() => handleUpdateStatus('ชำระแล้ว')}
+                      style={{ width: '100%', padding: '13px 0', borderRadius: 999, background: D_T.ink,
+                               color: D_T.bg, border: 'none', fontSize: 14, fontWeight: 800,
+                               fontFamily: font, cursor: 'pointer' }}>
+                      {lang === 'th' ? `รับเงินแล้ว ${formatCurrency(selectedLoan.totalExpected)}` : `Got paid ${formatCurrency(selectedLoan.totalExpected)}`}
+                    </button>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={() => handleUpdateStatus('ต่อดอก')}
+                        style={{ flex: 1, padding: '11px 0', borderRadius: 999, background: D_T.lavender,
+                                 color: D_T.lavDeep, border: 'none', fontSize: 12, fontWeight: 700,
+                                 fontFamily: font, cursor: 'pointer' }}>
+                        {lang === 'th' ? 'ต่อสัญญาอีกรอบ' : 'Renew for another period'}
+                      </button>
+                      <button onClick={() => setShowConfirmDefault(true)}
+                        style={{ flex: 1, padding: '11px 0', borderRadius: 999, background: D_T.blush,
+                                 color: D_T.blushDeep, border: 'none', fontSize: 12, fontWeight: 700,
+                                 fontFamily: font, cursor: 'pointer' }}>
+                        {lang === 'th' ? 'บันทึกหนี้เสีย' : 'Mark as bad debt'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {showExpandedTrend && (() => {
+        const expDue = insightDate ? data.loans.filter(l => l.dueDate === insightDate) : [];
+        const expPaid = insightDate ? data.loans.filter(l => l.actualDate === insightDate && (l.isPaid || l.isRenewed)) : [];
+        return (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex',
+                        alignItems: isDesktop ? 'center' : 'flex-end', justifyContent: 'center',
+                        padding: isDesktop ? 20 : 0, background: 'rgba(27,31,42,.6)', backdropFilter: 'blur(4px)' }}
+            onClick={() => { setShowExpandedTrend(false); setInsightDate(null); }}>
+            <div style={{ background: D_T.surface, width: '100%', maxWidth: isDesktop ? 940 : '100%',
+                          maxHeight: isDesktop ? '90vh' : '92vh', overflow: 'hidden',
+                          display: 'flex', flexDirection: 'column',
+                          borderRadius: isDesktop ? 22 : '20px 20px 0 0',
+                          boxShadow: '0 -8px 40px -12px rgba(27,31,42,.3)' }}
+              onClick={e => e.stopPropagation()}>
+
+              {/* Header */}
+              <div style={{ padding: isDesktop ? '18px 24px' : '14px 20px', borderBottom: `1px solid ${D_T.line}`,
+                            background: D_T.surface2, display: 'flex', justifyContent: 'space-between',
+                            alignItems: 'center', flexShrink: 0 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                    {lang === 'th' ? 'กระแสเงินสด 30 วัน' : '30-day cashflow'}
+                  </div>
+                  <div style={{ fontSize: isDesktop ? 18 : 15, fontWeight: 800, letterSpacing: '-.02em', marginTop: 2 }}>
+                    {lang === 'th' ? 'การวิเคราะห์ขั้นสูง' : 'Advanced Analysis'}
+                  </div>
+                </div>
+                <button onClick={() => { setShowExpandedTrend(false); setInsightDate(null); }}
+                  style={{ width: 32, height: 32, borderRadius: 99, background: 'rgba(27,31,42,.08)',
+                           border: 'none', fontSize: 16, cursor: 'pointer', flexShrink: 0 }}>✕</button>
+              </div>
+
+              {/* Body */}
+              <div style={{ display: 'flex', flex: 1, overflow: 'hidden',
+                            flexDirection: isDesktop ? 'row' : 'column' }}>
+
+                {/* Left / Top: chart + date chips */}
+                <div style={{ flexShrink: 0,
+                              width: isDesktop ? '55%' : '100%',
+                              maxHeight: isDesktop ? 'none' : 340,
+                              padding: isDesktop ? '20px 24px' : '14px 18px',
+                              borderRight: isDesktop ? `1px solid ${D_T.line}` : 'none',
+                              borderBottom: isDesktop ? 'none' : `1px solid ${D_T.line}`,
+                              display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
+
+                  {/* Chart */}
+                  <div style={{ height: 200 }}>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <ComposedChart data={trendData30} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
+                        onClick={(e: any) => { if (e?.activeLabel) setInsightDate(labelToFullDate.get(e.activeLabel) ?? e.activeLabel); }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={D_T.line} />
+                        <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: D_T.mute }} interval="preserveStartEnd" />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: D_T.mute }} width={46} />
+                        <RechartsTooltip contentStyle={{ borderRadius: 10, border: `1px solid ${D_T.line}`, fontFamily: font, fontSize: 11 }} />
+                        <Bar dataKey="Expected" barSize={10} fill={D_T.line} radius={[3,3,0,0]} name={lang === 'th' ? 'คาด' : 'Expected'} />
+                        <Line type="monotone" dataKey="Received" stroke={D_T.mintDeep} strokeWidth={2.5} dot={false}
+                          activeDot={{ r: 5, fill: D_T.mintDeep, stroke: D_T.bg, strokeWidth: 2 }}
+                          name={lang === 'th' ? 'รับจริง' : 'Received'} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Date chips */}
+                  <div>
+                    <div style={{ fontSize: 9.5, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em',
+                                  textTransform: 'uppercase', marginBottom: 8 }}>
+                      {lang === 'th' ? 'กดวันเพื่อดูรายละเอียด' : 'Tap a date to inspect'}
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                      {trendData30.map(d => {
+                        const fullDate = labelToFullDate.get(d.date) ?? d.date;
+                        const sel = insightDate === fullDate;
+                        const hasData = d.Received > 0 || d.Expected > 0;
+                        return (
+                          <button key={d.date}
+                            onClick={() => setInsightDate(sel ? null : fullDate)}
+                            style={{ padding: '6px 10px', borderRadius: 8, border: sel ? 'none' : `1px solid ${D_T.line}`,
+                                     cursor: 'pointer', fontFamily: mono, fontSize: 11, fontWeight: 700,
+                                     background: sel ? D_T.ink : hasData ? D_T.mint + '55' : D_T.surface2,
+                                     color: sel ? D_T.bg : hasData ? D_T.mintDeep : D_T.mute2,
+                                     outline: 'none', transition: 'background .1s, color .1s' }}>
+                            {d.date}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="bg-indigo-50 rounded-xl p-3 mt-1">
-                  <div className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2">{lang === 'th' ? 'ดอกรอรับจากพอร์ตปัจจุบัน' : 'Unrealized Interest'}</div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-indigo-600">{lang === 'th' ? 'ดอกที่ยังไม่ถึงกำหนด' : 'Pending interest'}</span>
-                    <span className="text-sm font-black text-indigo-700">+{formatCurrency(s.unpaidInterest)}</span>
-                  </div>
-                  <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-indigo-100">
-                    <span className="text-xs font-bold text-indigo-700">{lang === 'th' ? 'กำไรรวมถ้าเก็บครบ' : 'Total if all collected'}</span>
-                    <span className={`text-sm font-black ${totalFutureProfit >= 0 ? 'text-indigo-700' : 'text-rose-700'}`}>{formatCurrency(totalFutureProfit)}</span>
-                  </div>
-                </div>
+                {/* Right / Bottom: detail panel — fixed structure, no jump */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: isDesktop ? '20px 24px' : '14px 18px' }}>
+                  {!insightDate ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
+                                  justifyContent: 'center', height: isDesktop ? '100%' : 100,
+                                  textAlign: 'center', color: D_T.mute }}>
+                      <div style={{ fontSize: 26, marginBottom: 8 }}>☝️</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: D_T.ink2 }}>
+                        {lang === 'th' ? 'กดวันด้านบนเพื่อดูรายละเอียด' : 'Select a date above to inspect'}
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      {/* Date badge */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16,
+                                    paddingBottom: 14, borderBottom: `1px solid ${D_T.line}` }}>
+                        <div style={{ width: 34, height: 34, borderRadius: 10, background: D_T.lavender,
+                                      color: D_T.lavDeep, display: 'grid', placeItems: 'center', fontSize: 15 }}>📅</div>
+                        <div>
+                          <div style={{ fontSize: 16, fontWeight: 800 }}>{insightDate}</div>
+                          <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase' }}>
+                            Daily Insight
+                          </div>
+                        </div>
+                        <button onClick={() => setInsightDate(null)}
+                          style={{ marginLeft: 'auto', width: 26, height: 26, borderRadius: 99,
+                                   background: 'rgba(27,31,42,.06)', border: 'none', fontSize: 12, cursor: 'pointer' }}>✕</button>
+                      </div>
 
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <div className="bg-slate-50 rounded-xl p-3 text-center">
-                    <div className="text-lg font-black text-slate-800">{s.profitPct.toFixed(1)}%</div>
-                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-0.5">{lang === 'th' ? 'yield ต่อทุน' : 'Yield on Capital'}</div>
-                  </div>
-                  <div className="bg-slate-50 rounded-xl p-3 text-center">
-                    <div className="text-lg font-black text-slate-800">{formatCurrency(s.paidInterest)}</div>
-                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-0.5">{lang === 'th' ? 'ดอกสะสม' : 'Total Interest'}</div>
-                  </div>
+                      {/* Expected due */}
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em',
+                                      textTransform: 'uppercase', marginBottom: 8 }}>
+                          {lang === 'th' ? 'ดอกที่คาด' : 'Expected due'}
+                        </div>
+                        {expDue.length === 0 ? (
+                          <div style={{ fontSize: 12, color: D_T.mute, fontStyle: 'italic' }}>
+                            {lang === 'th' ? 'ไม่มีรายการ' : 'None'}
+                          </div>
+                        ) : expDue.map(l => (
+                          <div key={'exp-' + l.id} onClick={() => { setInsightDate(null); setShowExpandedTrend(false); setSelectedLoan(l); }}
+                            style={{ padding: '9px 12px', background: D_T.surface2, borderRadius: 10,
+                                     border: `1px solid ${D_T.line}`, marginBottom: 6,
+                                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                     cursor: 'pointer' }}>
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 700 }}>{l.name}</div>
+                              <div style={{ fontSize: 10.5, color: D_T.mute }}>{l.id}</div>
+                            </div>
+                            <div style={{ fontFamily: mono, fontWeight: 800, color: D_T.mintDeep, fontSize: 13 }}>
+                              +{formatCurrency(l.expectedInterest)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Payments received */}
+                      <div>
+                        <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em',
+                                      textTransform: 'uppercase', marginBottom: 8 }}>
+                          {lang === 'th' ? 'รับจริง' : 'Received'}
+                        </div>
+                        {expPaid.length === 0 ? (
+                          <div style={{ fontSize: 12, color: D_T.mute, fontStyle: 'italic' }}>
+                            {lang === 'th' ? 'ไม่มีการชำระ' : 'None'}
+                          </div>
+                        ) : expPaid.map(l => (
+                          <div key={'act-' + l.id} onClick={() => { setInsightDate(null); setShowExpandedTrend(false); setSelectedLoan(l); }}
+                            style={{ padding: '9px 12px', background: D_T.mint + '35', borderRadius: 10,
+                                     border: `1px solid ${D_T.mint}`, marginBottom: 6,
+                                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                     cursor: 'pointer' }}>
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 700 }}>{l.name}</div>
+                              <DChip tone="mint">{getLoanStatusText(l)}</DChip>
+                            </div>
+                            <div style={{ textAlign: 'right' }}>
+                              <div style={{ fontFamily: mono, fontWeight: 800, color: D_T.mintDeep, fontSize: 13 }}>
+                                +{formatCurrency(l.paidInterest)}
+                              </div>
+                              <div style={{ fontSize: 10.5, color: D_T.mute }}>{formatCurrency(l.paidPrincipal)}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -2055,11 +2093,533 @@ export default function App() {
         );
       })()}
 
+      {showWithdrawModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', padding: 16, background: 'rgba(27,31,42,.5)',
+                      backdropFilter: 'blur(4px)' }}
+          onClick={() => setShowWithdrawModal(false)}>
+          <div style={{ background: D_T.surface, borderRadius: 22, width: '100%', maxWidth: 480,
+                        overflow: 'hidden', boxShadow: '0 24px 60px -20px rgba(27,31,42,.35)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '22px 26px 18px', borderBottom: `1px solid ${D_T.line}`,
+                          background: D_T.surface2, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                  {lang === 'th' ? 'ถอนเงิน' : 'Withdraw'}
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-.02em', marginTop: 4 }}>
+                  {lang === 'th' ? 'บันทึกการเบิกเงิน' : 'Record a payout'}
+                </div>
+              </div>
+              <button onClick={() => setShowWithdrawModal(false)}
+                style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
+                         border: 'none', fontSize: 14, cursor: 'pointer' }}>✕</button>
+            </div>
+            <form onSubmit={handleWithdrawSubmit} style={{ padding: '24px 26px 22px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div>
+                <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                  {lang === 'th' ? 'จำนวนเงิน' : 'Amount'}
+                </label>
+                <div style={{ padding: '12px 14px', borderRadius: 12, background: D_T.surface2, border: `1.5px solid ${D_T.ink}`,
+                              display: 'flex', alignItems: 'baseline' }}>
+                  <span style={{ fontSize: 18, fontWeight: 700 }}>฿</span>
+                  <input type="number" required min="1" value={withdrawForm.principal}
+                    onChange={e => setWithdrawForm({ ...withdrawForm, principal: e.target.value })}
+                    placeholder="0"
+                    style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 24, fontWeight: 800,
+                             letterSpacing: '-.02em', color: D_T.ink, outline: 'none', fontFamily: mono,
+                             marginLeft: 6, fontVariantNumeric: 'tabular-nums' }} />
+                </div>
+                <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
+                  {[100, 500, 1000, 2000, 5000].map(amt => (
+                    <button key={amt} type="button"
+                      onClick={() => setWithdrawForm(f => ({ ...f, principal: String(Math.max(0, parseFloat(f.principal || '0') + amt)) }))}
+                      style={{ padding: '5px 10px', borderRadius: 999, background: D_T.blush, color: D_T.blushDeep,
+                               fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', fontFamily: font }}>
+                      +{amt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                  {lang === 'th' ? 'วันที่' : 'Date'}
+                </label>
+                <DatePicker selected={withdrawForm.date}
+                  onChange={(date: Date | null) => setWithdrawForm({ ...withdrawForm, date: date ?? new Date() })}
+                  dateFormat="dd/MM/yyyy" className="w-full" />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                  {lang === 'th' ? 'หมายเหตุ (ไม่บังคับ)' : 'Note (optional)'}
+                </label>
+                <input type="text" value={withdrawForm.name}
+                  onChange={e => setWithdrawForm({ ...withdrawForm, name: e.target.value })}
+                  placeholder={lang === 'th' ? 'ค่าใช้จ่าย...' : 'Expense...'}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: `1px solid ${D_T.line}`,
+                           background: D_T.surface2, fontSize: 14, color: D_T.ink, outline: 'none',
+                           fontFamily: font, boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ display: 'flex', gap: 10, paddingTop: 4, borderTop: `1px solid ${D_T.line}` }}>
+                <button type="button" onClick={() => setShowWithdrawModal(false)}
+                  style={{ padding: '12px 16px', borderRadius: 999, background: D_T.surface,
+                           color: D_T.ink, border: `1px solid ${D_T.line}`, fontSize: 13, fontWeight: 700,
+                           cursor: 'pointer', fontFamily: font }}>
+                  {lang === 'th' ? 'ยกเลิก' : 'Cancel'}
+                </button>
+                <button type="submit" disabled={isSyncing}
+                  style={{ flex: 1, padding: '12px 0', borderRadius: 999, background: D_T.ink,
+                           color: D_T.bg, border: 'none', fontSize: 13, fontWeight: 700,
+                           cursor: 'pointer', fontFamily: font, opacity: isSyncing ? 0.5 : 1 }}>
+                  {isSyncing ? (lang === 'th' ? 'กำลังบันทึก...' : 'Saving...') : (lang === 'th' ? 'ยืนยันการเบิก' : 'Confirm payout')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showNewLoanModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', padding: 16, background: 'rgba(27,31,42,.5)',
+                      backdropFilter: 'blur(4px)' }}
+          onClick={() => setShowNewLoanModal(false)}>
+          <div style={{ background: D_T.surface, borderRadius: 24, width: '100%', maxWidth: 540,
+                        overflow: 'hidden', boxShadow: '0 24px 60px -20px rgba(27,31,42,.35)',
+                        maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}
+            onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div style={{ padding: '22px 26px 18px', borderBottom: `1px solid ${D_T.line}`,
+                          background: D_T.surface2, display: 'flex', justifyContent: 'space-between' }}>
+              <div>
+                <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                  {lang === 'th' ? 'สินเชื่อใหม่' : 'New loan'}
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '-.02em', marginTop: 4 }}>
+                  {lang === 'th' ? 'ปล่อยกู้ให้ใคร' : 'Lend to someone'}
+                </div>
+                <div style={{ fontSize: 12, color: D_T.mute, marginTop: 4 }}>
+                  {lang === 'th' ? 'แค่ 3 ช่อง ระบบคำนวณดอกและกำหนดให้' : 'Three details. Pocket figures out the rest.'}
+                </div>
+              </div>
+              <button onClick={() => setShowNewLoanModal(false)}
+                style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
+                         border: 'none', fontSize: 14, cursor: 'pointer', alignSelf: 'flex-start' }}>✕</button>
+            </div>
+            {/* Form */}
+            <form onSubmit={handleCreateNewLoan} style={{ padding: '24px 26px 14px', display: 'flex', flexDirection: 'column', gap: 18, overflowY: 'auto', flex: 1 }}>
+              {/* Name */}
+              <div>
+                <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                  {lang === 'th' ? 'ใครจะกู้' : "Who's borrowing"}
+                </label>
+                <input type="text" required value={newLoanForm.name}
+                  onChange={e => setNewLoanForm({ ...newLoanForm, name: e.target.value })}
+                  placeholder={lang === 'th' ? 'ชื่อผู้กู้' : 'Borrower name'}
+                  style={{ width: '100%', padding: '12px 14px', borderRadius: 12,
+                           border: newLoanForm.name ? `1.5px solid ${D_T.ink}` : `1px solid ${D_T.line}`,
+                           background: D_T.surface2, fontSize: 15, fontWeight: 600, color: D_T.ink,
+                           outline: 'none', fontFamily: font, boxSizing: 'border-box' }} />
+                {/* Quick-select from existing borrowers */}
+                {data.loans.length > 0 && (
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                    {[...new Set(data.loans.map(l => l.name))].slice(0, 4).map(name => (
+                      <span key={name} onClick={() => setNewLoanForm(f => ({ ...f, name }))}
+                        style={{ padding: '5px 10px', borderRadius: 999, background: D_T.surface2,
+                                 fontSize: 11, fontWeight: 600, color: D_T.ink2,
+                                 border: `1px solid ${D_T.line}`, cursor: 'pointer' }}>
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Amount + days */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12 }}>
+                <div style={{ minWidth: 0 }}>
+                  <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                    {lang === 'th' ? 'เงินต้น' : 'Principal'}
+                  </label>
+                  <div style={{ padding: '12px 14px', borderRadius: 12, background: D_T.surface2,
+                                border: `1px solid ${D_T.line}`, display: 'flex', alignItems: 'baseline', overflow: 'hidden' }}>
+                    <span style={{ fontSize: 18, fontWeight: 700, flexShrink: 0 }}>฿</span>
+                    <input type="number" required min="1" value={newLoanForm.principal}
+                      onChange={e => setNewLoanForm({ ...newLoanForm, principal: e.target.value })}
+                      style={{ flex: 1, minWidth: 0, border: 'none', background: 'transparent', fontSize: 22, fontWeight: 800,
+                               letterSpacing: '-.02em', color: D_T.ink, outline: 'none', fontFamily: mono,
+                               marginLeft: 4, fontVariantNumeric: 'tabular-nums', width: '100%' }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
+                    {['500', '1000', '1500', '2000', '3000'].map((p, i) => (
+                      <span key={p} onClick={() => setNewLoanForm(f => ({ ...f, principal: p }))}
+                        style={{ padding: '5px 9px', borderRadius: 999, cursor: 'pointer',
+                                 background: newLoanForm.principal === p ? D_T.ink : D_T.surface2,
+                                 color: newLoanForm.principal === p ? D_T.bg : D_T.ink2,
+                                 fontSize: 11, fontWeight: 700, border: newLoanForm.principal === p ? 'none' : `1px solid ${D_T.line}` }}>
+                        {parseInt(p) >= 1000 ? (parseInt(p)/1000) + 'k' : p}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                    {lang === 'th' ? 'นานเท่าไหร่' : 'For how long'}
+                  </label>
+                  <div style={{ padding: '8px 8px 8px 14px', borderRadius: 12, background: D_T.surface2,
+                                border: `1px solid ${D_T.line}`, display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+                    <input type="number" min="1" value={newLoanForm.daysBorrowed}
+                      onChange={e => handleDaysChange(Number(e.target.value))}
+                      style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 22, fontWeight: 800,
+                               letterSpacing: '-.02em', color: D_T.ink, outline: 'none', fontFamily: mono,
+                               fontVariantNumeric: 'tabular-nums', minWidth: 0 }} />
+                    <span style={{ fontSize: 13, color: D_T.mute }}>{lang === 'th' ? 'วัน' : 'd'}</span>
+                    <div style={{ display: 'flex', gap: 3 }}>
+                      <button type="button" onClick={() => handleDaysChange(newLoanForm.daysBorrowed - 1)}
+                        style={{ width: 26, height: 26, borderRadius: 7, border: `1px solid ${D_T.line}`,
+                                 background: D_T.surface, color: D_T.ink, fontSize: 14, fontWeight: 700,
+                                 cursor: 'pointer', display: 'grid', placeItems: 'center', lineHeight: 1 }}>−</button>
+                      <button type="button" onClick={() => handleDaysChange(newLoanForm.daysBorrowed + 1)}
+                        style={{ width: 26, height: 26, borderRadius: 7, border: `1px solid ${D_T.line}`,
+                                 background: D_T.surface, color: D_T.ink, fontSize: 14, fontWeight: 700,
+                                 cursor: 'pointer', display: 'grid', placeItems: 'center', lineHeight: 1 }}>+</button>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                    {[3, 5, 7].map(d => (
+                      <span key={d} onClick={() => handleDaysChange(d)}
+                        style={{ padding: '5px 12px', borderRadius: 999, cursor: 'pointer',
+                                 background: newLoanForm.daysBorrowed === d ? D_T.ink : D_T.surface2,
+                                 color: newLoanForm.daysBorrowed === d ? D_T.bg : D_T.ink2,
+                                 fontSize: 11, fontWeight: 700, border: newLoanForm.daysBorrowed === d ? 'none' : `1px solid ${D_T.line}` }}>
+                        {d}{lang === 'th' ? 'ว' : 'd'}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Start date */}
+              <div>
+                <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                  {lang === 'th' ? 'วันที่เริ่ม' : 'Start date'}
+                </label>
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <DatePicker selected={newLoanForm.borrowDate} onChange={handleBorrowDateChange} dateFormat="dd/MM/yyyy" className="w-full" />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <DatePicker selected={newLoanForm.dueDate} onChange={handleDueDateChange} dateFormat="dd/MM/yyyy" className="w-full" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Interest rate */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                  <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                    {lang === 'th' ? 'อัตราดอกเบี้ย' : 'Interest rate'}
+                  </label>
+                  <span style={{ fontSize: 11, color: D_T.mute }}>{lang === 'th' ? 'ต่อรอบสัญญา' : 'per loan period'}</span>
+                </div>
+                <div style={{ padding: '12px 14px', borderRadius: 12, background: D_T.mint,
+                              display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <input type="number" min="0" value={newLoanForm.interestRate}
+                    onChange={e => setNewLoanForm({ ...newLoanForm, interestRate: Number(e.target.value) })}
+                    style={{ width: 60, border: 'none', background: 'transparent', fontSize: 22, fontWeight: 800,
+                             letterSpacing: '-.02em', color: D_T.ink, outline: 'none', fontFamily: mono }} />
+                  <span style={{ fontSize: 16, fontWeight: 700, color: D_T.mintDeep }}>%</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: D_T.mintDeep, marginLeft: 'auto' }}>
+                    ≈ {formatCurrency((parseFloat(newLoanForm.principal || '0') * newLoanForm.interestRate) / 100)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Preview */}
+              <div style={{ padding: 16, borderRadius: 14, background: D_T.surface2, border: `1px dashed ${D_T.line}` }}>
+                <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 10 }}>
+                  {lang === 'th' ? 'ตัวอย่าง' : "Here's how it'll look"}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                  {([
+                    [lang === 'th' ? 'คุณให้' : 'You give', formatCurrency(parseFloat(newLoanForm.principal || '0')), D_T.ink],
+                    [lang === 'th' ? 'เขาคืน' : 'They owe', formatCurrency(parseFloat(newLoanForm.principal || '0') + (parseFloat(newLoanForm.principal || '0') * newLoanForm.interestRate) / 100), D_T.ink],
+                    [lang === 'th' ? 'กำหนด' : 'Due', newLoanForm.dueDate.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { day: 'numeric', month: 'short' }), D_T.mintDeep],
+                  ] as [string, string, string][]).map(([lbl, v, c]) => (
+                    <div key={lbl}>
+                      <div style={{ fontSize: 10.5, color: D_T.mute, fontWeight: 600 }}>{lbl}</div>
+                      <div style={{ fontSize: 17, fontWeight: 800, color: c, marginTop: 4,
+                                    letterSpacing: '-.01em', fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Note / Remark */}
+              <div>
+                <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em',
+                                 textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                  {lang === 'th' ? 'หมายเหตุ (ไม่บังคับ)' : 'Note (optional)'}
+                </label>
+                <textarea rows={2} value={newLoanForm.note}
+                  onChange={e => setNewLoanForm({ ...newLoanForm, note: e.target.value })}
+                  placeholder={lang === 'th' ? 'เพิ่มหมายเหตุหรือรายละเอียดเพิ่มเติม...' : 'Add a note or extra details...'}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 12,
+                           border: `1px solid ${D_T.line}`, background: D_T.surface2,
+                           fontSize: 13, color: D_T.ink, outline: 'none', fontFamily: font,
+                           boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.5 }} />
+              </div>
+            </form>
+            {/* Footer */}
+            <div style={{ padding: '16px 26px 22px', display: 'flex', gap: 10,
+                          borderTop: `1px solid ${D_T.line}`, background: D_T.surface2 }}>
+              <button type="button" onClick={() => setShowNewLoanModal(false)}
+                style={{ padding: '12px 16px', borderRadius: 999, background: D_T.surface,
+                         color: D_T.ink, border: `1px solid ${D_T.line}`, fontSize: 13, fontWeight: 700,
+                         cursor: 'pointer', fontFamily: font }}>
+                {lang === 'th' ? 'ยกเลิก' : 'Cancel'}
+              </button>
+              <button onClick={handleCreateNewLoan} disabled={isSyncing || !newLoanForm.name}
+                style={{ flex: 1, padding: '12px 16px', borderRadius: 999, background: D_T.ink,
+                         color: D_T.bg, border: 'none', fontSize: 13, fontWeight: 700,
+                         cursor: 'pointer', fontFamily: font, opacity: isSyncing || !newLoanForm.name ? 0.5 : 1 }}>
+                {isSyncing ? (lang === 'th' ? 'กำลังบันทึก...' : 'Saving...') :
+                  newLoanForm.name ? (lang === 'th' ? `ส่งให้ ${newLoanForm.name} →` : `Hand ${newLoanForm.name} ${formatCurrency(parseFloat(newLoanForm.principal || '0'))} →`) :
+                  (lang === 'th' ? 'กรุณาใส่ชื่อผู้กู้' : 'Enter a borrower name')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showNotifModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', padding: 16, background: 'rgba(27,31,42,.5)',
+                      backdropFilter: 'blur(4px)' }}
+          onClick={() => setShowNotifModal(false)}>
+          <div style={{ background: D_T.surface, borderRadius: 22, width: '100%', maxWidth: 400,
+                        overflow: 'hidden', boxShadow: '0 24px 60px -20px rgba(27,31,42,.35)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '20px 24px', borderBottom: `1px solid ${D_T.line}`,
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          background: D_T.surface2 }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>
+                {lang === 'th' ? 'การแจ้งเตือน' : 'Notifications'}
+              </div>
+              <button onClick={() => setShowNotifModal(false)}
+                style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
+                         border: 'none', fontSize: 14, cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ padding: 14, borderRadius: 14, textAlign: 'center',
+                            background: isSubscribed ? D_T.mint + '40' : notifPermission === 'denied' ? D_T.blush + '40' : D_T.surface2,
+                            border: `1px solid ${isSubscribed ? D_T.mint : notifPermission === 'denied' ? D_T.blush : D_T.line}` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: isSubscribed ? D_T.mintDeep : notifPermission === 'denied' ? D_T.blushDeep : D_T.ink2 }}>
+                  {isSubscribed ? (lang === 'th' ? '🔔 เปิดใช้งานแล้ว' : '🔔 Notifications enabled') :
+                   notifPermission === 'denied' ? (lang === 'th' ? '🚫 ถูกบล็อก' : '🚫 Blocked by browser') :
+                   (lang === 'th' ? '🔕 ปิดอยู่' : '🔕 Not enabled')}
+                </div>
+              </div>
+              {isSubscribed && (
+                <div>
+                  <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+                    {lang === 'th' ? 'ทดสอบ' : 'Test'}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <button onClick={() => handleTestNotif('morning')} disabled={isSendingTestNotif}
+                      style={{ padding: '10px 0', borderRadius: 12, background: D_T.lavender, color: D_T.lavDeep,
+                               border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>
+                      {lang === 'th' ? 'เช้า' : 'Morning'}
+                    </button>
+                    <button onClick={() => handleTestNotif('afternoon')} disabled={isSendingTestNotif}
+                      style={{ padding: '10px 0', borderRadius: 12, background: D_T.lavender, color: D_T.lavDeep,
+                               border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>
+                      {lang === 'th' ? 'บ่าย' : 'Afternoon'}
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {!isSubscribed && notifPermission !== 'denied' && (
+                  <button onClick={handleEnableNotif}
+                    style={{ width: '100%', padding: '12px 0', borderRadius: 999, background: D_T.ink,
+                             color: D_T.bg, border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>
+                    {lang === 'th' ? 'เปิดการแจ้งเตือน' : 'Enable notifications'}
+                  </button>
+                )}
+                {isSubscribed && (
+                  <button onClick={handleDisableNotif}
+                    style={{ width: '100%', padding: '12px 0', borderRadius: 999, background: D_T.blush,
+                             color: D_T.blushDeep, border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>
+                    {lang === 'th' ? 'ปิดการแจ้งเตือน' : 'Disable notifications'}
+                  </button>
+                )}
+                <button onClick={() => setShowNotifModal(false)}
+                  style={{ width: '100%', padding: '12px 0', borderRadius: 999, background: D_T.surface2,
+                           color: D_T.ink2, border: `1px solid ${D_T.line}`, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>
+                  {lang === 'th' ? 'ปิด' : 'Close'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <AnimatePresence>
+        {showFabMenu && (
+          <motion.div className="md:hidden"
+            style={{ position: 'fixed', inset: 0, zIndex: 55, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setShowFabMenu(false)}>
+            <div style={{ position: 'absolute', inset: 0, background: 'rgba(27,31,42,.6)', backdropFilter: 'blur(4px)' }} />
+            <motion.div style={{ position: 'relative', padding: '0 24px 112px', display: 'flex', flexDirection: 'column', gap: 12 }}
+              initial={{ opacity: 0, y: 32 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }}
+              transition={{ duration: 0.2 }} onClick={e => e.stopPropagation()}>
+              <button onClick={() => { setShowFabMenu(false); setShowNewLoanModal(true); }}
+                style={{ width: '100%', padding: '16px 0', borderRadius: 20, background: D_T.ink,
+                         color: D_T.bg, border: 'none', fontSize: 15, fontWeight: 800,
+                         cursor: 'pointer', fontFamily: font, boxShadow: '0 8px 24px rgba(27,31,42,.3)' }}>
+                {lang === 'th' ? '+ ปล่อยกู้' : '+ Lend money'}
+              </button>
+              <button onClick={() => { setShowFabMenu(false); setShowWithdrawModal(true); }}
+                style={{ width: '100%', padding: '16px 0', borderRadius: 20, background: D_T.surface,
+                         color: D_T.ink, border: `1px solid ${D_T.line}`, fontSize: 15, fontWeight: 800,
+                         cursor: 'pointer', fontFamily: font }}>
+                {lang === 'th' ? 'ถอนเงิน' : 'Withdraw'}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showConfirmDefault && (
+          <motion.div style={{ position: 'fixed', inset: 0, zIndex: 80, display: 'flex', alignItems: 'center',
+                               justifyContent: 'center', padding: 24, background: 'rgba(27,31,42,.6)',
+                               backdropFilter: 'blur(4px)' }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={() => setShowConfirmDefault(false)}>
+            <motion.div style={{ background: D_T.surface, borderRadius: 22, width: '100%', maxWidth: 360,
+                                  overflow: 'hidden', boxShadow: '0 24px 60px -20px rgba(27,31,42,.35)' }}
+              initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              onClick={e => e.stopPropagation()}>
+              <div style={{ padding: '28px 24px', textAlign: 'center' }}>
+                <div style={{ width: 56, height: 56, borderRadius: 18, background: D_T.blush,
+                              display: 'grid', placeItems: 'center', margin: '0 auto 16px',
+                              fontSize: 24 }}>💀</div>
+                <div style={{ fontSize: 18, fontWeight: 800, color: D_T.ink, marginBottom: 8 }}>
+                  {lang === 'th' ? 'ยืนยันหนี้เสีย?' : 'Confirm Default?'}
+                </div>
+                <div style={{ fontSize: 13, color: D_T.mute, marginBottom: 24, lineHeight: 1.5 }}>
+                  {lang === 'th' ? 'รายการนี้จะถูกบันทึกว่าโดนบิด ยากที่จะยกเลิก' : 'This loan will be marked as defaulted. Hard to undo.'}
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => setShowConfirmDefault(false)}
+                    style={{ flex: 1, padding: '12px 0', borderRadius: 999, background: D_T.surface2,
+                             color: D_T.ink2, border: `1px solid ${D_T.line}`, fontSize: 13, fontWeight: 700,
+                             cursor: 'pointer', fontFamily: font }}>
+                    {lang === 'th' ? 'ยกเลิก' : 'Cancel'}
+                  </button>
+                  <button onClick={() => { setShowConfirmDefault(false); handleUpdateStatus('โดนบิด'); }}
+                    style={{ flex: 1, padding: '12px 0', borderRadius: 999, background: D_T.blushDeep,
+                             color: '#fff', border: 'none', fontSize: 13, fontWeight: 700,
+                             cursor: 'pointer', fontFamily: font }}>
+                    {lang === 'th' ? 'ยืนยัน' : 'Confirm default'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {showProfitModal && data && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 80, display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', padding: 16, background: 'rgba(27,31,42,.5)',
+                      backdropFilter: 'blur(4px)' }}
+          onClick={() => setShowProfitModal(false)}>
+          <div style={{ background: D_T.surface, borderRadius: 22, width: '100%', maxWidth: 380,
+                        overflow: 'hidden', boxShadow: '0 24px 60px -20px rgba(27,31,42,.35)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '20px 24px', borderBottom: `1px solid ${D_T.line}`, background: D_T.surface2,
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                  {lang === 'th' ? 'รายละเอียดกำไร' : 'Profit Breakdown'}
+                </div>
+                <div style={{ fontSize: 26, fontWeight: 800, marginTop: 4, fontVariantNumeric: 'tabular-nums',
+                              fontFamily: mono, color: s.netProfit >= 0 ? D_T.mintDeep : D_T.blushDeep }}>
+                  {formatCurrency(s.netProfit)}
+                </div>
+              </div>
+              <button onClick={() => setShowProfitModal(false)}
+                style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
+                         border: 'none', fontSize: 14, cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {[
+                [lang === 'th' ? 'ดอกที่ได้รับ' : 'Interest received', s.paidInterest, D_T.mint, D_T.mintDeep, '+'],
+                [lang === 'th' ? 'หักโดนบิด' : 'Defaults', s.scamPrincipal, D_T.blush, D_T.blushDeep, '−'],
+                [lang === 'th' ? 'หักเบิก' : 'Withdrawals', s.withdrawn, D_T.butter, D_T.butterDeep, '−'],
+              ].map(([label, val, bg, fg, sign]) => (
+                <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                                      padding: '10px 14px', borderRadius: 12, background: bg as string + '40' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: fg as string }}>{label}</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: fg as string, fontFamily: mono }}>{sign}{formatCurrency(val as number)}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px',
+                            borderTop: `1.5px solid ${D_T.ink}`, marginTop: 4 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.04em' }}>
+                  {lang === 'th' ? 'กำไรสุทธิ' : 'Net Profit'}
+                </span>
+                <span style={{ fontSize: 16, fontWeight: 800, fontFamily: mono,
+                               color: s.netProfit >= 0 ? D_T.mintDeep : D_T.blushDeep }}>
+                  {formatCurrency(s.netProfit)}
+                </span>
+              </div>
+              <div style={{ padding: '14px', borderRadius: 14, background: D_T.lavender + '40',
+                            border: `1px solid ${D_T.lavender}` }}>
+                <div style={{ fontSize: 11, color: D_T.lavDeep, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+                  {lang === 'th' ? 'ดอกรอรับ' : 'Unrealized Interest'}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, color: D_T.ink2 }}>{lang === 'th' ? 'ดอกที่ยังไม่ถึงกำหนด' : 'Pending'}</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, fontFamily: mono, color: D_T.lavDeep }}>+{formatCurrency(s.unpaidInterest)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, borderTop: `1px solid ${D_T.lavender}` }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: D_T.lavDeep }}>{lang === 'th' ? 'รวมถ้าเก็บครบ' : 'Total if collected'}</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, fontFamily: mono, color: D_T.lavDeep }}>
+                    {formatCurrency(s.paidInterest + s.unpaidInterest - s.scamPrincipal - s.withdrawn)}
+                  </span>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={{ padding: '12px', borderRadius: 12, background: D_T.surface2, textAlign: 'center' }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, fontFamily: mono }}>{s.profitPct.toFixed(1)}%</div>
+                  <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>
+                    {lang === 'th' ? 'yield ต่อทุน' : 'Yield on capital'}
+                  </div>
+                </div>
+                <div style={{ padding: '12px', borderRadius: 12, background: D_T.surface2, textAlign: 'center' }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, fontFamily: mono }}>{formatCurrency(s.paidInterest)}</div>
+                  <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>
+                    {lang === 'th' ? 'ดอกสะสม' : 'Total interest'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-[100] animate-slide-up">
-          <div className={`px-6 py-3 rounded-xl shadow-2xl text-white font-bold flex items-center gap-3 ${toastMessage.type === 'success' ? 'bg-emerald-600' : 'bg-rose-600'}`}>
-            {toastMessage.type === 'success' ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />}
-            {toastMessage.text}
+        <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 100 }} className="animate-slide-up">
+          <div style={{ padding: '12px 20px', borderRadius: 14, background: toastMessage.type === 'success' ? D_T.mintDeep : D_T.blushDeep,
+                        color: '#fff', fontWeight: 700, fontSize: 13, display: 'flex', alignItems: 'center', gap: 10,
+                        boxShadow: '0 8px 24px rgba(27,31,42,.3)', fontFamily: font }}>
+            {toastMessage.type === 'success' ? '✓' : '⚠'} {toastMessage.text}
           </div>
         </div>
       )}

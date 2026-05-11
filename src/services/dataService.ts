@@ -55,6 +55,7 @@ export interface LoanRecord {
   historicalRenewalInterest: number;
   historicalRenewalCount: number;
   penaltyHistory: PenaltyRecord[];
+  note: string;
 }
 
 export interface AppData {
@@ -149,7 +150,8 @@ export async function fetchAppData(): Promise<AppData | null> {
                 isWithdrawn,
                 historicalRenewalInterest,
                 historicalRenewalCount,
-                penaltyHistory: [...(personPenaltyHistory[name] || [])]
+                penaltyHistory: [...(personPenaltyHistory[name] || [])],
+                note: String(row[16] || '')
               });
 
               if (isPaid || isScam) {
@@ -313,6 +315,7 @@ export async function createNewLoan(loanData: {
   daysBorrowed: number;
   interestRate: number;
   status?: string;
+  note?: string;
 }): Promise<{ success: boolean; id?: string }> {
   if (!GOOGLE_SCRIPT_WEB_APP_URL) {
     console.error("Missing GOOGLE_SCRIPT_WEB_APP_URL");
