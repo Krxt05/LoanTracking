@@ -2062,13 +2062,15 @@ export default function App() {
             {/* KPI grid */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
               {([
-                [lang === 'th' ? 'พอร์ตรวม' : 'Portfolio', formatCurrency(s.totalLimit), 'ghost'],
-                [lang === 'th' ? 'กำไรสุทธิ' : 'Net profit', formatCurrency(s.netProfit), s.netProfit >= 0 ? 'mint' : 'blush'],
-                [lang === 'th' ? 'หนี้เสีย' : 'NPL', nplRatio.toFixed(1) + '%', nplRatio > 10 ? 'blush' : 'mint'],
-                [lang === 'th' ? 'เงินสดว่าง' : 'Available', formatCurrency(s.available), 'butter'],
-              ] as [string, string, string][]).map(([label, value, tone]) => (
-                <div key={label} style={{ padding: '14px 16px', borderRadius: 14,
-                                          background: D_T.surface, border: `1px solid ${D_T.line}` }}>
+                [lang === 'th' ? 'พอร์ตรวม' : 'Portfolio', formatCurrency(s.totalLimit), 'ghost', null],
+                [lang === 'th' ? 'กำไรสุทธิ' : 'Net profit', formatCurrency(s.netProfit), s.netProfit >= 0 ? 'mint' : 'blush', () => setShowProfitModal(true)],
+                [lang === 'th' ? 'หนี้เสีย' : 'NPL', nplRatio.toFixed(1) + '%', nplRatio > 10 ? 'blush' : 'mint', null],
+                [lang === 'th' ? 'เงินสดว่าง' : 'Available', formatCurrency(s.available), 'butter', null],
+              ] as [string, string, string, (() => void) | null][]).map(([label, value, tone, onTap]) => (
+                <div key={label} onClick={onTap ?? undefined}
+                  style={{ padding: '14px 16px', borderRadius: 14,
+                            background: D_T.surface, border: `1px solid ${D_T.line}`,
+                            cursor: onTap ? 'pointer' : 'default' }}>
                   <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700,
                                 letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>{label}</div>
                   <div style={{ fontSize: 20, fontWeight: 800, fontVariantNumeric: 'tabular-nums',
