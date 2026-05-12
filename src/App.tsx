@@ -372,8 +372,8 @@ export default function App() {
     const historical = sortedMs.map(ms => {
       const ev = byMs.get(ms)!;
       runPortfolio += ev.earned - ev.scam - ev.withdrawn;
-      runGross += ev.earned;
-      runInterest += ev.earned;
+      runGross += ev.earned - ev.scam;
+      runInterest += ev.earned - ev.scam;
       return {
         ms, date: ev.label,
         portfolio: runPortfolio, portfolioF: undefined as number | undefined,
@@ -849,6 +849,8 @@ export default function App() {
   const PortfolioGrowthChart = ({ compact = false, hideControls = false }: { compact?: boolean; hideControls?: boolean }) => {
     const pts = filteredPortfolioData;
     const YELLOW = '#f5a623', RED = '#e04545';
+    const INITIAL = 20000;
+    const sfx = compact ? 'c' : 'f';
 
     const h = compact ? 150 : 210;
     const padL = 6, padR = 4, padT = 10, padB = 22;
@@ -881,6 +883,7 @@ export default function App() {
     };
 
     const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => minV + f * range);
+    const thresholdY = Math.min(Math.max(toY(INITIAL), padT), padT + cH);
     const fmtY = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v.toFixed(0);
 
     const handleTap = (e: React.MouseEvent<SVGSVGElement> | React.TouchEvent<SVGSVGElement>) => {
@@ -958,6 +961,12 @@ export default function App() {
                 <stop offset="0%" stopColor={D_T.mintDeep} stopOpacity="0.16" />
                 <stop offset="100%" stopColor={D_T.mintDeep} stopOpacity="0" />
               </linearGradient>
+              <clipPath id={`pg-above-${sfx}`}>
+                <rect x={0} y={padT} width={W} height={Math.max(0, thresholdY - padT)} />
+              </clipPath>
+              <clipPath id={`pg-below-${sfx}`}>
+                <rect x={0} y={thresholdY} width={W} height={Math.max(0, padT + cH - thresholdY)} />
+              </clipPath>
             </defs>
 
             {/* Y grid lines only (labels are in the fixed column) */}
@@ -1014,8 +1023,9 @@ export default function App() {
               </>
             )}
 
-            {/* Line 1: portfolio net (solid mint) */}
-            <path d={makePath('portfolio')} fill="none" stroke={D_T.mintDeep} strokeWidth={2.5} strokeLinejoin="round" />
+            {/* Line 1: portfolio net — mint above initial capital, red below */}
+            <path d={makePath('portfolio')} fill="none" stroke={D_T.mintDeep} strokeWidth={2.5} strokeLinejoin="round" clipPath={`url(#pg-above-${sfx})`} />
+            <path d={makePath('portfolio')} fill="none" stroke={RED} strokeWidth={2.5} strokeLinejoin="round" clipPath={`url(#pg-below-${sfx})`} />
             <path d={makePath('portfolioF')} fill="none" stroke={D_T.mintDeep} strokeWidth={2} strokeDasharray="6 4" strokeOpacity={0.35} strokeLinejoin="round" />
 
             {/* Special event dots */}
