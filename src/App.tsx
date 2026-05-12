@@ -32,6 +32,7 @@ export default function App() {
   const [showFabMenu, setShowFabMenu] = useState(false);
   const [showConfirmDefault, setShowConfirmDefault] = useState(false);
   const [showProfitModal, setShowProfitModal] = useState(false);
+  const [showWeeklySheet, setShowWeeklySheet] = useState(false);
   const [hasPenalty, setHasPenalty] = useState(false);
   const [penaltyAmount, setPenaltyAmount] = useState(200);
   const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'loans' | 'analytics' | 'you'>('dashboard');
@@ -287,6 +288,55 @@ export default function App() {
       .sort(([a], [b]) => b.localeCompare(a))
       .map(([key, val]) => ({ key, ...val }));
   }, [data]);
+
+  const weeklySummary = useMemo(() => {
+    if (!data) return [];
+    const getMonKey = (d: Date): string => {
+      const day = d.getDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      const m = new Date(d);
+      m.setDate(d.getDate() + diff);
+      return `${m.getFullYear()}-${String(m.getMonth()+1).padStart(2,'0')}-${String(m.getDate()).padStart(2,'0')}`;
+    };
+    const weeks: Record<string, { interest: number; scam: number; withdrawn: number; count: number }> = {};
+    const bump = (key: string) => { if (!weeks[key]) weeks[key] = { interest: 0, scam: 0, withdrawn: 0, count: 0 }; return weeks[key]; };
+    data.loans.forEach(l => {
+      if ((l.isPaid || l.isRenewed) && l.actualDate) {
+        const p = parseThaiDate(l.actualDate); if (!p) return;
+        const e = bump(getMonKey(p)); e.interest += l.paidInterest; e.count += 1;
+      }
+      if (l.isScam) {
+        const p = parseThaiDate(l.actualDate || l.dueDate); if (!p) return;
+        bump(getMonKey(p)).scam += l.principal;
+      }
+      if (l.isWithdrawn) {
+        const p = parseThaiDate(l.borrowDate); if (!p) return;
+        bump(getMonKey(p)).withdrawn += l.principal;
+      }
+    });
+    const thisKey = getMonKey(new Date());
+    return Object.entries(weeks)
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([key, val]) => ({ key, ...val, isCurrentWeek: key === thisKey }));
+  }, [data]);
+
+  // Per-person stats for loyalty tiers and leaderboard
+  const borrowerStats = useMemo(() => {
+    if (!data) return [];
+    const map: Record<string, { name: string; totalRenewals: number; totalEarned: number; hasActive: boolean; hasScam: boolean }> = {};
+    data.loans.forEach(l => {
+      if (!map[l.name]) map[l.name] = { name: l.name, totalRenewals: 0, totalEarned: 0, hasActive: false, hasScam: false };
+      if (l.isRenewed) map[l.name].totalRenewals++;
+      if (l.isPaid || l.isRenewed) map[l.name].totalEarned += l.paidInterest;
+      if (l.isScam) map[l.name].hasScam = true;
+      if (!l.isPaid && !l.isScam && !l.isWithdrawn && !l.isRenewed) map[l.name].hasActive = true;
+    });
+    return Object.values(map).sort((a, b) => b.totalRenewals - a.totalRenewals);
+  }, [data]);
+
+  const allBorrowerNames = useMemo(() =>
+    [...new Set(data?.loans.map(l => l.name) ?? [])].sort()
+  , [data]);
 
   const portfolioGrowthData = useMemo(() => {
     if (!data) return [];
@@ -687,6 +737,13 @@ export default function App() {
     const parsed = parseThaiDate(l.dueDate);
     if (parsed && parsed.getTime() === today.getTime()) return lang === 'th' ? 'วันนี้' : 'Today';
     return lang === 'th' ? 'ตามแผน' : 'On track';
+  };
+
+  const getLoyaltyTier = (renewals: number): { label: string; color: string; bg: string } | null => {
+    if (renewals >= 6) return { label: lang === 'th' ? '★ VIP' : '★ VIP', color: D_T.butterDeep, bg: D_T.butter };
+    if (renewals >= 3) return { label: lang === 'th' ? '★ ประจำ' : '★ Loyal', color: D_T.mintDeep, bg: D_T.mint };
+    if (renewals >= 1) return { label: lang === 'th' ? '★ ปกติ' : '★ Regular', color: D_T.mute, bg: D_T.surface2 };
+    return null;
   };
 
   if (loading) {
@@ -1359,6 +1416,59 @@ export default function App() {
                     )}
                   </div>
 
+                  {/* Portfolio Health Score */}
+                  {(() => {
+                    const deployed = s.totalLimit > 0 ? (s.unpaidPrincipal / s.totalLimit) * 100 : 0;
+                    const activeLoans = data?.loans.filter(l => !l.isPaid && !l.isScam && !l.isWithdrawn && !l.isRenewed) ?? [];
+                    const avgDays = activeLoans.length > 0 ? activeLoans.reduce((sum, l) => sum + l.daysBorrowed, 0) / activeLoans.length : 0;
+                    const metrics = [
+                      { label: 'Deployed Ratio', value: deployed.toFixed(1) + '%', pct: Math.min(100, deployed), good: deployed >= 80, ok: deployed >= 60, hint: lang === 'th' ? (deployed >= 80 ? 'เงินทำงานดี' : deployed >= 60 ? 'ยังพอได้' : 'เงินนอนมากเกิน') : (deployed >= 80 ? 'Money working' : deployed >= 60 ? 'Acceptable' : 'Too much idle') },
+                      { label: 'NPL Ratio', value: nplRatio.toFixed(1) + '%', pct: Math.min(100, nplRatio * 5), good: nplRatio < 5, ok: nplRatio < 10, hint: lang === 'th' ? (nplRatio < 5 ? 'ความเสี่ยงต่ำ' : nplRatio < 10 ? 'ระวังไว้' : 'เสี่ยงสูง') : (nplRatio < 5 ? 'Low risk' : nplRatio < 10 ? 'Watch out' : 'High risk') },
+                      { label: lang === 'th' ? 'Avg. ระยะกู้' : 'Avg. Loan Days', value: avgDays > 0 ? avgDays.toFixed(1) + (lang === 'th' ? ' วัน' : 'd') : '—', pct: Math.min(100, (avgDays / 14) * 100), good: avgDays <= 7 && avgDays > 0, ok: avgDays <= 14, hint: lang === 'th' ? (avgDays <= 7 ? 'หมุนเร็ว' : avgDays <= 14 ? 'ปานกลาง' : 'วงจรยาว') : (avgDays <= 7 ? 'Fast cycle' : avgDays <= 14 ? 'Medium' : 'Long cycle') },
+                    ];
+                    return (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 20 }}>
+                        {metrics.map(m => (
+                          <div key={m.label} style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 18, padding: '16px 20px' }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: D_T.mute, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>{m.label}</div>
+                            <div style={{ fontSize: 24, fontWeight: 800, fontFamily: mono, color: m.good ? D_T.mintDeep : m.ok ? D_T.butterDeep : D_T.blushDeep, marginBottom: 4 }}>{m.value}</div>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: m.good ? D_T.mintDeep : m.ok ? D_T.butterDeep : D_T.blushDeep, marginBottom: 10 }}>{m.hint}</div>
+                            <div style={{ height: 5, borderRadius: 99, background: D_T.line2 }}>
+                              <div style={{ height: '100%', width: m.pct + '%', borderRadius: 99, transition: 'width .4s', background: m.good ? D_T.mintDeep : m.ok ? D_T.butterDeep : D_T.blushDeep }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Top Borrowers */}
+                  {borrowerStats.filter(b => b.totalRenewals > 0 && !b.hasScam).length > 0 && (
+                    <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 18, overflow: 'hidden', marginBottom: 20 }}>
+                      <div style={{ padding: '14px 22px', borderBottom: `1px solid ${D_T.line}`, fontSize: 11, fontWeight: 700, color: D_T.mute, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                        {lang === 'th' ? 'ลูกค้าประจำ' : 'Top Borrowers'}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+                        {borrowerStats.filter(b => b.totalRenewals > 0 && !b.hasScam).slice(0, 6).map((b, i) => {
+                          const tier = getLoyaltyTier(b.totalRenewals)!;
+                          return (
+                            <div key={b.name} style={{ padding: '14px 22px', borderBottom: `1px solid ${D_T.line2}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+                              <div style={{ width: 32, height: 32, borderRadius: 10, background: i === 0 ? D_T.butter : D_T.surface2, display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 800, flexShrink: 0, color: i === 0 ? D_T.butterDeep : D_T.mute }}>{b.name.charAt(0).toUpperCase()}</div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                                  <span style={{ fontSize: 13, fontWeight: 700, color: D_T.ink }}>{b.name}</span>
+                                  <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 999, background: tier.bg + '60', color: tier.color }}>{tier.label}</span>
+                                  {b.hasActive && <div style={{ width: 6, height: 6, borderRadius: 99, background: D_T.mintDeep }} />}
+                                </div>
+                                <div style={{ fontSize: 10, color: D_T.mute }}>{lang === 'th' ? `ต่อสัญญา ${b.totalRenewals} ครั้ง` : `${b.totalRenewals} renewals`} · {formatCurrency(b.totalEarned)}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Monthly summary with breakdown */}
                   {monthlySummary.length > 0 && (
                     <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
@@ -1616,35 +1726,40 @@ export default function App() {
                 </div>
               )}
 
-              {/* Allocation bars */}
-              <div>
-                <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
-                              letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>
-                  {lang === 'th' ? 'เงินอยู่ที่ไหน' : 'Where the money is'}
-                </div>
-                {(() => {
-                  const total = Math.max(s.totalLimit, 1);
-                  const bars: [string, number, string][] = [
-                    [lang === 'th' ? 'กำลังทำงาน' : 'Out earning', s.totalBorrowed - s.scamPrincipal, D_T.mintDeep],
-                    [lang === 'th' ? 'พร้อมปล่อย' : 'Free to lend', s.available, D_T.butterDeep],
-                    [lang === 'th' ? 'หนี้เสีย' : 'Stuck (default)', s.scamPrincipal, D_T.blushDeep],
-                  ];
-                  return bars.map(([label, val, color]) => (
-                    <div key={label} style={{ marginBottom: 12 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 5 }}>
-                        <span style={{ color: D_T.ink2, fontWeight: 600 }}>{label}</span>
-                        <span style={{ color: D_T.ink, fontWeight: 700, fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
-                          {formatCurrency(val)}
-                        </span>
-                      </div>
-                      <div style={{ height: 6, background: D_T.surface2, borderRadius: 99, overflow: 'hidden' }}>
-                        <div style={{ width: Math.min(100, (val / total) * 100) + '%', height: '100%',
-                                      background: color, borderRadius: 99 }} />
-                      </div>
+              {/* Allocation — where is my money */}
+              {(() => {
+                const segs = [
+                  { label: lang === 'th' ? 'กำลังทำงาน' : 'Working', value: s.unpaidPrincipal, color: D_T.mintDeep },
+                  { label: lang === 'th' ? 'พร้อมปล่อย' : 'Ready', value: s.available, color: D_T.butterDeep },
+                  { label: lang === 'th' ? 'หนี้เสีย' : 'Bad debt', value: s.scamPrincipal, color: D_T.blushDeep },
+                  { label: lang === 'th' ? 'เบิก' : 'Withdrawn', value: s.withdrawn, color: D_T.mute2 },
+                ].filter(sg => sg.value > 0);
+                const total = Math.max(segs.reduce((a, sg) => a + sg.value, 0), 1);
+                return (
+                  <div>
+                    <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>
+                      {lang === 'th' ? 'เงินอยู่ที่ไหน' : 'Where is my money'}
                     </div>
-                  ));
-                })()}
-              </div>
+                    <div style={{ display: 'flex', height: 10, borderRadius: 99, overflow: 'hidden', gap: 2, marginBottom: 14 }}>
+                      {segs.map(sg => (
+                        <div key={sg.label} style={{ flex: sg.value / total, background: sg.color, minWidth: 4 }} />
+                      ))}
+                    </div>
+                    {segs.map(sg => (
+                      <div key={sg.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ width: 9, height: 9, borderRadius: 3, background: sg.color, flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, fontWeight: 600, color: D_T.ink2 }}>{sg.label}</span>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{ fontSize: 13, fontWeight: 800, fontFamily: mono, color: D_T.ink }}>{formatCurrency(sg.value)}</span>
+                          <span style={{ fontSize: 10, color: D_T.mute, marginLeft: 5 }}>{((sg.value / total) * 100).toFixed(0)}%</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
 
               <div style={{ marginTop: 'auto', fontSize: 11, color: D_T.mute2, fontStyle: 'italic', lineHeight: 1.5 }}>
                 {lang === 'th' ? '"การปล่อยกู้คือความอดทนที่มีตัวเลขกำกับ"' : '"Lending is patience with a number on it."'}
@@ -1697,9 +1812,27 @@ export default function App() {
             {/* Hero card */}
             <div style={{ padding: 20, borderRadius: 22, background: D_T.surface,
                           border: `1px solid ${D_T.line}`, marginBottom: 12 }}>
-              <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
-                            letterSpacing: '.06em', textTransform: 'uppercase' }}>
-                {lang === 'th' ? 'พอร์ตรวม' : 'Total portfolio'}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 0 }}>
+                <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
+                              letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                  {lang === 'th' ? 'พอร์ตรวม' : 'Total portfolio'}
+                </div>
+                {(() => {
+                  const w = weeklySummary.find(x => x.isCurrentWeek);
+                  const fi = (v: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 0 }).format(Math.round(v));
+                  return (
+                    <button onClick={() => setShowWeeklySheet(true)} style={{
+                      background: D_T.mint + '60', border: 'none', borderRadius: 10,
+                      padding: '5px 10px', cursor: 'pointer', textAlign: 'right', lineHeight: 1.2 }}>
+                      <div style={{ fontSize: 9, color: D_T.mintDeep, fontWeight: 700, letterSpacing: '.04em', marginBottom: 2 }}>
+                        {lang === 'th' ? 'สัปดาห์นี้' : 'This week'}
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: D_T.mintDeep, fontFamily: mono }}>
+                        +฿{fi(w?.interest ?? 0)}
+                      </div>
+                    </button>
+                  );
+                })()}
               </div>
               <div style={{ fontSize: 36, fontWeight: 800, letterSpacing: '-.025em', marginTop: 4,
                             lineHeight: 1, fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
@@ -1873,9 +2006,10 @@ export default function App() {
                     {l.name.charAt(0).toUpperCase()}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 13.5, fontWeight: 700 }}>{l.name}</span>
                       <DChip tone={getLoanTone(l)}>{getLoanStatusText(l)}</DChip>
+                      {(() => { const stats = borrowerStats.find(b => b.name === l.name); const tier = (!stats?.hasScam) ? getLoyaltyTier(stats?.totalRenewals ?? 0) : null; return tier ? <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 999, background: tier.bg + '60', color: tier.color }}>{tier.label}</span> : null; })()}
                     </div>
                     <div style={{ fontSize: 11, color: D_T.mute, marginTop: 2 }}>
                       {l.id} · {l.isOverdue ? (lang === 'th' ? `ช้า ${l.daysLate} วัน` : `${l.daysLate}d overdue`) : `${lang === 'th' ? 'กำหนด' : 'due'} ${l.dueDate}`}
@@ -1943,7 +2077,39 @@ export default function App() {
               ))}
             </div>
 
-            {/* Monthly summary */}
+            {/* Where is my money */}
+            {(() => {
+              const segs = [
+                { label: lang === 'th' ? 'กำลังทำงาน' : 'Working', value: s.unpaidPrincipal, color: D_T.mintDeep },
+                { label: lang === 'th' ? 'พร้อมปล่อย' : 'Ready', value: s.available, color: D_T.butterDeep },
+                { label: lang === 'th' ? 'หนี้เสีย' : 'Bad debt', value: s.scamPrincipal, color: D_T.blushDeep },
+                { label: lang === 'th' ? 'เบิก' : 'Withdrawn', value: s.withdrawn, color: D_T.mute2 },
+              ].filter(sg => sg.value > 0);
+              const total = Math.max(segs.reduce((a, sg) => a + sg.value, 0), 1);
+              return (
+                <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 18, padding: '16px 18px', marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>
+                    {lang === 'th' ? 'เงินอยู่ที่ไหน' : 'Where is my money'}
+                  </div>
+                  <div style={{ display: 'flex', height: 10, borderRadius: 99, overflow: 'hidden', gap: 2, marginBottom: 14 }}>
+                    {segs.map(sg => <div key={sg.label} style={{ flex: sg.value / total, background: sg.color, minWidth: 4 }} />)}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    {segs.map(sg => (
+                      <div key={sg.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <div style={{ width: 9, height: 9, borderRadius: 3, background: sg.color, flexShrink: 0 }} />
+                        <div>
+                          <div style={{ fontSize: 9.5, color: D_T.mute, fontWeight: 700 }}>{sg.label} {((sg.value / total) * 100).toFixed(0)}%</div>
+                          <div style={{ fontSize: 13, fontWeight: 800, fontFamily: mono, color: D_T.ink }}>{formatCurrency(sg.value)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Monthly summary — one row per month, no net box */}
             {monthlySummary.length > 0 && (
               <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
                             borderRadius: 18, overflow: 'hidden', marginBottom: 12 }}>
@@ -1954,41 +2120,50 @@ export default function App() {
                 </div>
                 {monthlySummary.slice(0, 6).map(m => {
                   const d = new Date(m.year, m.month, 1);
-                  const label = d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { month: 'short', year: 'numeric' });
+                  const label = d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { month: 'short', year: '2-digit' });
                   const net = m.interest - m.scam - m.withdrawn;
                   return (
-                    <div key={m.key} style={{ padding: '12px 18px', borderBottom: `1px solid ${D_T.line2}` }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: D_T.ink }}>{label}</div>
-                          <div style={{ fontSize: 11, color: D_T.mute, marginTop: 1 }}>
-                            {m.count} {lang === 'th' ? 'รายการ' : 'records'}
-                          </div>
-                        </div>
-                        <DChip tone={net >= 0 ? 'mint' : 'blush'}>{net >= 0 ? '+' : ''}{formatCurrency(net)}</DChip>
+                    <div key={m.key} style={{ padding: '12px 18px', borderBottom: `1px solid ${D_T.line2}`,
+                                              display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <div style={{ width: 48, flexShrink: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: D_T.ink, whiteSpace: 'nowrap' }}>{label}</div>
+                        <div style={{ fontSize: 10, color: D_T.mute, marginTop: 2 }}>{m.count} {lang === 'th' ? 'ราย' : 'items'}</div>
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 6 }}>
-                        {([
-                          [lang === 'th' ? 'รายได้ดอก' : 'Income', m.interest, D_T.mintDeep, D_T.mint],
-                          [lang === 'th' ? 'หนี้บิด' : 'Defaults', m.scam, D_T.blushDeep, D_T.blush],
-                          [lang === 'th' ? 'เบิก' : 'Withdrawn', m.withdrawn, D_T.butterDeep, D_T.butter],
-                          [lang === 'th' ? 'สุทธิ' : 'Net', net, net >= 0 ? D_T.mintDeep : D_T.blushDeep, net >= 0 ? D_T.mint : D_T.blush],
-                        ] as [string, number, string, string][]).map(([lbl, val, fg, bg]) => (
-                          <div key={lbl} style={{ padding: '6px 8px', borderRadius: 8, background: bg + '40' }}>
-                            <div style={{ fontSize: 9, fontWeight: 700, color: fg, letterSpacing: '.04em',
-                                          textTransform: 'uppercase', marginBottom: 2 }}>{lbl}</div>
-                            <div style={{ fontSize: 12, fontWeight: 800, color: fg,
-                                          fontFamily: mono, fontVariantNumeric: 'tabular-nums' }}>
-                              {formatCurrency(val)}
-                            </div>
-                          </div>
-                        ))}
+                      <div style={{ flex: 1, display: 'flex', gap: 10, justifyContent: 'flex-end', alignItems: 'center' }}>
+                        {m.interest > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: D_T.mintDeep, fontFamily: mono, whiteSpace: 'nowrap' }}>+{formatCurrency(m.interest)}</span>}
+                        {m.scam > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: D_T.blushDeep, fontFamily: mono, whiteSpace: 'nowrap' }}>−{formatCurrency(m.scam)}</span>}
+                        {m.withdrawn > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: D_T.butterDeep, fontFamily: mono, whiteSpace: 'nowrap' }}>เบิก {formatCurrency(m.withdrawn)}</span>}
                       </div>
+                      <DChip tone={net >= 0 ? 'mint' : 'blush'}>{net >= 0 ? '+' : ''}{formatCurrency(net)}</DChip>
                     </div>
                   );
                 })}
               </div>
             )}
+
+            {/* Top Borrowers — bottom */}
+            {borrowerStats.filter(b => b.totalRenewals > 0 && !b.hasScam).length > 0 && (
+              <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 18, overflow: 'hidden', marginBottom: 12 }}>
+                <div style={{ padding: '12px 18px', borderBottom: `1px solid ${D_T.line}`, fontSize: 11, fontWeight: 700, color: D_T.mute, letterSpacing: '.06em', textTransform: 'uppercase' }}>{lang === 'th' ? 'ลูกค้าประจำ' : 'Top Borrowers'}</div>
+                {borrowerStats.filter(b => b.totalRenewals > 0 && !b.hasScam).slice(0, 5).map((b, i) => {
+                  const tier = getLoyaltyTier(b.totalRenewals)!;
+                  return (
+                    <div key={b.name} style={{ padding: '11px 18px', borderBottom: `1px solid ${D_T.line2}`, display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: 8, background: i === 0 ? D_T.butter : D_T.surface2, display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0, color: i === 0 ? D_T.butterDeep : D_T.mute }}>{b.name.charAt(0).toUpperCase()}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: D_T.ink }}>{b.name}</span>
+                          <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 999, background: tier.bg + '60', color: tier.color }}>{tier.label}</span>
+                        </div>
+                        <div style={{ fontSize: 10, color: D_T.mute, marginTop: 1 }}>{lang === 'th' ? `ต่อสัญญา ${b.totalRenewals} ครั้ง` : `${b.totalRenewals} renewals`} · {lang === 'th' ? 'ดอกสะสม' : 'earned'} {formatCurrency(b.totalEarned)}</div>
+                      </div>
+                      {b.hasActive && <div style={{ width: 7, height: 7, borderRadius: 99, background: D_T.mintDeep, flexShrink: 0 }} />}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
           </div>
         )}
 
@@ -2853,26 +3028,43 @@ export default function App() {
                 <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
                   {lang === 'th' ? 'ใครจะกู้' : "Who's borrowing"}
                 </label>
-                <input type="text" required value={newLoanForm.name}
-                  onChange={e => setNewLoanForm({ ...newLoanForm, name: e.target.value })}
-                  placeholder={lang === 'th' ? 'ชื่อผู้กู้' : 'Borrower name'}
-                  style={{ width: '100%', padding: '12px 14px', borderRadius: 12,
-                           border: newLoanForm.name ? `1.5px solid ${D_T.ink}` : `1px solid ${D_T.line}`,
-                           background: D_T.surface2, fontSize: 15, fontWeight: 600, color: D_T.ink,
-                           outline: 'none', fontFamily: font, boxSizing: 'border-box' }} />
-                {/* Quick-select from existing borrowers */}
-                {data.loans.length > 0 && (
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-                    {[...new Set(data.loans.map(l => l.name))].slice(0, 4).map(name => (
-                      <span key={name} onClick={() => setNewLoanForm(f => ({ ...f, name }))}
-                        style={{ padding: '5px 10px', borderRadius: 999, background: D_T.surface2,
-                                 fontSize: 11, fontWeight: 600, color: D_T.ink2,
-                                 border: `1px solid ${D_T.line}`, cursor: 'pointer' }}>
-                        {name}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <div style={{ position: 'relative' }}>
+                  <input type="text" required value={newLoanForm.name}
+                    onChange={e => setNewLoanForm({ ...newLoanForm, name: e.target.value })}
+                    placeholder={lang === 'th' ? 'ชื่อผู้กู้' : 'Borrower name'}
+                    autoComplete="off"
+                    style={{ width: '100%', padding: '12px 14px', borderRadius: 12,
+                             border: newLoanForm.name ? `1.5px solid ${D_T.ink}` : `1px solid ${D_T.line}`,
+                             background: D_T.surface2, fontSize: 15, fontWeight: 600, color: D_T.ink,
+                             outline: 'none', fontFamily: font, boxSizing: 'border-box' }} />
+                  {/* Autocomplete dropdown */}
+                  {newLoanForm.name.length > 0 && (() => {
+                    const matches = allBorrowerNames.filter(n => n.toLowerCase().includes(newLoanForm.name.toLowerCase()) && n.toLowerCase() !== newLoanForm.name.toLowerCase());
+                    if (matches.length === 0) return null;
+                    return (
+                      <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, marginTop: 4,
+                                    background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 12,
+                                    boxShadow: '0 8px 24px rgba(0,0,0,.12)', overflow: 'hidden' }}>
+                        {matches.slice(0, 5).map(name => {
+                          const idx = name.toLowerCase().indexOf(newLoanForm.name.toLowerCase());
+                          return (
+                            <div key={name} onMouseDown={() => setNewLoanForm(f => ({ ...f, name }))}
+                              style={{ padding: '11px 14px', cursor: 'pointer', fontSize: 14, fontWeight: 600,
+                                       color: D_T.ink, borderBottom: `1px solid ${D_T.line2}`,
+                                       display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 11, color: D_T.mute, fontWeight: 500, width: 20, textAlign: 'center' }}>
+                                {borrowerStats.find(b => b.name === name) ? (() => { const s = borrowerStats.find(b => b.name === name)!; return s.hasScam ? '⚠' : s.totalRenewals >= 6 ? '★' : s.totalRenewals >= 3 ? '◈' : '○'; })() : '○'}
+                              </span>
+                              <span>
+                                {name.slice(0, idx)}<strong style={{ color: D_T.mintDeep }}>{name.slice(idx, idx + newLoanForm.name.length)}</strong>{name.slice(idx + newLoanForm.name.length)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
 
               {/* Amount + days */}
@@ -3249,6 +3441,77 @@ export default function App() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showWeeklySheet && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(27,31,42,.5)',
+                      backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end' }}
+          onClick={() => setShowWeeklySheet(false)}>
+          <div style={{ background: D_T.surface, width: '100%', borderRadius: '20px 20px 0 0',
+                        maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+                        boxShadow: '0 -8px 40px -12px rgba(27,31,42,.3)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '14px 20px', borderBottom: `1px solid ${D_T.line}`,
+                          background: D_T.surface2, borderRadius: '20px 20px 0 0',
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <div>
+                <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                  {lang === 'th' ? 'นับรอบทุกวันจันทร์' : 'Resets every Monday'}
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 800, marginTop: 2 }}>
+                  {lang === 'th' ? 'กำไรรายสัปดาห์' : 'Weekly Profit'}
+                </div>
+              </div>
+              <button onClick={() => setShowWeeklySheet(false)}
+                style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
+                         border: 'none', fontSize: 14, cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {(() => {
+                const fi = (v: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 0 }).format(Math.round(v));
+                const fmtDay = (d: Date) => d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { day: 'numeric', month: 'short' });
+                return weeklySummary.length === 0
+                  ? <div style={{ padding: '40px 20px', textAlign: 'center', color: D_T.mute, fontSize: 13 }}>ยังไม่มีข้อมูล</div>
+                  : weeklySummary.map(w => {
+                      const monday = new Date(w.key + 'T00:00:00');
+                      const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+                      const net = w.interest - w.scam - w.withdrawn;
+                      return (
+                        <div key={w.key} style={{ padding: '13px 20px', borderBottom: `1px solid ${D_T.line2}`,
+                                                  display: 'flex', alignItems: 'center', gap: 12,
+                                                  background: w.isCurrentWeek ? D_T.mint + '18' : 'transparent' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: D_T.ink }}>
+                                {fmtDay(monday)} – {fmtDay(sunday)}
+                              </span>
+                              {w.isCurrentWeek && (
+                                <span style={{ fontSize: 8, fontWeight: 700, color: D_T.mintDeep,
+                                               background: D_T.mint + '60', borderRadius: 6, padding: '1px 6px',
+                                               letterSpacing: '.05em', textTransform: 'uppercase' }}>
+                                  {lang === 'th' ? 'สัปดาห์นี้' : 'now'}
+                                </span>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 11, color: D_T.mintDeep, fontWeight: 700, fontFamily: mono }}>+฿{fi(w.interest)}</span>
+                              {w.scam > 0 && <span style={{ fontSize: 11, color: D_T.blushDeep, fontFamily: mono }}>−฿{fi(w.scam)}</span>}
+                              {w.withdrawn > 0 && <span style={{ fontSize: 11, color: D_T.butterDeep, fontFamily: mono }}>เบิก ฿{fi(w.withdrawn)}</span>}
+                              <span style={{ fontSize: 10, color: D_T.mute }}>{w.count} ราย</span>
+                            </div>
+                          </div>
+                          <div style={{ flexShrink: 0 }}>
+                            <DChip tone={net >= 0 ? 'mint' : 'blush'}>
+                              {net >= 0 ? '+' : '−'}฿{fi(Math.abs(net))}
+                            </DChip>
+                          </div>
+                        </div>
+                      );
+                    });
+              })()}
             </div>
           </div>
         </div>
