@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useCallback, useMemo } from 'react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { fetchAppData, AppData, LoanRecord, updateLoanStatus, createNewLoan, editExistingLoan } from './services/dataService';
@@ -34,8 +34,24 @@ export default function App() {
   const [showProfitModal, setShowProfitModal] = useState(false);
   const [hasPenalty, setHasPenalty] = useState(false);
   const [penaltyAmount, setPenaltyAmount] = useState(200);
-  const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'loans' | 'analytics'>('dashboard');
+  const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'loans' | 'analytics' | 'you'>('dashboard');
+  const [lastSynced, setLastSynced] = useState<Date | null>(null);
   const [isDesktop, setIsDesktop] = useState(true);
+  const [showPortfolioLine2, setShowPortfolioLine2] = useState(false);
+  const [showPortfolioLine3, setShowPortfolioLine3] = useState(false);
+  const [portfolioTimeframe, setPortfolioTimeframe] = useState<'1M' | '3M' | '6M' | 'all'>('3M');
+  const [portfolioTooltipIdx, setPortfolioTooltipIdx] = useState<number | null>(null);
+  const portfolioChartRef = React.useRef<HTMLDivElement | null>(null);
+  const portfolioScrollPos = React.useRef(-1); // -1 = scroll to rightmost end
+  // Callback ref: restores saved scroll position (or scrolls to end) on every mount/remount
+  const portfolioChartCallbackRef = React.useCallback((el: HTMLDivElement | null) => {
+    portfolioChartRef.current = el;
+    if (el) el.scrollLeft = portfolioScrollPos.current < 0 ? el.scrollWidth : portfolioScrollPos.current;
+  }, []);
+  const [pullDistance, setPullDistance] = useState(0);
+  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
+  const pullStartY = React.useRef(0);
+  const isPullingDown = React.useRef(false);
 
   useEffect(() => {
     const checkIsDesktop = () => setIsDesktop(window.innerWidth >= 768);
@@ -276,11 +292,111 @@ export default function App() {
       .map(([key, val]) => ({ key, ...val }));
   }, [data]);
 
+  const portfolioGrowthData = useMemo(() => {
+    if (!data) return [];
+    const INITIAL = 20000;
+
+    type DayEv = { earned: number; scam: number; withdrawn: number; wNames: string[]; sNames: string[] };
+    const byMs = new Map<number, DayEv & { label: string }>();
+    const getDay = (ms: number) => {
+      if (!byMs.has(ms)) {
+        const d = new Date(ms);
+        byMs.set(ms, { earned: 0, scam: 0, withdrawn: 0, wNames: [], sNames: [], label: `${d.getDate()}/${d.getMonth() + 1}` });
+      }
+      return byMs.get(ms)!;
+    };
+
+    // Priority order must match dataService.ts summary loop exactly
+    data.loans.forEach(l => {
+      if (l.isWithdrawn) {
+        const p = parseThaiDate(l.actualDate || l.borrowDate); if (!p) return;
+        const ev = getDay(p.getTime()); ev.withdrawn += l.principal; ev.wNames.push(l.name);
+      } else if (l.isScam) {
+        const p = parseThaiDate(l.actualDate || l.dueDate); if (!p) return;
+        const ev = getDay(p.getTime()); ev.scam += l.principal; ev.sNames.push(l.name);
+      } else if (l.isPaid || l.isRenewed) {
+        const p = parseThaiDate(l.actualDate || l.dueDate); if (!p) return;
+        getDay(p.getTime()).earned += l.paidInterest;
+      }
+    });
+
+    const sortedMs = Array.from(byMs.keys()).sort((a, b) => a - b);
+    let runPortfolio = INITIAL, runGross = INITIAL, runInterest = 0;
+
+    const historical = sortedMs.map(ms => {
+      const ev = byMs.get(ms)!;
+      runPortfolio += ev.earned - ev.scam - ev.withdrawn;
+      runGross += ev.earned;
+      runInterest += ev.earned;
+      return {
+        ms, date: ev.label,
+        portfolio: runPortfolio, portfolioF: undefined as number | undefined,
+        gross: runGross, grossF: undefined as number | undefined,
+        interest: runInterest, interestF: undefined as number | undefined,
+        hasW: ev.withdrawn > 0, hasS: ev.scam > 0,
+        earned: ev.earned, scam: ev.scam, withdrawn: ev.withdrawn,
+        wNames: ev.wNames, sNames: ev.sNames,
+        isForecast: false,
+      };
+    });
+
+    const fcByMs = new Map<number, { label: string; exp: number; names: string[] }>();
+    data.loans.forEach(l => {
+      if (l.isPaid || l.isScam || l.isWithdrawn || l.isRenewed) return;
+      const p = parseThaiDate(l.dueDate);
+      if (!p || p.getTime() <= today.getTime()) return;
+      if (!fcByMs.has(p.getTime())) {
+        const d = p; fcByMs.set(p.getTime(), { label: `${d.getDate()}/${d.getMonth() + 1}`, exp: 0, names: [] });
+      }
+      const ev = fcByMs.get(p.getTime())!; ev.exp += l.expectedInterest; ev.names.push(l.name);
+    });
+
+    const fcMs = Array.from(fcByMs.keys()).sort((a, b) => a - b);
+    let fcP = runPortfolio, fcG = runGross, fcI = runInterest;
+
+    if (historical.length > 0 && fcMs.length > 0) {
+      const last = historical[historical.length - 1];
+      last.portfolioF = last.portfolio; last.grossF = last.gross; last.interestF = last.interest;
+    }
+
+    const forecast = fcMs.map(ms => {
+      const ev = fcByMs.get(ms)!;
+      fcP += ev.exp; fcG += ev.exp; fcI += ev.exp;
+      return {
+        ms, date: ev.label,
+        portfolio: undefined as number | undefined, portfolioF: fcP,
+        gross: undefined as number | undefined, grossF: fcG,
+        interest: undefined as number | undefined, interestF: fcI,
+        hasW: false, hasS: false,
+        earned: ev.exp, scam: 0, withdrawn: 0,
+        wNames: [] as string[], sNames: [] as string[], names: ev.names,
+        isForecast: true,
+      };
+    });
+
+    return [...historical, ...forecast];
+  }, [data, today]);
+
+  const filteredPortfolioData = useMemo(() => {
+    const days = portfolioTimeframe === '1M' ? 30 : portfolioTimeframe === '3M' ? 90 : portfolioTimeframe === '6M' ? 180 : Infinity;
+    if (!isFinite(days)) return portfolioGrowthData;
+    const cutoffMs = Date.now() - days * 86400000;
+    // keep all forecast points + historical points within the window
+    return portfolioGrowthData.filter(p => p.ms >= cutoffMs || p.isForecast);
+  }, [portfolioGrowthData, portfolioTimeframe]);
+
+  // When data/timeframe changes, reset to "scroll to end" and apply immediately
+  useLayoutEffect(() => {
+    portfolioScrollPos.current = -1;
+    const el = portfolioChartRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [filteredPortfolioData]);
+
   const loadData = async (quiet = false) => {
     if (!quiet) setIsSyncing(true);
     try {
       const newData = await fetchAppData();
-      if (newData) setData(newData);
+      if (newData) { setData(newData); setLastSynced(new Date()); }
     } catch (e) {
       console.error(e);
       showToast('ไม่สามารถเชื่อมต่อดึงข้อมูลล่าสุดได้', 'error');
@@ -654,7 +770,7 @@ export default function App() {
               <line x1={yPad} y1={y} x2={yPad + chartW} y2={y} stroke={D_T.line} strokeDasharray="2 5" />
               {showYAxis && p > 0 && (
                 <text x={yPad - 6} y={y + 4} textAnchor="end" fontSize="9"
-                      fill={D_T.mute2} fontFamily={mono} fontVariantNumeric="tabular-nums">
+                      fill={D_T.mute2} style={{ fontFamily: mono, fontVariantNumeric: 'tabular-nums' }}>
                   {max >= 10000 ? `${(p * max / 1000).toFixed(0)}k` : (p * max).toFixed(0)}
                 </text>
               )}
@@ -675,6 +791,372 @@ export default function App() {
 
   const font = '"Hanken Grotesk", "IBM Plex Sans Thai", system-ui, sans-serif';
   const mono = '"DM Mono", ui-monospace, monospace';
+
+  // --- Portfolio Growth Chart ---
+  const PortfolioGrowthChart = ({ compact = false, hideControls = false }: { compact?: boolean; hideControls?: boolean }) => {
+    const pts = filteredPortfolioData;
+    const YELLOW = '#f5a623', RED = '#e04545';
+
+    const h = compact ? 150 : 210;
+    const padL = 6, padR = 4, padT = 10, padB = 22;
+    const minPtsWidth = compact ? 24 : 36;
+    const W = Math.max(pts.length * minPtsWidth + padL + padR, compact ? 280 : 480);
+    const cW = W - padL - padR, cH = h - padT - padB;
+    const stepX = cW / Math.max(pts.length - 1, 1);
+    const toX = (i: number) => padL + i * stepX;
+
+    const allVals = pts.flatMap(p => [
+      p.portfolio, p.portfolioF,
+      showPortfolioLine3 ? p.interest : undefined,
+      showPortfolioLine3 ? p.interestF : undefined,
+      showPortfolioLine2 ? p.gross : undefined,
+      showPortfolioLine2 ? p.grossF : undefined,
+    ].filter((v): v is number => v !== undefined));
+    const minV = allVals.length ? Math.min(...allVals) * 0.98 : 0;
+    const maxV = allVals.length ? Math.max(...allVals) * 1.02 : 1;
+    const range = maxV - minV || 1;
+    const toY = (v: number) => padT + cH - ((v - minV) / range) * cH;
+
+    const makePath = (key: 'portfolio' | 'portfolioF' | 'gross' | 'grossF' | 'interest' | 'interestF') => {
+      let d = '';
+      pts.forEach((p, i) => {
+        const v = (p as any)[key] as number | undefined;
+        if (v === undefined) return;
+        d += d === '' ? `M${toX(i).toFixed(1)},${toY(v).toFixed(1)}` : ` L${toX(i).toFixed(1)},${toY(v).toFixed(1)}`;
+      });
+      return d;
+    };
+
+    const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => minV + f * range);
+    const fmtY = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v.toFixed(0);
+
+    const handleTap = (e: React.MouseEvent<SVGSVGElement> | React.TouchEvent<SVGSVGElement>) => {
+      const el = e.currentTarget;
+      const rect = el.getBoundingClientRect();
+      const clientX = 'touches' in e ? (e as React.TouchEvent).changedTouches[0]?.clientX : (e as React.MouseEvent).clientX;
+      if (clientX === undefined) return;
+      // getBoundingClientRect already reflects scroll offset, so clientX - rect.left = SVG-space X
+      const relX = clientX - rect.left;
+      const rawIdx = Math.round((relX - padL) / stepX);
+      const idx = Math.max(0, Math.min(pts.length - 1, rawIdx));
+      setPortfolioTooltipIdx(prev => {
+        const globalIdx = portfolioGrowthData.indexOf(pts[idx]);
+        return prev === globalIdx ? null : globalIdx;
+      });
+    };
+
+    const ttPt = portfolioTooltipIdx !== null ? portfolioGrowthData[portfolioTooltipIdx] : null;
+    const ttLocalIdx = ttPt ? pts.indexOf(ttPt) : -1;
+    const ttX = ttLocalIdx >= 0 ? toX(ttLocalIdx) : -999;
+    const ttVal = ttPt?.portfolio ?? ttPt?.portfolioF;
+    const ttY = ttVal !== undefined ? toY(ttVal) : padT;
+    const lastHistIdx = pts.reduce((acc, p, i) => p.portfolio !== undefined ? i : acc, -1);
+
+    return (
+      <div>
+        {/* Controls */}
+        {!hideControls && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
+            {/* Timeframe */}
+            <div style={{ display: 'flex', gap: 3 }}>
+              {(['1M', '3M', '6M', 'all'] as const).map(tf => (
+                <button key={tf} onClick={() => { setPortfolioTimeframe(tf); setPortfolioTooltipIdx(null); }}
+                  style={{ padding: '4px 9px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: font,
+                           fontSize: 10.5, fontWeight: 700,
+                           background: portfolioTimeframe === tf ? D_T.ink : D_T.surface2,
+                           color: portfolioTimeframe === tf ? D_T.bg : D_T.mute }}>
+                  {tf === 'all' ? (lang === 'th' ? 'ทั้งหมด' : 'All') : tf}
+                </button>
+              ))}
+            </div>
+            {/* Line toggles */}
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={() => setShowPortfolioLine2(v => !v)}
+                style={{ padding: '3px 9px', borderRadius: 999, cursor: 'pointer', fontFamily: font,
+                         fontSize: 10, fontWeight: 700,
+                         background: showPortfolioLine2 ? D_T.butter : D_T.surface2,
+                         color: showPortfolioLine2 ? D_T.butterDeep : D_T.mute,
+                         border: `1px solid ${showPortfolioLine2 ? D_T.butterDeep : D_T.line}` }}>
+                {lang === 'th' ? 'กรอส' : 'Gross'}
+              </button>
+              <button onClick={() => setShowPortfolioLine3(v => !v)}
+                style={{ padding: '3px 9px', borderRadius: 999, cursor: 'pointer', fontFamily: font,
+                         fontSize: 10, fontWeight: 700,
+                         background: showPortfolioLine3 ? D_T.lavender : D_T.surface2,
+                         color: showPortfolioLine3 ? D_T.lavDeep : D_T.mute,
+                         border: `1px solid ${showPortfolioLine3 ? D_T.lavDeep : D_T.line}` }}>
+                {lang === 'th' ? 'ดอกสะสม' : 'Interest'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Two-column chart layout: scrollable main + fixed Y-axis */}
+        <div style={{ display: 'flex', position: 'relative' }}>
+        {/* Scrollable chart */}
+        <div ref={portfolioChartCallbackRef}
+             onScroll={(e) => { portfolioScrollPos.current = e.currentTarget.scrollLeft; }}
+             style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', flex: 1, position: 'relative' }}>
+          <svg width={W} height={h} style={{ display: 'block', overflow: 'visible', cursor: 'crosshair' }}
+               onClick={handleTap} onTouchEnd={handleTap}>
+            <defs>
+              <linearGradient id="pg-grad2" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={D_T.mintDeep} stopOpacity="0.16" />
+                <stop offset="100%" stopColor={D_T.mintDeep} stopOpacity="0" />
+              </linearGradient>
+            </defs>
+
+            {/* Y grid lines only (labels are in the fixed column) */}
+            {yTicks.map((v, i) => (
+              <line key={i} x1={padL} y1={toY(v)} x2={W - padR} y2={toY(v)} stroke={D_T.line} strokeDasharray="2 6" />
+            ))}
+
+            {/* X date labels */}
+            {pts.map((p, i) => {
+              const step = Math.max(1, Math.ceil(pts.length / 7));
+              if (i % step !== 0 && i !== pts.length - 1) return null;
+              return (
+                <text key={i} x={toX(i)} y={h - 4} textAnchor="middle" fontSize={8} fill={p.isForecast ? D_T.mute2 : D_T.mute2}
+                      fontFamily={mono} fillOpacity={p.isForecast ? 0.5 : 1}>{p.date}</text>
+              );
+            })}
+
+            {/* "forecast" region shading */}
+            {(() => {
+              const firstFcIdx = pts.findIndex(p => p.isForecast && !p.portfolio);
+              if (firstFcIdx < 0) return null;
+              return <rect x={toX(firstFcIdx)} y={padT} width={W - padR - toX(firstFcIdx)} height={cH}
+                           fill={D_T.ink} fillOpacity={0.025} rx={4} />;
+            })()}
+
+            {/* Gradient fill under line 1 */}
+            {(() => {
+              const histPts = pts.filter(p => p.portfolio !== undefined);
+              if (histPts.length < 2) return null;
+              const firstI = pts.findIndex(p => p.portfolio !== undefined);
+              const lastI = lastHistIdx;
+              const fillPath = makePath('portfolio') + ` L${toX(lastI).toFixed(1)},${padT + cH} L${toX(firstI).toFixed(1)},${padT + cH} Z`;
+              return <path d={fillPath} fill="url(#pg-grad2)" />;
+            })()}
+
+            {/* Tooltip crosshair */}
+            {ttLocalIdx >= 0 && (
+              <line x1={ttX} y1={padT} x2={ttX} y2={padT + cH} stroke={D_T.ink} strokeWidth={1} strokeDasharray="3 3" strokeOpacity={0.4} />
+            )}
+
+            {/* Line 3: interest only (lavender, hidden by default) */}
+            {showPortfolioLine3 && (
+              <>
+                <path d={makePath('interest')} fill="none" stroke={D_T.lavDeep} strokeWidth={1.5} strokeLinejoin="round" strokeOpacity={0.8} />
+                <path d={makePath('interestF')} fill="none" stroke={D_T.lavDeep} strokeWidth={1.5} strokeDasharray="5 4" strokeOpacity={0.3} strokeLinejoin="round" />
+              </>
+            )}
+
+            {/* Line 2: gross (butter, hidden by default) */}
+            {showPortfolioLine2 && (
+              <>
+                <path d={makePath('gross')} fill="none" stroke={D_T.butterDeep} strokeWidth={1.5} strokeDasharray="6 3" strokeLinejoin="round" strokeOpacity={0.75} />
+                <path d={makePath('grossF')} fill="none" stroke={D_T.butterDeep} strokeWidth={1.5} strokeDasharray="6 3" strokeOpacity={0.28} strokeLinejoin="round" />
+              </>
+            )}
+
+            {/* Line 1: portfolio net (solid mint) */}
+            <path d={makePath('portfolio')} fill="none" stroke={D_T.mintDeep} strokeWidth={2.5} strokeLinejoin="round" />
+            <path d={makePath('portfolioF')} fill="none" stroke={D_T.mintDeep} strokeWidth={2} strokeDasharray="6 4" strokeOpacity={0.35} strokeLinejoin="round" />
+
+            {/* Special event dots */}
+            {pts.map((p, i) => {
+              if (p.portfolio === undefined) return null;
+              if (!p.hasW && !p.hasS) return null;
+              const cx = toX(i), cy = toY(p.portfolio), r = 5.5;
+              if (p.hasW && p.hasS) return (
+                <g key={i}>
+                  <path d={`M${cx} ${cy - r} A${r} ${r} 0 0 0 ${cx} ${cy + r}Z`} fill={YELLOW} />
+                  <path d={`M${cx} ${cy - r} A${r} ${r} 0 0 1 ${cx} ${cy + r}Z`} fill={RED} />
+                  <circle cx={cx} cy={cy} r={r} fill="none" stroke={D_T.surface} strokeWidth={1.5} />
+                </g>
+              );
+              return (
+                <g key={i}>
+                  <circle cx={cx} cy={cy} r={r} fill={p.hasW ? YELLOW : RED} />
+                  <circle cx={cx} cy={cy} r={r} fill="none" stroke={D_T.surface} strokeWidth={1.5} />
+                </g>
+              );
+            })}
+
+            {/* Current value end-dot */}
+            {lastHistIdx >= 0 && (() => {
+              const p = pts[lastHistIdx];
+              const cx = toX(lastHistIdx), cy = toY(p.portfolio!);
+              return (
+                <g>
+                  <circle cx={cx} cy={cy} r={7} fill={D_T.surface} />
+                  <circle cx={cx} cy={cy} r={4.5} fill={D_T.mintDeep} />
+                </g>
+              );
+            })()}
+
+            {/* Tooltip dot highlight */}
+            {ttLocalIdx >= 0 && ttVal !== undefined && (
+              <g>
+                <circle cx={ttX} cy={ttY} r={9} fill={D_T.mintDeep} fillOpacity={0.15} />
+                <circle cx={ttX} cy={ttY} r={5} fill={D_T.mintDeep} />
+              </g>
+            )}
+          </svg>
+
+          {/* Tooltip card — positioned inside scroll area */}
+          {ttPt && ttLocalIdx >= 0 && ttVal !== undefined && (
+            <div style={{
+              position: 'absolute',
+              left: Math.max(4, Math.min(ttX - 70, W - padR - 148)),
+              top: Math.max(4, ttY - (ttPt.isForecast ? 80 : ttPt.hasW || ttPt.hasS ? 100 : 68)),
+              width: 140, padding: '8px 10px', borderRadius: 10,
+              background: D_T.ink, color: D_T.bg, fontSize: 11, fontFamily: font,
+              boxShadow: '0 4px 16px rgba(27,31,42,.35)', pointerEvents: 'none', zIndex: 20,
+            }}>
+              <div style={{ fontSize: 10, opacity: 0.6, marginBottom: 4 }}>
+                {ttPt.isForecast ? (lang === 'th' ? '⟳ คาดการณ์' : '⟳ Forecast') : ttPt.date}
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 800, fontFamily: mono, marginBottom: 4 }}>
+                {formatCurrency(ttVal)}
+              </div>
+              {!ttPt.isForecast && (ttPt.earned > 0 || ttPt.scam > 0 || ttPt.withdrawn > 0) && (
+                <div style={{ borderTop: '1px solid rgba(255,255,255,.15)', paddingTop: 5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {ttPt.earned > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10 }}>
+                      <span style={{ opacity: 0.7 }}>{lang === 'th' ? '+ ดอก/ปรับ' : '+ interest'}</span>
+                      <span style={{ color: '#7ef0a8', fontFamily: mono }}>+{formatCurrency(ttPt.earned)}</span>
+                    </div>
+                  )}
+                  {ttPt.hasW && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10 }}>
+                      <span style={{ color: YELLOW }}>{lang === 'th' ? `เบิก (${ttPt.wNames.join(',')})` : `W/D (${ttPt.wNames.join(',')})`}</span>
+                      <span style={{ color: YELLOW, fontFamily: mono }}>−{formatCurrency(ttPt.withdrawn)}</span>
+                    </div>
+                  )}
+                  {ttPt.hasS && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10 }}>
+                      <span style={{ color: RED }}>{lang === 'th' ? `บิด (${ttPt.sNames.join(',')})` : `Default (${ttPt.sNames.join(',')})`}</span>
+                      <span style={{ color: RED, fontFamily: mono }}>−{formatCurrency(ttPt.scam)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {ttPt.isForecast && (ttPt as any).names?.length > 0 && (
+                <div style={{ fontSize: 9.5, opacity: 0.65, marginTop: 2 }}>
+                  {(ttPt as any).names.join(', ')}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Fixed Y-axis column — always visible regardless of scroll */}
+        <div style={{ width: 44, flexShrink: 0, background: D_T.surface, position: 'relative', zIndex: 1 }}>
+          <svg width={44} height={h} style={{ display: 'block', overflow: 'visible' }}>
+            {yTicks.map((v, i) => (
+              <text key={i} x={4} y={toY(v) + 3.5} textAnchor="start" fontSize={8.5} fill={D_T.mute2}
+                    style={{ fontFamily: mono, fontVariantNumeric: 'tabular-nums' }}>{fmtY(v)}</text>
+            ))}
+          </svg>
+        </div>
+        </div>{/* end two-column layout */}
+
+        {/* Legend row */}
+        <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
+          {([
+            [D_T.mintDeep, lang === 'th' ? 'พอร์ตสุทธิ' : 'Net portfolio', false],
+            ...(showPortfolioLine2 ? [[D_T.butterDeep, lang === 'th' ? 'กรอส' : 'Gross', true]] : []),
+            ...(showPortfolioLine3 ? [[D_T.lavDeep, lang === 'th' ? 'ดอกสะสม' : 'Cumul. interest', false]] : []),
+            [YELLOW, lang === 'th' ? 'เบิก' : 'Withdrawal', false],
+            [RED, lang === 'th' ? 'บิด' : 'Default', false],
+          ] as [string, string, boolean][]).map(([color, label, dashed]) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              {dashed
+                ? <svg width={16} height={8}><line x1="0" y1="4" x2="16" y2="4" stroke={color} strokeWidth={2} strokeDasharray="4 2" /></svg>
+                : <div style={{ width: 14, height: 2.5, background: color, borderRadius: 2 }} />}
+              <span style={{ fontSize: 9.5, color: D_T.mute, fontWeight: 600 }}>{label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // Minimal sparkline for mobile home — 1M, no controls, Y-axis right, no scroll
+  const MiniPortfolioChart = () => {
+    const cutoff = Date.now() - 30 * 86400000;
+    const pts = portfolioGrowthData.filter(p => p.ms >= cutoff || p.isForecast);
+    if (pts.length < 2) return <div style={{ height: 72 }} />;
+
+    const h = 72, padL = 4, padR = 36, padT = 6, padB = 16;
+    const W = 320;
+    const cW = W - padL - padR, cH = h - padT - padB;
+    const stepX = cW / Math.max(pts.length - 1, 1);
+    const toX = (i: number) => padL + i * stepX;
+
+    const allVals = pts.flatMap(p => [p.portfolio, p.portfolioF].filter((v): v is number => v !== undefined));
+    const minV = allVals.length ? Math.min(...allVals) * 0.99 : 0;
+    const maxV = allVals.length ? Math.max(...allVals) * 1.01 : 1;
+    const range = maxV - minV || 1;
+    const toY = (v: number) => padT + cH - ((v - minV) / range) * cH;
+    const fmtY = (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v.toFixed(0);
+
+    const makePath = (key: 'portfolio' | 'portfolioF') => {
+      let d = '';
+      pts.forEach((p, i) => {
+        const v = p[key]; if (v === undefined) return;
+        d += d === '' ? `M${toX(i).toFixed(1)},${toY(v).toFixed(1)}` : ` L${toX(i).toFixed(1)},${toY(v).toFixed(1)}`;
+      });
+      return d;
+    };
+
+    const lastHistIdx = pts.reduce((acc, p, i) => p.portfolio !== undefined ? i : acc, -1);
+    const firstHistIdx = pts.findIndex(p => p.portfolio !== undefined);
+
+    return (
+      <svg width={W} height={h} style={{ display: 'block' }}>
+        <defs>
+          <linearGradient id="mini-g" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={D_T.mintDeep} stopOpacity="0.14" />
+            <stop offset="100%" stopColor={D_T.mintDeep} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {/* Subtle Y grid lines + right labels (3 ticks) */}
+        {[0, 0.5, 1].map((f, i) => {
+          const v = minV + f * range, y = toY(v);
+          return (
+            <g key={i}>
+              <line x1={padL} y1={y} x2={W - padR} y2={y} stroke={D_T.line} strokeDasharray="2 5" strokeOpacity={0.7} />
+              <text x={W - padR + 3} y={y + 3.5} fontSize={7} fill={D_T.mute2}
+                    style={{ fontFamily: mono }}>{fmtY(v)}</text>
+            </g>
+          );
+        })}
+        {/* X labels: first & last */}
+        {firstHistIdx >= 0 && <text x={toX(firstHistIdx)} y={h - 2} fontSize={7} fill={D_T.mute2} style={{ fontFamily: mono }}>{pts[firstHistIdx].date}</text>}
+        {lastHistIdx >= 0 && lastHistIdx !== firstHistIdx && (
+          <text x={toX(lastHistIdx)} y={h - 2} textAnchor="middle" fontSize={7} fill={D_T.mute2} style={{ fontFamily: mono }}>{pts[lastHistIdx].date}</text>
+        )}
+        {/* Forecast region */}
+        {(() => {
+          const fi = pts.findIndex(p => p.isForecast && !p.portfolio);
+          if (fi < 0) return null;
+          return <rect x={toX(fi)} y={padT} width={W - padR - toX(fi)} height={cH} fill={D_T.ink} fillOpacity={0.025} rx={2} />;
+        })()}
+        {/* Gradient fill */}
+        {lastHistIdx >= 0 && firstHistIdx >= 0 && (() => {
+          const fp = makePath('portfolio') + ` L${toX(lastHistIdx).toFixed(1)},${padT + cH} L${toX(firstHistIdx).toFixed(1)},${padT + cH} Z`;
+          return <path d={fp} fill="url(#mini-g)" />;
+        })()}
+        {/* Lines */}
+        <path d={makePath('portfolio')} fill="none" stroke={D_T.mintDeep} strokeWidth={2} strokeLinejoin="round" />
+        <path d={makePath('portfolioF')} fill="none" stroke={D_T.mintDeep} strokeWidth={1.5} strokeDasharray="5 4" strokeOpacity={0.35} strokeLinejoin="round" />
+      </svg>
+    );
+  };
 
   const todayLabel = (() => {
     const d = new Date();
@@ -835,6 +1317,16 @@ export default function App() {
               {activeMobileTab === 'analytics' ? (
                 /* ── ANALYTICS TAB ── */
                 <>
+                  {/* Portfolio growth chart */}
+                  <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
+                                borderRadius: 18, padding: '20px 22px 16px', marginBottom: 20 }}>
+                    <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
+                                  letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>
+                      {lang === 'th' ? 'การเติบโตของพอร์ต' : 'Portfolio Growth'}
+                    </div>
+                    <PortfolioGrowthChart />
+                  </div>
+
                   {/* Interest received chart */}
                   <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
                                 borderRadius: 18, padding: '20px 22px 16px', marginBottom: 20 }}>
@@ -923,41 +1415,15 @@ export default function App() {
               ) : (
                 /* ── OVERVIEW / LOANS TAB ── */
                 <>
-                  {/* Interest chart — dashboard tab only */}
+                  {/* Portfolio growth chart — overview tab only */}
                   {activeMobileTab !== 'loans' && (
                     <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
                                   borderRadius: 18, padding: '20px 22px 16px', marginBottom: 22 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14 }}>
-                        <div>
-                          <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
-                                        letterSpacing: '.06em', textTransform: 'uppercase' }}>
-                            {lang === 'th' ? 'ดอกเบี้ยที่ได้รับ · 30 วันล่าสุด' : 'Interest received · last 30 days'}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 6 }}>
-                            <span style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-.02em',
-                                           fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
-                              {formatCurrency(s.paidInterest)}
-                            </span>
-                            <DChip tone="mint">↗ {s.profitPct.toFixed(1)}%</DChip>
-                          </div>
-                        </div>
-                        <button onClick={() => setShowExpandedTrend(true)}
-                          style={{ padding: '5px 12px', borderRadius: 999, background: D_T.ink, color: D_T.bg,
-                                   fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', fontFamily: font }}>
-                          {lang === 'th' ? 'ขยาย' : 'Expand'}
-                        </button>
+                      <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
+                                    letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>
+                        {lang === 'th' ? 'การเติบโตของพอร์ต' : 'Portfolio Growth'}
                       </div>
-                      <div style={{ overflowX: 'auto' }}>
-                        <DAreaChart sparkData={trendData30} w={640} h={150} showYAxis />
-                      </div>
-                      {trendData30.length > 0 && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6,
-                                      fontFamily: mono, fontSize: 10, color: D_T.mute2, paddingLeft: 56 }}>
-                          {trendData30.filter((_, i) => i % Math.ceil(trendData30.length / 6) === 0).map(m => (
-                            <span key={m.date}>{m.date}</span>
-                          ))}
-                        </div>
-                      )}
+                      <PortfolioGrowthChart />
                     </div>
                   )}
 
@@ -1193,7 +1659,57 @@ export default function App() {
       </div>}
 
       {/* ── MOBILE LAYOUT ──────────────────────────────── */}
-      {!isDesktop && <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', paddingBottom: 80 }}>
+      {!isDesktop && <div
+        style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', paddingBottom: 80 }}
+        onTouchStart={(e) => {
+          if (window.scrollY === 0) {
+            pullStartY.current = e.touches[0].clientY;
+            isPullingDown.current = true;
+          }
+        }}
+        onTouchMove={(e) => {
+          if (!isPullingDown.current || isPullRefreshing) return;
+          const delta = e.touches[0].clientY - pullStartY.current;
+          if (delta > 0 && window.scrollY === 0) {
+            e.preventDefault();
+            setPullDistance(Math.min(80, delta * 0.45));
+          } else {
+            isPullingDown.current = false;
+            setPullDistance(0);
+          }
+        }}
+        onTouchEnd={() => {
+          isPullingDown.current = false;
+          if (pullDistance >= 64 && !isPullRefreshing) {
+            setIsPullRefreshing(true);
+            setPullDistance(64);
+            loadData(false).finally(() => {
+              setIsPullRefreshing(false);
+              setPullDistance(0);
+            });
+          } else {
+            setPullDistance(0);
+          }
+        }}
+      >
+
+        {/* Pull-to-refresh indicator */}
+        <div style={{
+          height: pullDistance,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          overflow: 'hidden', transition: isPullingDown.current ? 'none' : 'height .35s cubic-bezier(.4,0,.2,1)',
+        }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: '50%',
+            border: `2.5px solid ${D_T.line}`,
+            borderTopColor: pullDistance >= 64 ? D_T.mintDeep : D_T.mute2,
+            animation: isPullRefreshing ? 'ptr-spin .7s linear infinite' : 'none',
+            transform: !isPullRefreshing ? `rotate(${(pullDistance / 64) * 270}deg)` : undefined,
+            transition: isPullingDown.current ? 'none' : 'transform .2s',
+            display: pullDistance > 4 ? 'block' : 'none',
+          }} />
+          <style>{`@keyframes ptr-spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
 
         {/* Mobile header */}
         <div style={{ padding: '10px 20px 6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -1251,7 +1767,7 @@ export default function App() {
                 <span style={{ fontSize: 11, color: D_T.mute }}>{s.profitPct.toFixed(1)}% lifetime</span>
               </div>
               <div style={{ marginTop: 14, marginLeft: -4, marginRight: -4, overflowX: 'hidden' }}>
-                <DAreaChart sparkData={trendData30} w={320} h={70} />
+                <MiniPortfolioChart />
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14 }}>
                 <div style={{ padding: 12, borderRadius: 12, background: D_T.surface2 }}>
@@ -1440,6 +1956,13 @@ export default function App() {
         {/* Analytics tab */}
         {activeMobileTab === 'analytics' && (
           <div style={{ padding: '12px 18px 0' }}>
+
+            {/* Portfolio growth chart */}
+            <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
+                          borderRadius: 18, padding: '14px 16px 12px', marginBottom: 12 }}>
+              <PortfolioGrowthChart compact />
+            </div>
+
             <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
                           borderRadius: 18, padding: '16px 18px', marginBottom: 12 }}>
               <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
@@ -1524,6 +2047,179 @@ export default function App() {
           </div>
         )}
 
+        {/* You tab */}
+        {activeMobileTab === 'you' && (
+          <div style={{ padding: '16px 18px 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+            {/* Profile card */}
+            <div style={{ background: D_T.ink, borderRadius: 20, padding: '20px 20px 18px',
+                          display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ width: 52, height: 52, borderRadius: 16, background: D_T.butter,
+                            display: 'grid', placeItems: 'center', fontSize: 22, fontWeight: 800,
+                            color: D_T.ink, flexShrink: 0 }}>P</div>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: D_T.bg, letterSpacing: '-.01em' }}>
+                  {lang === 'th' ? 'พ็อกเก็ต แบงก์' : 'Pocket Bank'}
+                </div>
+                <div style={{ fontSize: 11, color: D_T.mute2, marginTop: 3 }}>
+                  {lang === 'th' ? 'โต๊ะปล่อยกู้ส่วนตัว' : 'Personal lending desk'}
+                </div>
+              </div>
+            </div>
+
+            {/* Capital overview */}
+            <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 18, overflow: 'hidden' }}>
+              <div style={{ padding: '10px 16px', borderBottom: `1px solid ${D_T.line}`,
+                            fontSize: 10, fontWeight: 700, color: D_T.mute,
+                            letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                {lang === 'th' ? 'ภาพรวมทุน' : 'Capital Overview'}
+              </div>
+              {([
+                [lang === 'th' ? 'ทุนตั้งต้น' : 'Initial capital', formatCurrency(20000), D_T.ink, D_T.surface2],
+                [lang === 'th' ? 'วงเงินปัจจุบัน' : 'Current limit', formatCurrency(s.totalLimit), D_T.ink, D_T.surface2],
+                [lang === 'th' ? 'ออกอยู่' : 'Deployed', formatCurrency(s.totalBorrowed - s.scamPrincipal), D_T.ink2, D_T.surface2],
+                [lang === 'th' ? 'เงินสดว่าง' : 'Available', formatCurrency(s.available), D_T.mintDeep, D_T.mint + '25'],
+                [lang === 'th' ? 'กำไรสะสม' : 'Profit earned', formatCurrency(s.paidInterest), D_T.mintDeep, D_T.mint + '25'],
+                [lang === 'th' ? 'NPL ratio' : 'NPL ratio', nplRatio.toFixed(1) + '%', nplRatio > 10 ? D_T.blushDeep : D_T.mintDeep, nplRatio > 10 ? D_T.blush + '25' : D_T.mint + '25'],
+              ] as [string, string, string, string][]).map(([label, value, fg, bg]) => (
+                <div key={label} style={{ padding: '12px 16px', borderBottom: `1px solid ${D_T.line2}`,
+                                          background: bg, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 13, color: D_T.ink2, fontWeight: 500 }}>{label}</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: fg,
+                                  fontFamily: mono, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Settings */}
+            <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 18, overflow: 'hidden' }}>
+              <div style={{ padding: '10px 16px', borderBottom: `1px solid ${D_T.line}`,
+                            fontSize: 10, fontWeight: 700, color: D_T.mute,
+                            letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                {lang === 'th' ? 'ตั้งค่า' : 'Settings'}
+              </div>
+
+              {/* Language */}
+              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${D_T.line2}`,
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: D_T.ink }}>
+                    {lang === 'th' ? 'ภาษา' : 'Language'}
+                  </div>
+                  <div style={{ fontSize: 11, color: D_T.mute, marginTop: 2 }}>
+                    {lang === 'th' ? 'ไทย' : 'English'}
+                  </div>
+                </div>
+                <button onClick={toggleLang}
+                  style={{ padding: '6px 14px', borderRadius: 999, border: `1px solid ${D_T.line}`,
+                           background: D_T.surface2, fontSize: 12, fontWeight: 700, color: D_T.ink,
+                           cursor: 'pointer', fontFamily: font }}>
+                  {lang === 'th' ? 'EN' : 'TH'}
+                </button>
+              </div>
+
+              {/* Notifications */}
+              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${D_T.line2}` }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: D_T.ink }}>
+                      {lang === 'th' ? 'การแจ้งเตือน' : 'Notifications'}
+                    </div>
+                    <div style={{ fontSize: 11, color: isSubscribed ? D_T.mintDeep : notifPermission === 'denied' ? D_T.blushDeep : D_T.mute, marginTop: 2 }}>
+                      {isSubscribed ? (lang === 'th' ? '🔔 เปิดอยู่' : '🔔 On') :
+                       notifPermission === 'denied' ? (lang === 'th' ? '🚫 ถูกบล็อก' : '🚫 Blocked') :
+                       (lang === 'th' ? '🔕 ปิดอยู่' : '🔕 Off')}
+                    </div>
+                  </div>
+                  {!isSubscribed && notifPermission !== 'denied' && (
+                    <button onClick={handleEnableNotif}
+                      style={{ padding: '6px 14px', borderRadius: 999, background: D_T.ink,
+                               color: D_T.bg, border: 'none', fontSize: 12, fontWeight: 700,
+                               cursor: 'pointer', fontFamily: font }}>
+                      {lang === 'th' ? 'เปิด' : 'Enable'}
+                    </button>
+                  )}
+                  {isSubscribed && (
+                    <button onClick={handleDisableNotif}
+                      style={{ padding: '6px 14px', borderRadius: 999, background: D_T.blush,
+                               color: D_T.blushDeep, border: 'none', fontSize: 12, fontWeight: 700,
+                               cursor: 'pointer', fontFamily: font }}>
+                      {lang === 'th' ? 'ปิด' : 'Disable'}
+                    </button>
+                  )}
+                </div>
+                {isSubscribed && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                    <button onClick={() => handleTestNotif('morning')} disabled={isSendingTestNotif}
+                      style={{ padding: '7px 0', borderRadius: 10, background: D_T.lavender,
+                               color: D_T.lavDeep, border: 'none', fontSize: 11, fontWeight: 700,
+                               cursor: 'pointer', fontFamily: font }}>
+                      {lang === 'th' ? 'ทดสอบ เช้า' : 'Test Morning'}
+                    </button>
+                    <button onClick={() => handleTestNotif('afternoon')} disabled={isSendingTestNotif}
+                      style={{ padding: '7px 0', borderRadius: 10, background: D_T.lavender,
+                               color: D_T.lavDeep, border: 'none', fontSize: 11, fontWeight: 700,
+                               cursor: 'pointer', fontFamily: font }}>
+                      {lang === 'th' ? 'ทดสอบ บ่าย' : 'Test Afternoon'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Dark mode placeholder */}
+              <div style={{ padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: D_T.mute2 }}>
+                    {lang === 'th' ? 'โหมดมืด' : 'Dark mode'}
+                  </div>
+                  <div style={{ fontSize: 11, color: D_T.mute2, marginTop: 2 }}>
+                    {lang === 'th' ? 'เร็วๆ นี้' : 'Coming soon'}
+                  </div>
+                </div>
+                <div style={{ width: 36, height: 20, borderRadius: 99, background: D_T.line,
+                              display: 'grid', placeItems: 'center' }}>
+                  <div style={{ width: 14, height: 14, borderRadius: 99, background: D_T.mute2,
+                                marginLeft: -8 }} />
+                </div>
+              </div>
+            </div>
+
+            {/* Data & sync */}
+            <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 18, overflow: 'hidden', marginBottom: 8 }}>
+              <div style={{ padding: '10px 16px', borderBottom: `1px solid ${D_T.line}`,
+                            fontSize: 10, fontWeight: 700, color: D_T.mute,
+                            letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                {lang === 'th' ? 'ข้อมูล & ซิงค์' : 'Data & Sync'}
+              </div>
+              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${D_T.line2}`,
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: D_T.ink }}>
+                    {lang === 'th' ? 'ซิงค์ล่าสุด' : 'Last synced'}
+                  </div>
+                  <div style={{ fontSize: 11, color: D_T.mute, marginTop: 2 }}>
+                    {lastSynced
+                      ? lastSynced.toLocaleTimeString(lang === 'th' ? 'th-TH' : 'en-US', { hour: '2-digit', minute: '2-digit' })
+                      : (lang === 'th' ? 'ยังไม่ได้ซิงค์' : 'Not synced yet')}
+                  </div>
+                </div>
+                <button onClick={() => loadData(false)} disabled={isSyncing}
+                  style={{ padding: '6px 14px', borderRadius: 999, background: isSyncing ? D_T.surface2 : D_T.ink,
+                           color: isSyncing ? D_T.mute : D_T.bg, border: 'none',
+                           fontSize: 12, fontWeight: 700, cursor: isSyncing ? 'default' : 'pointer',
+                           fontFamily: font, transition: 'all .15s' }}>
+                  {isSyncing ? (lang === 'th' ? 'กำลังซิงค์...' : 'Syncing...') : (lang === 'th' ? 'รีเฟรช' : 'Refresh')}
+                </button>
+              </div>
+              <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, color: D_T.mute2 }}>{lang === 'th' ? 'เวอร์ชัน' : 'Version'}</span>
+                <span style={{ fontSize: 12, color: D_T.mute2, fontFamily: mono }}>1.0.0</span>
+              </div>
+            </div>
+
+          </div>
+        )}
+
         {/* Mobile bottom tab bar */}
         <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, display: 'flex',
                       justifyContent: 'space-around', alignItems: 'center',
@@ -1542,7 +2238,6 @@ export default function App() {
               <div key={id}
                 onClick={() => {
                   if (id === 'fab') setShowFabMenu(v => !v);
-                  else if (id === 'you') setShowNotifModal(true);
                   else setActiveMobileTab(id as any);
                 }}
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
