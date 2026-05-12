@@ -2125,18 +2125,19 @@ export default function App() {
                   const label = d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { month: 'short', year: '2-digit' });
                   const net = m.interest - m.scam - m.withdrawn;
                   return (
-                    <div key={m.key} style={{ padding: '12px 18px', borderBottom: `1px solid ${D_T.line2}`,
-                                              display: 'flex', alignItems: 'center', gap: 14 }}>
-                      <div style={{ width: 48, flexShrink: 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: D_T.ink, whiteSpace: 'nowrap' }}>{label}</div>
-                        <div style={{ fontSize: 10, color: D_T.mute, marginTop: 2 }}>{m.count} {lang === 'th' ? 'ราย' : 'items'}</div>
+                    <div key={m.key} style={{ padding: '12px 18px', borderBottom: `1px solid ${D_T.line2}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                        <div>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: D_T.ink }}>{label}</span>
+                          <span style={{ fontSize: 10, color: D_T.mute, marginLeft: 6 }}>{m.count} {lang === 'th' ? 'ราย' : 'items'}</span>
+                        </div>
+                        <DChip tone={net >= 0 ? 'mint' : 'blush'}>{net >= 0 ? '+' : ''}{formatCurrency(net)}</DChip>
                       </div>
-                      <div style={{ flex: 1, display: 'flex', gap: 10, justifyContent: 'flex-end', alignItems: 'center' }}>
-                        {m.interest > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: D_T.mintDeep, fontFamily: mono, whiteSpace: 'nowrap' }}>+{formatCurrency(m.interest)}</span>}
-                        {m.scam > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: D_T.blushDeep, fontFamily: mono, whiteSpace: 'nowrap' }}>−{formatCurrency(m.scam)}</span>}
-                        {m.withdrawn > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: D_T.butterDeep, fontFamily: mono, whiteSpace: 'nowrap' }}>เบิก {formatCurrency(m.withdrawn)}</span>}
+                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                        {m.interest > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: D_T.mintDeep, fontFamily: mono }}>+{formatCurrency(m.interest)}</span>}
+                        {m.scam > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: D_T.blushDeep, fontFamily: mono }}>−{formatCurrency(m.scam)}</span>}
+                        {m.withdrawn > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: D_T.butterDeep, fontFamily: mono }}>เบิก {formatCurrency(m.withdrawn)}</span>}
                       </div>
-                      <DChip tone={net >= 0 ? 'mint' : 'blush'}>{net >= 0 ? '+' : ''}{formatCurrency(net)}</DChip>
                     </div>
                   );
                 })}
