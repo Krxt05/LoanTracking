@@ -195,7 +195,7 @@ export async function fetchAppData(): Promise<AppData | null> {
             const totalLimit = INITIAL_CAPITAL + paidInterest - scamPrincipal - withdrawnTotal;
             const profitPct = ((totalLimit - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100;
             // ยอดว่าง = วงเงิน − ปล่อยกู้อยู่
-            const available = Math.max(0, totalLimit - unpaidPrincipal);
+            const available = totalLimit - unpaidPrincipal;
 
             const summary: DashboardSummary = {
               available,
