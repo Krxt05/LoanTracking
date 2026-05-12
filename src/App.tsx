@@ -39,7 +39,7 @@ export default function App() {
   const [isDesktop, setIsDesktop] = useState(true);
   const [showPortfolioLine2, setShowPortfolioLine2] = useState(false);
   const [showPortfolioLine3, setShowPortfolioLine3] = useState(false);
-  const [portfolioTimeframe, setPortfolioTimeframe] = useState<'1M' | '3M' | '6M' | 'all'>('3M');
+  const [portfolioTimeframe, setPortfolioTimeframe] = useState<'1W' | '1M' | '3M' | '6M' | 'all'>('3M');
   const [portfolioTooltipIdx, setPortfolioTooltipIdx] = useState<number | null>(null);
   const portfolioChartRef = React.useRef<HTMLDivElement | null>(null);
   const portfolioScrollPos = React.useRef(-1); // -1 = scroll to rightmost end
@@ -48,10 +48,6 @@ export default function App() {
     portfolioChartRef.current = el;
     if (el) el.scrollLeft = portfolioScrollPos.current < 0 ? el.scrollWidth : portfolioScrollPos.current;
   }, []);
-  const [pullDistance, setPullDistance] = useState(0);
-  const [isPullRefreshing, setIsPullRefreshing] = useState(false);
-  const pullStartY = React.useRef(0);
-  const isPullingDown = React.useRef(false);
 
   useEffect(() => {
     const checkIsDesktop = () => setIsDesktop(window.innerWidth >= 768);
@@ -378,7 +374,7 @@ export default function App() {
   }, [data, today]);
 
   const filteredPortfolioData = useMemo(() => {
-    const days = portfolioTimeframe === '1M' ? 30 : portfolioTimeframe === '3M' ? 90 : portfolioTimeframe === '6M' ? 180 : Infinity;
+    const days = portfolioTimeframe === '1W' ? 7 : portfolioTimeframe === '1M' ? 30 : portfolioTimeframe === '3M' ? 90 : portfolioTimeframe === '6M' ? 180 : Infinity;
     if (!isFinite(days)) return portfolioGrowthData;
     const cutoffMs = Date.now() - days * 86400000;
     // keep all forecast points + historical points within the window
@@ -860,7 +856,7 @@ export default function App() {
                         marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
             {/* Timeframe */}
             <div style={{ display: 'flex', gap: 3 }}>
-              {(['1M', '3M', '6M', 'all'] as const).map(tf => (
+              {(['1W', '1M', '3M', '6M', 'all'] as const).map(tf => (
                 <button key={tf} onClick={() => { setPortfolioTimeframe(tf); setPortfolioTooltipIdx(null); }}
                   style={{ padding: '4px 9px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: font,
                            fontSize: 10.5, fontWeight: 700,
@@ -1661,55 +1657,7 @@ export default function App() {
       {/* ── MOBILE LAYOUT ──────────────────────────────── */}
       {!isDesktop && <div
         style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', paddingBottom: 80 }}
-        onTouchStart={(e) => {
-          if (window.scrollY === 0) {
-            pullStartY.current = e.touches[0].clientY;
-            isPullingDown.current = true;
-          }
-        }}
-        onTouchMove={(e) => {
-          if (!isPullingDown.current || isPullRefreshing) return;
-          const delta = e.touches[0].clientY - pullStartY.current;
-          if (delta > 0 && window.scrollY === 0) {
-            e.preventDefault();
-            setPullDistance(Math.min(80, delta * 0.45));
-          } else {
-            isPullingDown.current = false;
-            setPullDistance(0);
-          }
-        }}
-        onTouchEnd={() => {
-          isPullingDown.current = false;
-          if (pullDistance >= 64 && !isPullRefreshing) {
-            setIsPullRefreshing(true);
-            setPullDistance(64);
-            loadData(false).finally(() => {
-              setIsPullRefreshing(false);
-              setPullDistance(0);
-            });
-          } else {
-            setPullDistance(0);
-          }
-        }}
       >
-
-        {/* Pull-to-refresh indicator */}
-        <div style={{
-          height: pullDistance,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          overflow: 'hidden', transition: isPullingDown.current ? 'none' : 'height .35s cubic-bezier(.4,0,.2,1)',
-        }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: '50%',
-            border: `2.5px solid ${D_T.line}`,
-            borderTopColor: pullDistance >= 64 ? D_T.mintDeep : D_T.mute2,
-            animation: isPullRefreshing ? 'ptr-spin .7s linear infinite' : 'none',
-            transform: !isPullRefreshing ? `rotate(${(pullDistance / 64) * 270}deg)` : undefined,
-            transition: isPullingDown.current ? 'none' : 'transform .2s',
-            display: pullDistance > 4 ? 'block' : 'none',
-          }} />
-          <style>{`@keyframes ptr-spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
 
         {/* Mobile header */}
         <div style={{ padding: '10px 20px 6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -1733,15 +1681,12 @@ export default function App() {
                        color: D_T.ink2, cursor: 'pointer', fontFamily: font }}>
               {lang === 'th' ? 'EN' : 'TH'}
             </button>
-            <button onClick={() => setShowNotifModal(true)}
+            <button onClick={() => loadData(false)} disabled={isSyncing}
               style={{ width: 32, height: 32, borderRadius: 10, background: D_T.surface,
                        border: `1px solid ${D_T.line}`, display: 'grid', placeItems: 'center',
-                       fontSize: 15, cursor: 'pointer', position: 'relative' }}>
-              {isSubscribed ? '🔔' : '🔕'}
-              {isSubscribed && overdueLoans.length > 0 && (
-                <span style={{ position: 'absolute', top: 4, right: 4, width: 7, height: 7,
-                               borderRadius: 99, background: D_T.blushDeep }} />
-              )}
+                       fontSize: 15, cursor: isSyncing ? 'default' : 'pointer', opacity: isSyncing ? 0.5 : 1 }}>
+              <span style={{ display: 'inline-block', animation: isSyncing ? 'ptr-spin .7s linear infinite' : 'none' }}>↻</span>
+              <style>{`@keyframes ptr-spin { to { transform: rotate(360deg); } }`}</style>
             </button>
           </div>
         </div>
@@ -2213,7 +2158,7 @@ export default function App() {
               </div>
               <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 13, color: D_T.mute2 }}>{lang === 'th' ? 'เวอร์ชัน' : 'Version'}</span>
-                <span style={{ fontSize: 12, color: D_T.mute2, fontFamily: mono }}>1.0.0</span>
+                <span style={{ fontSize: 12, color: D_T.mute2, fontFamily: mono }}>3.3.2</span>
               </div>
             </div>
 
