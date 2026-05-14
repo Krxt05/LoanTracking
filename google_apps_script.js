@@ -8,16 +8,15 @@ const SPREADSHEET_ID = "1DlIwl4EPWCmG5jRsYjtz-DePuU5ehOmjqCaxYrU85CM";
 
 function doGet(e) {
   if (e.parameter.id && e.parameter.action) {
-    let loanData = null;
-    if (e.parameter.actionDate || e.parameter.principal || e.parameter.dueDate) {
-      loanData = {
-        actionDate: e.parameter.actionDate,
-        principal: e.parameter.principal,
-        dueDate: e.parameter.dueDate,
-        daysBorrowed: e.parameter.daysBorrowed,
-        interestRate: e.parameter.interestRate
-      };
-    }
+    let loanData = {
+      actionDate: e.parameter.actionDate,
+      principal: e.parameter.principal,
+      dueDate: e.parameter.dueDate,
+      daysBorrowed: e.parameter.daysBorrowed,
+      interestRate: e.parameter.interestRate,
+      penalty: e.parameter.penalty,
+      renewFromDate: e.parameter.renewFromDate
+    };
     return processData(e.parameter.id, e.parameter.action, loanData);
   }
   return ContentService.createTextOutput("API พร้อมทำงานครับ");
@@ -144,19 +143,27 @@ function processData(id, action, loanData) {
       sheet.getRange(foundRowIndex + 1, 13).setValue(action);
       sheet.getRange(foundRowIndex + 1, 6).setValue(dateStr);
 
+      // เขียนค่าปรับลง column K (col 11) — 0 หมายความว่าไม่มีค่าปรับ
+      if (loanData && loanData.penalty !== undefined) {
+        sheet.getRange(foundRowIndex + 1, 11).setValue(Number(loanData.penalty) || 0);
+      }
+
       if (action === 'ต่อดอก') {
         const name = originalRowData[1];
         const principal = originalRowData[2];
         const daysBorrowed = parseInt(originalRowData[6]) || 7;
         const interestRate = originalRowData[8];
 
+        // ใช้ renewFromDate เป็นวันเริ่มรอบใหม่ ถ้าไม่มีให้ใช้ actionDate แล้วค่อย fallback เป็นวันนี้
         let baseDateObj = today;
-        if (loanData && loanData.actionDate) {
-          let parts = loanData.actionDate.split("/");
+        const renewStr = (loanData && loanData.renewFromDate) ? loanData.renewFromDate : (loanData && loanData.actionDate ? loanData.actionDate : null);
+        if (renewStr) {
+          let parts = renewStr.split("/");
           if (parts.length === 3) {
-            baseDateObj = new Date(parts[2], parts[1] - 1, parts[0]);
+            baseDateObj = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
           }
         }
+        const newBorrowDateStr = Utilities.formatDate(baseDateObj, "Asia/Bangkok", "dd/MM/yyyy");
 
         const newDueDateObj = new Date(baseDateObj.getTime() + (daysBorrowed * 24 * 60 * 60 * 1000));
         const newDueDateStr = Utilities.formatDate(newDueDateObj, "Asia/Bangkok", "dd/MM/yyyy");
@@ -175,13 +182,13 @@ function processData(id, action, loanData) {
 
         if (targetRowIndex !== -1) {
           // นำข้อมูลไปใส่ในบรรทัดที่หาเจอ โดยอัปเดตเฉพาะช่องที่ต้องกรอก (เพื่อป้องกันการทับสูตรในช่องอื่น)
-          sheet.getRange(targetRowIndex, 2).setValue(name);          // ชื่อ (B)
-          sheet.getRange(targetRowIndex, 3).setValue(principal);     // เงินต้น (C)
-          sheet.getRange(targetRowIndex, 4).setValue(dateStr);       // วันที่ยืม (D)
-          sheet.getRange(targetRowIndex, 5).setValue(newDueDateStr); // วันครบกำหนด (E)
-          sheet.getRange(targetRowIndex, 7).setValue(daysBorrowed);  // จำนวนวัน (G)
-          sheet.getRange(targetRowIndex, 9).setValue(interestRate);  // ดอกเบี้ย (I)
-          sheet.getRange(targetRowIndex, 13).setValue("ยังไม่ชำระ");  // สถานะ (M)
+          sheet.getRange(targetRowIndex, 2).setValue(name);             // ชื่อ (B)
+          sheet.getRange(targetRowIndex, 3).setValue(principal);        // เงินต้น (C)
+          sheet.getRange(targetRowIndex, 4).setValue(newBorrowDateStr); // วันที่ยืม (D)
+          sheet.getRange(targetRowIndex, 5).setValue(newDueDateStr);    // วันครบกำหนด (E)
+          sheet.getRange(targetRowIndex, 7).setValue(daysBorrowed);     // จำนวนวัน (G)
+          sheet.getRange(targetRowIndex, 9).setValue(interestRate);     // ดอกเบี้ย (I)
+          sheet.getRange(targetRowIndex, 13).setValue("ยังไม่ชำระ");     // สถานะ (M)
         } else {
           // ถ้าระบบหาบรรทัดว่างที่เตรียมรหัสไว้ไม่เจอ ให้สร้างต่อท้ายใหม่เลย
           const newId = "R" + today.getTime().toString().slice(-6);
@@ -189,7 +196,7 @@ function processData(id, action, loanData) {
           newRow[0] = newId;
           newRow[1] = name;
           newRow[2] = principal;
-          newRow[3] = dateStr;
+          newRow[3] = newBorrowDateStr;
           newRow[4] = newDueDateStr;
           newRow[6] = daysBorrowed;
           newRow[8] = interestRate;

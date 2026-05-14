@@ -67,19 +67,22 @@ export default function App() {
   });
 
   const [actionDate, setActionDate] = useState<Date>(new Date());
+  const [renewStartDate, setRenewStartDate] = useState<Date>(new Date());
   const [isEditingLoan, setIsEditingLoan] = useState(false);
   const [editLoanForm, setEditLoanForm] = useState({
     principal: '500',
     borrowDate: new Date(),
     dueDate: new Date(),
     daysBorrowed: 7,
-    interestRate: 35
+    interestRate: 35,
+    expectedInterest: 175
   });
 
   // Reset states when selected loan changes
   useEffect(() => {
     setIsEditingLoan(false);
     setActionDate(new Date());
+    setRenewStartDate(new Date());
     setHasPenalty(false);
     if (selectedLoan) {
       setPenaltyAmount(selectedLoan.daysLate > 0 ? selectedLoan.daysLate * 200 : 200);
@@ -92,7 +95,8 @@ export default function App() {
         borrowDate: bDate,
         dueDate: dDate,
         daysBorrowed: selectedLoan.daysBorrowed || 7,
-        interestRate: selectedLoan.interestRate || 20
+        interestRate: selectedLoan.interestRate || 20,
+        expectedInterest: selectedLoan.expectedInterest
       });
     }
   }, [selectedLoan]);
@@ -562,13 +566,13 @@ export default function App() {
         newLoan.isWithdrawn = false;
         newLoan.status = "ยังไม่ชำระ";
 
-        const today = new Date();
-        const dd = String(today.getDate()).padStart(2, '0');
-        const mm = String(today.getMonth() + 1).padStart(2, '0');
-        const yyyy = today.getFullYear();
+        const startD = renewStartDate;
+        const dd = String(startD.getDate()).padStart(2, '0');
+        const mm = String(startD.getMonth() + 1).padStart(2, '0');
+        const yyyy = startD.getFullYear();
         newLoan.borrowDate = `${dd}/${mm}/${yyyy}`;
 
-        const newDueDateObj = new Date(today.getTime() + ((targetLoan.daysBorrowed || 7) * 24 * 60 * 60 * 1000));
+        const newDueDateObj = new Date(startD.getTime() + ((targetLoan.daysBorrowed || 7) * 24 * 60 * 60 * 1000));
         const dueDd = String(newDueDateObj.getDate()).padStart(2, '0');
         const dueMm = String(newDueDateObj.getMonth() + 1).padStart(2, '0');
         const dueYyyy = newDueDateObj.getFullYear();
@@ -581,7 +585,8 @@ export default function App() {
       setData({ ...data, loans: updatedLoans });
     }
 
-    const success = await updateLoanStatus(currentLoan.id, action, formattedActionDate, hasPenalty ? penaltyAmount : 0);
+    const renewFromDateStr = action === 'ต่อดอก' ? formatToThaiStr(renewStartDate) : undefined;
+    const success = await updateLoanStatus(currentLoan.id, action, formattedActionDate, hasPenalty ? penaltyAmount : 0, renewFromDateStr);
 
     if (!success) {
       showToast(t('sheetsUpdateFailed', lang), 'error');
@@ -604,7 +609,8 @@ export default function App() {
         borrowDate: formatToThaiStr(editLoanForm.borrowDate),
         dueDate: formatToThaiStr(editLoanForm.dueDate),
         daysBorrowed: editLoanForm.daysBorrowed,
-        interestRate: editLoanForm.interestRate
+        interestRate: editLoanForm.interestRate,
+        expectedInterest: editLoanForm.expectedInterest
       });
 
       if (success) {
@@ -622,8 +628,8 @@ export default function App() {
             dueDate: formatToThaiStr(editLoanForm.dueDate),
             daysBorrowed: editLoanForm.daysBorrowed,
             interestRate: editLoanForm.interestRate,
-            expectedInterest: (parseFloat(editLoanForm.principal) * editLoanForm.interestRate) / 100,
-            totalExpected: parseFloat(editLoanForm.principal) + ((parseFloat(editLoanForm.principal) * editLoanForm.interestRate) / 100)
+            expectedInterest: editLoanForm.expectedInterest,
+            totalExpected: parseFloat(editLoanForm.principal) + editLoanForm.expectedInterest
           };
           setData({ ...data, loans: updatedLoans });
           setSelectedLoan(updatedLoans[loanIndex]);
@@ -2481,15 +2487,49 @@ export default function App() {
                         ))}
                       </div>
                     </div>
-                    <div>
-                      <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
-                        {lang === 'th' ? 'อัตราดอก (%)' : 'Interest rate (%)'}
-                      </label>
-                      <input type="number" value={editLoanForm.interestRate}
-                        onChange={e => setEditLoanForm({ ...editLoanForm, interestRate: Number(e.target.value) })}
-                        style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${D_T.line}`,
-                                 background: D_T.surface2, fontSize: 16, fontWeight: 700, color: D_T.ink,
-                                 outline: 'none', fontFamily: mono, boxSizing: 'border-box' }} />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div>
+                        <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                          {lang === 'th' ? 'ดอกเบี้ย (฿)' : 'Interest (฿)'}
+                        </label>
+                        <input type="number" value={editLoanForm.expectedInterest}
+                          onChange={e => {
+                            const amt = Number(e.target.value);
+                            const p = parseFloat(editLoanForm.principal) || 1;
+                            setEditLoanForm(f => ({ ...f, expectedInterest: amt, interestRate: parseFloat(((amt / p) * 100).toFixed(2)) }));
+                          }}
+                          style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${D_T.line}`,
+                                   background: D_T.surface2, fontSize: 16, fontWeight: 700, color: D_T.ink,
+                                   outline: 'none', fontFamily: mono, boxSizing: 'border-box' }} />
+                        <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
+                          {[50, 100, 150, 200, 350].map(amt => (
+                            <button key={amt} type="button"
+                              onClick={() => setEditLoanForm(f => {
+                                const newAmt = Math.max(0, f.expectedInterest + amt);
+                                const p = parseFloat(f.principal) || 1;
+                                return { ...f, expectedInterest: newAmt, interestRate: parseFloat(((newAmt / p) * 100).toFixed(2)) };
+                              })}
+                              style={{ padding: '5px 10px', borderRadius: 999, background: D_T.surface2,
+                                       color: D_T.ink2, fontSize: 11, fontWeight: 700, border: `1px solid ${D_T.line}`, cursor: 'pointer' }}>
+                              +{amt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                          {lang === 'th' ? 'อัตราดอก (%)' : 'Rate (%)'}
+                        </label>
+                        <input type="number" value={editLoanForm.interestRate}
+                          onChange={e => {
+                            const rate = Number(e.target.value);
+                            const p = parseFloat(editLoanForm.principal) || 0;
+                            setEditLoanForm(f => ({ ...f, interestRate: rate, expectedInterest: parseFloat(((p * rate) / 100).toFixed(2)) }));
+                          }}
+                          style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${D_T.line}`,
+                                   background: D_T.surface2, fontSize: 16, fontWeight: 700, color: D_T.ink,
+                                   outline: 'none', fontFamily: mono, boxSizing: 'border-box' }} />
+                      </div>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                       <div>
@@ -2519,7 +2559,7 @@ export default function App() {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                         <span style={{ fontSize: 12, color: D_T.mute }}>{lang === 'th' ? 'ยอดที่คาดว่าจะรับ' : 'Expected total'}</span>
                         <span style={{ fontSize: 20, fontWeight: 800, fontFamily: mono }}>
-                          {formatCurrency(parseFloat(editLoanForm.principal || '0') + ((parseFloat(editLoanForm.principal || '0') * editLoanForm.interestRate) / 100))}
+                          {formatCurrency(parseFloat(editLoanForm.principal || '0') + editLoanForm.expectedInterest)}
                         </span>
                       </div>
                     </div>
@@ -2716,6 +2756,15 @@ export default function App() {
                                fontFamily: font, cursor: 'pointer' }}>
                       {lang === 'th' ? `รับเงินแล้ว ${formatCurrency(selectedLoan.totalExpected)}` : `Got paid ${formatCurrency(selectedLoan.totalExpected)}`}
                     </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: D_T.mute, whiteSpace: 'nowrap' }}>
+                        {lang === 'th' ? 'เริ่มรอบใหม่' : 'Renew from'}
+                      </span>
+                      <DatePicker selected={renewStartDate}
+                        onChange={(date) => date && setRenewStartDate(date)}
+                        dateFormat="dd/MM/yyyy"
+                        className="w-full" />
+                    </div>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button onClick={() => handleUpdateStatus('ต่อดอก')}
                         style={{ flex: 1, padding: '11px 0', borderRadius: 999, background: D_T.lavender,
