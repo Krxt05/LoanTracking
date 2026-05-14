@@ -1895,7 +1895,7 @@ export default function App() {
                   </div>
                   <DChip tone="ghost">{dueTodayLoans.length} {lang === 'th' ? 'ราย' : 'due'}</DChip>
                 </div>
-                {dueTodayLoans.slice(0, 2).map(l => (
+                {dueTodayLoans.map(l => (
                   <div key={l.id} onClick={() => setSelectedLoan(l)}
                     style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 10,
                              background: 'rgba(255,255,255,.6)', borderRadius: 12, marginTop: 8, cursor: 'pointer' }}>
@@ -2027,7 +2027,7 @@ export default function App() {
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div style={{ fontSize: 15, fontWeight: 800, fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
-                      {formatCurrency(l.totalExpected)}
+                      {formatCurrency(l.isScam || l.isWithdrawn ? l.principal : l.totalExpected)}
                     </div>
                     <div style={{ fontSize: 10, color: D_T.mute, marginTop: 1 }}>{l.interestRate}%</div>
                   </div>
