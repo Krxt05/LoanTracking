@@ -2543,7 +2543,8 @@ export default function App() {
                             setEditLoanForm(f => ({ ...f, borrowDate: date, dueDate: dDate }));
                           }}
                           dateFormat="dd/MM/yyyy"
-                          className="w-full" />
+                          className="w-full"
+                          onFocus={e => e.target.blur()} />
                       </div>
                       <div>
                         <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, display: 'block', marginBottom: 6 }}>
@@ -2552,7 +2553,8 @@ export default function App() {
                         <DatePicker selected={editLoanForm.dueDate}
                           onChange={handleEditDueDateChange}
                           dateFormat="dd/MM/yyyy"
-                          className="w-full" />
+                          className="w-full"
+                          onFocus={e => e.target.blur()} />
                       </div>
                     </div>
                     <div style={{ padding: 16, borderRadius: 14, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
@@ -2728,7 +2730,8 @@ export default function App() {
                     <DatePicker selected={actionDate}
                       onChange={(date) => date && setActionDate(date)}
                       dateFormat="dd/MM/yyyy"
-                      className="w-full" />
+                      className="w-full"
+                      onFocus={e => e.target.blur()} />
                   </div>
                 )}
               </div>
@@ -2763,7 +2766,8 @@ export default function App() {
                       <DatePicker selected={renewStartDate}
                         onChange={(date) => date && setRenewStartDate(date)}
                         dateFormat="dd/MM/yyyy"
-                        className="w-full" />
+                        className="w-full"
+                        onFocus={e => e.target.blur()} />
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button onClick={() => handleUpdateStatus('ต่อดอก')}
@@ -3024,7 +3028,7 @@ export default function App() {
                 </label>
                 <DatePicker selected={withdrawForm.date}
                   onChange={(date: Date | null) => setWithdrawForm({ ...withdrawForm, date: date ?? new Date() })}
-                  dateFormat="dd/MM/yyyy" className="w-full" />
+                  dateFormat="dd/MM/yyyy" className="w-full" onFocus={e => e.target.blur()} />
               </div>
               <div>
                 <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
@@ -3200,10 +3204,10 @@ export default function App() {
                 </label>
                 <div style={{ display: 'flex', gap: 12 }}>
                   <div style={{ flex: 1 }}>
-                    <DatePicker selected={newLoanForm.borrowDate} onChange={handleBorrowDateChange} dateFormat="dd/MM/yyyy" className="w-full" />
+                    <DatePicker selected={newLoanForm.borrowDate} onChange={handleBorrowDateChange} dateFormat="dd/MM/yyyy" className="w-full" onFocus={e => e.target.blur()} />
                   </div>
                   <div style={{ flex: 1 }}>
-                    <DatePicker selected={newLoanForm.dueDate} onChange={handleDueDateChange} dateFormat="dd/MM/yyyy" className="w-full" />
+                    <DatePicker selected={newLoanForm.dueDate} onChange={handleDueDateChange} dateFormat="dd/MM/yyyy" className="w-full" onFocus={e => e.target.blur()} />
                   </div>
                 </div>
               </div>
