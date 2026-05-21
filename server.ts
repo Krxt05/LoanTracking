@@ -4,7 +4,7 @@ import path from "path";
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = 3002;
 
   // API route to proxy the CSV and avoid CORS / Origin: null issues
   app.get("/api/data", async (req, res) => {

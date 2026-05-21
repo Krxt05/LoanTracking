@@ -32,6 +32,7 @@ export default function App() {
   const [showFabMenu, setShowFabMenu] = useState(false);
   const [showConfirmDefault, setShowConfirmDefault] = useState(false);
   const [showProfitModal, setShowProfitModal] = useState(false);
+  const [showReserveBreakdown, setShowReserveBreakdown] = useState(false);
   const [showWeeklySheet, setShowWeeklySheet] = useState(false);
   const [hasPenalty, setHasPenalty] = useState(false);
   const [penaltyAmount, setPenaltyAmount] = useState(200);
@@ -341,6 +342,58 @@ export default function App() {
   const allBorrowerNames = useMemo(() =>
     [...new Set(data?.loans.map(l => l.name) ?? [])].sort()
   , [data]);
+
+  const reserveData = useMemo(() => {
+    if (!data) return { totalLocked: 0, safeWithdrawable: 0, items: [] };
+    const latestByName: Record<string, typeof data.loans[0]> = {};
+    data.loans.forEach(l => {
+      // เฉพาะ row active ปัจจุบัน: ไม่ใช่ paid/scam/withdrawn/renewed + มีประวัติต่อดอก
+      if (!l.isPaid && !l.isScam && !l.isWithdrawn && !l.isRenewed && l.historicalRenewalCount > 0) {
+        if (!latestByName[l.name] || l.historicalRenewalCount >= latestByName[l.name].historicalRenewalCount) {
+          latestByName[l.name] = l;
+        }
+      }
+    });
+    const items = Object.values(latestByName).map(l => {
+      const isBreakEven = l.historicalRenewalInterest >= l.principal;
+      // locked = principal ที่ยังต้องสำรองไว้จนกว่าจะปิดยอด (max = principal)
+      const locked = Math.min(l.historicalRenewalInterest, l.principal);
+      // ส่วนเกินจาก principal = เบิกได้แล้ว
+      const excess = Math.max(0, l.historicalRenewalInterest - l.principal);
+      const recoveryPct = Math.min(100, (l.historicalRenewalInterest / l.principal) * 100);
+      const remaining = Math.max(0, l.principal - l.historicalRenewalInterest);
+      const renewalsNeeded = l.expectedInterest > 0 ? Math.ceil(remaining / l.expectedInterest) : 0;
+      const approxDaysRenewing = l.historicalRenewalCount * (l.daysBorrowed || 7);
+      const isLongTerm = approxDaysRenewing > 180;
+      return { loan: l, locked, excess, recoveryPct, remaining, renewalsNeeded, isBreakEven, isLongTerm, approxDaysRenewing };
+    }).sort((a, b) => {
+      if (a.isBreakEven !== b.isBreakEven) return a.isBreakEven ? 1 : -1;
+      if (!a.isBreakEven) return a.recoveryPct - b.recoveryPct; // เสี่ยงสุดขึ้นก่อน
+      return b.excess - a.excess; // กลุ่มปลอดภัย: เกินมากขึ้นก่อน
+    });
+    const totalLocked = items.reduce((s, i) => s + i.locked, 0);
+    const safeWithdrawable = Math.max(0, data.summary.available - totalLocked);
+    const totalInterestCollected = items.reduce((s, i) => s + i.loan.historicalRenewalInterest, 0);
+    const totalPrincipalAtRisk = items.reduce((s, i) => s + i.loan.principal, 0);
+    const coverageRatio = totalPrincipalAtRisk > 0 ? (totalInterestCollected / totalPrincipalAtRisk) * 100 : 0;
+
+    // ประวัติหนี้เสีย — scam loans พร้อมดอกที่ดูดซับได้
+    const scamItems = data.loans
+      .filter(l => l.isScam)
+      .map(l => ({
+        name: l.name,
+        id: l.id,
+        principal: l.principal,
+        interestAbsorbed: l.historicalRenewalInterest,
+        renewalCount: l.historicalRenewalCount,
+        netLoss: l.principal - l.historicalRenewalInterest,
+      }));
+    const totalScamPrincipal = scamItems.reduce((s, i) => s + i.principal, 0);
+    const totalInterestAbsorbed = scamItems.reduce((s, i) => s + i.interestAbsorbed, 0);
+    const totalNetLoss = totalScamPrincipal - totalInterestAbsorbed;
+
+    return { totalLocked, safeWithdrawable, items, coverageRatio, scamItems, totalScamPrincipal, totalInterestAbsorbed, totalNetLoss };
+  }, [data]);
 
   const portfolioGrowthData = useMemo(() => {
     if (!data) return [];
@@ -1362,7 +1415,7 @@ export default function App() {
             ] as [string, string, string | null, boolean | null][]).map(([label, value, arrow, pos], i) => (
               <div key={label}
                 onClick={i === 1 ? () => setShowProfitModal(true) : undefined}
-                style={{ padding: '20px 24px', borderRight: i < 3 ? `1px solid ${D_T.line}` : 'none',
+                style={{ padding: '20px 24px', borderRight: `1px solid ${D_T.line}`,
                          display: 'flex', flexDirection: 'column', gap: 10,
                          cursor: i === 1 ? 'pointer' : 'default' }}>
                 <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
@@ -1458,30 +1511,25 @@ export default function App() {
                     );
                   })()}
 
-                  {/* Top Borrowers */}
-                  {borrowerStats.filter(b => b.totalRenewals > 0 && !b.hasScam).length > 0 && (
-                    <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 18, overflow: 'hidden', marginBottom: 20 }}>
-                      <div style={{ padding: '14px 22px', borderBottom: `1px solid ${D_T.line}`, fontSize: 11, fontWeight: 700, color: D_T.mute, letterSpacing: '.06em', textTransform: 'uppercase' }}>
-                        {lang === 'th' ? 'ลูกค้าประจำ' : 'Top Borrowers'}
+                  {/* เบิกได้จริง — desktop analytics */}
+                  {reserveData.totalLocked > 0 && (
+                    <div onClick={() => setShowReserveBreakdown(true)}
+                      style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
+                               borderRadius: 18, padding: '18px 22px', marginBottom: 20, cursor: 'pointer',
+                               display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
+                                      color: D_T.mute, marginBottom: 6 }}>
+                          {lang === 'th' ? 'เบิกได้จริง' : 'Safe to withdraw'}
+                        </div>
+                        <div style={{ fontSize: 32, fontWeight: 800, fontVariantNumeric: 'tabular-nums', fontFamily: mono, lineHeight: 1, letterSpacing: '-.025em' }}>
+                          {formatCurrency(reserveData.safeWithdrawable)}
+                        </div>
+                        <div style={{ fontSize: 11, color: D_T.mute, marginTop: 6 }}>
+                          {lang === 'th' ? `ล็อกดอกสำรองไว้ ${formatCurrency(reserveData.totalLocked)}` : `Reserve locked ${formatCurrency(reserveData.totalLocked)}`}
+                        </div>
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
-                        {borrowerStats.filter(b => b.totalRenewals > 0 && !b.hasScam).slice(0, 6).map((b, i) => {
-                          const tier = getLoyaltyTier(b.totalRenewals)!;
-                          return (
-                            <div key={b.name} style={{ padding: '14px 22px', borderBottom: `1px solid ${D_T.line2}`, display: 'flex', alignItems: 'center', gap: 12 }}>
-                              <div style={{ width: 32, height: 32, borderRadius: 10, background: i === 0 ? D_T.butter : D_T.surface2, display: 'grid', placeItems: 'center', fontSize: 13, fontWeight: 800, flexShrink: 0, color: i === 0 ? D_T.butterDeep : D_T.mute }}>{b.name.charAt(0).toUpperCase()}</div>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                                  <span style={{ fontSize: 13, fontWeight: 700, color: D_T.ink }}>{b.name}</span>
-                                  <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 999, background: tier.bg + '60', color: tier.color }}>{tier.label}</span>
-                                  {b.hasActive && <div style={{ width: 6, height: 6, borderRadius: 99, background: D_T.mintDeep }} />}
-                                </div>
-                                <div style={{ fontSize: 10, color: D_T.mute }}>{lang === 'th' ? `ต่อสัญญา ${b.totalRenewals} ครั้ง` : `${b.totalRenewals} renewals`} · {formatCurrency(b.totalEarned)}</div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                      <div style={{ fontSize: 22, opacity: .4 }}>›</div>
                     </div>
                   )}
 
@@ -2160,26 +2208,25 @@ export default function App() {
               </div>
             )}
 
-            {/* Top Borrowers — bottom */}
-            {borrowerStats.filter(b => b.totalRenewals > 0 && !b.hasScam).length > 0 && (
-              <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 18, overflow: 'hidden', marginBottom: 12 }}>
-                <div style={{ padding: '12px 18px', borderBottom: `1px solid ${D_T.line}`, fontSize: 11, fontWeight: 700, color: D_T.mute, letterSpacing: '.06em', textTransform: 'uppercase' }}>{lang === 'th' ? 'ลูกค้าประจำ' : 'Top Borrowers'}</div>
-                {borrowerStats.filter(b => b.totalRenewals > 0 && !b.hasScam).slice(0, 5).map((b, i) => {
-                  const tier = getLoyaltyTier(b.totalRenewals)!;
-                  return (
-                    <div key={b.name} style={{ padding: '11px 18px', borderBottom: `1px solid ${D_T.line2}`, display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <div style={{ width: 28, height: 28, borderRadius: 8, background: i === 0 ? D_T.butter : D_T.surface2, display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800, flexShrink: 0, color: i === 0 ? D_T.butterDeep : D_T.mute }}>{b.name.charAt(0).toUpperCase()}</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: D_T.ink }}>{b.name}</span>
-                          <span style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 999, background: tier.bg + '60', color: tier.color }}>{tier.label}</span>
-                        </div>
-                        <div style={{ fontSize: 10, color: D_T.mute, marginTop: 1 }}>{lang === 'th' ? `ต่อสัญญา ${b.totalRenewals} ครั้ง` : `${b.totalRenewals} renewals`} · {lang === 'th' ? 'ดอกสะสม' : 'earned'} {formatCurrency(b.totalEarned)}</div>
-                      </div>
-                      {b.hasActive && <div style={{ width: 7, height: 7, borderRadius: 99, background: D_T.mintDeep, flexShrink: 0 }} />}
-                    </div>
-                  );
-                })}
+            {/* เบิกได้จริง — mobile analytics */}
+            {reserveData.totalLocked > 0 && (
+              <div onClick={() => setShowReserveBreakdown(true)}
+                style={{ borderRadius: 18, cursor: 'pointer', marginBottom: 12,
+                          background: D_T.surface, border: `1px solid ${D_T.line}`,
+                          padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase',
+                                color: D_T.mute, marginBottom: 4 }}>
+                    {lang === 'th' ? 'เบิกได้จริง' : 'Safe to withdraw'}
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, fontVariantNumeric: 'tabular-nums', fontFamily: mono, lineHeight: 1 }}>
+                    {formatCurrency(reserveData.safeWithdrawable)}
+                  </div>
+                  <div style={{ fontSize: 10, color: D_T.mute, marginTop: 5 }}>
+                    {lang === 'th' ? `ล็อกดอกสำรอง ${formatCurrency(reserveData.totalLocked)}` : `Reserve locked ${formatCurrency(reserveData.totalLocked)}`}
+                  </div>
+                </div>
+                <div style={{ fontSize: 18, opacity: .5 }}>›</div>
               </div>
             )}
 
@@ -2973,6 +3020,252 @@ export default function App() {
           </div>
         );
       })()}
+
+      {showReserveBreakdown && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'flex-end',
+                      justifyContent: 'center', background: 'rgba(27,31,42,.5)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setShowReserveBreakdown(false)}>
+          <div style={{ background: D_T.surface, borderRadius: '22px 22px 0 0', width: '100%', maxWidth: 520,
+                        maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+                        boxShadow: '0 -12px 40px rgba(27,31,42,.2)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ padding: '20px 22px 16px', borderBottom: `1px solid ${D_T.line}`, background: D_T.surface2 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                    {lang === 'th' ? 'ดอกสำรองล็อกอยู่' : 'Interest Reserve'}
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 800, marginTop: 4 }}>
+                    {lang === 'th' ? 'เบิกได้จริง' : 'Safe to Withdraw'}
+                  </div>
+                </div>
+                <button onClick={() => setShowReserveBreakdown(false)}
+                  style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
+                           border: 'none', fontSize: 14, cursor: 'pointer' }}>✕</button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 14 }}>
+                {[
+                  [lang === 'th' ? 'ยอดว่าง' : 'Available', formatCurrency(data!.summary.available), D_T.ink],
+                  [lang === 'th' ? 'สำรองล็อก' : 'Reserved', formatCurrency(reserveData.totalLocked), D_T.blushDeep],
+                  [lang === 'th' ? 'เบิกได้' : 'Safe', formatCurrency(reserveData.safeWithdrawable), D_T.mintDeep],
+                  [lang === 'th' ? 'Coverage Ratio' : 'Coverage Ratio', `${reserveData.coverageRatio.toFixed(1)}%`,
+                    reserveData.coverageRatio >= 100 ? D_T.mintDeep : reserveData.coverageRatio >= 50 ? D_T.butterDeep : D_T.blushDeep],
+                ].map(([label, val, color]) => (
+                  <div key={label as string} style={{ padding: '10px 12px', borderRadius: 10, background: D_T.surface }}>
+                    <div style={{ fontSize: 9, color: D_T.mute, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase' }}>{label}</div>
+                    <div style={{ fontSize: 14, fontWeight: 800, fontFamily: mono, color: color as string, marginTop: 3 }}>{val}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ overflowY: 'auto', padding: '14px 22px 30px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {/* กลุ่มเสี่ยง */}
+              {reserveData.items.filter(i => !i.isBreakEven).length > 0 && (
+                <>
+                  <div style={{ fontSize: 11, color: D_T.blushDeep, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 2 }}>
+                    {lang === 'th' ? 'ยังเสี่ยง — ดอกยังไม่ถึงต้น' : 'At risk — interest below principal'}
+                  </div>
+                  {reserveData.items.filter(i => !i.isBreakEven).map(({ loan: l, locked, excess, recoveryPct, remaining, renewalsNeeded, isBreakEven, isLongTerm, approxDaysRenewing }) => (
+                    <div key={l.id} style={{ padding: '12px 14px', borderRadius: 14, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 13.5, fontWeight: 700 }}>{l.name}</span>
+                            {isLongTerm && (
+                              <span style={{ fontSize: 9, fontWeight: 800, color: D_T.blushDeep, background: D_T.blush + '40',
+                                             padding: '2px 6px', borderRadius: 99, letterSpacing: '.04em' }}>
+                                {lang === 'th' ? 'ระยะยาว' : 'LONG-TERM'}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: D_T.mute, marginTop: 1 }}>
+                            {lang === 'th' ? 'ต่อดอกแล้ว' : 'Renewed'} {l.historicalRenewalCount} {lang === 'th' ? 'ครั้ง' : 'x'}
+                            {isLongTerm && ` · ~${approxDaysRenewing} ${lang === 'th' ? 'วัน' : 'd'}`} · {l.id}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 13, fontWeight: 800, fontFamily: mono, color: D_T.blushDeep }}>
+                            {formatCurrency(locked)}
+                          </div>
+                          <div style={{ fontSize: 10, color: D_T.mute, marginTop: 1 }}>
+                            {lang === 'th' ? 'สำรองไว้' : 'reserved'}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ height: 6, borderRadius: 99, background: D_T.line, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', borderRadius: 99, width: `${recoveryPct}%`,
+                                        background: recoveryPct >= 60 ? D_T.butterDeep : D_T.blushDeep,
+                                        transition: 'width .4s ease' }} />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                          <span style={{ fontSize: 10, color: D_T.mute }}>
+                            {lang === 'th' ? 'ดอกสะสม' : 'Interest earned'} {formatCurrency(l.historicalRenewalInterest)}
+                          </span>
+                          <span style={{ fontSize: 10, fontWeight: 700,
+                                         color: recoveryPct >= 60 ? D_T.butterDeep : D_T.blushDeep }}>
+                            {recoveryPct.toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                        <div style={{ padding: '8px 10px', borderRadius: 9, background: D_T.surface }}>
+                          <div style={{ fontSize: 9, color: D_T.mute, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase' }}>
+                            {lang === 'th' ? 'ต้นยังขาด' : 'To break-even'}
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 800, fontFamily: mono, marginTop: 2, color: D_T.ink }}>
+                            {formatCurrency(remaining)}
+                          </div>
+                        </div>
+                        <div style={{ padding: '8px 10px', borderRadius: 9, background: D_T.surface }}>
+                          <div style={{ fontSize: 9, color: D_T.mute, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase' }}>
+                            {lang === 'th' ? 'ต่ออีกกี่ครั้ง' : 'Renewals left'}
+                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 800, marginTop: 2,
+                                        color: renewalsNeeded <= 2 ? D_T.butterDeep : D_T.blushDeep }}>
+                            {`อีก ${renewalsNeeded} ครั้ง`}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+              {/* กลุ่มปลอดภัย */}
+              {reserveData.items.filter(i => i.isBreakEven).length > 0 && (
+                <>
+                  <div style={{ fontSize: 11, color: D_T.mintDeep, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
+                                 marginTop: reserveData.items.filter(i => !i.isBreakEven).length > 0 ? 10 : 2, marginBottom: 2 }}>
+                    {lang === 'th' ? 'ปลอดภัย — ดอกเกินต้นแล้ว' : 'Safe — interest exceeds principal'}
+                  </div>
+                  {reserveData.items.filter(i => i.isBreakEven).map(({ loan: l, locked, excess, recoveryPct, remaining, renewalsNeeded, isBreakEven, isLongTerm, approxDaysRenewing }) => (
+                    <div key={l.id} style={{ padding: '12px 14px', borderRadius: 14, background: D_T.surface2, border: `1px solid ${D_T.mint}60` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 13.5, fontWeight: 700 }}>{l.name}</span>
+                            {isLongTerm && (
+                              <span style={{ fontSize: 9, fontWeight: 800, color: D_T.butterDeep, background: D_T.butter + '60',
+                                             padding: '2px 6px', borderRadius: 99, letterSpacing: '.04em' }}>
+                                {lang === 'th' ? 'ระยะยาว' : 'LONG-TERM'}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: D_T.mute, marginTop: 1 }}>
+                            {lang === 'th' ? 'ต่อดอกแล้ว' : 'Renewed'} {l.historicalRenewalCount} {lang === 'th' ? 'ครั้ง' : 'x'}
+                            {isLongTerm && ` · ~${approxDaysRenewing} ${lang === 'th' ? 'วัน' : 'd'}`} · {l.id}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 13, fontWeight: 800, fontFamily: mono, color: D_T.blushDeep }}>
+                            {formatCurrency(locked)}
+                          </div>
+                          <div style={{ fontSize: 10, color: D_T.mute, marginTop: 1 }}>
+                            {lang === 'th' ? 'สำรองไว้' : 'reserved'}
+                          </div>
+                          {excess > 0 && (
+                            <div style={{ fontSize: 11, fontWeight: 700, color: D_T.mintDeep, marginTop: 2 }}>
+                              +{formatCurrency(excess)} {lang === 'th' ? 'เบิกได้' : 'withdrawable'}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ height: 6, borderRadius: 99, background: D_T.line, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', borderRadius: 99, width: '100%',
+                                        background: D_T.mintDeep, transition: 'width .4s ease' }} />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                          <span style={{ fontSize: 10, color: D_T.mute }}>
+                            {lang === 'th' ? 'ดอกสะสม' : 'Interest earned'} {formatCurrency(l.historicalRenewalInterest)}
+                          </span>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: D_T.mintDeep }}>
+                            {recoveryPct.toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+                      <div style={{ padding: '8px 10px', borderRadius: 9, background: D_T.surface, textAlign: 'center' }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: D_T.mintDeep }}>
+                          {lang === 'th' ? 'ดอกคุ้มทุนแล้ว — ต้นสำรองถึงปิดยอด' : 'Break-even reached — principal reserved until closure'}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+              {reserveData.items.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '24px 0', color: D_T.mute, fontSize: 13 }}>
+                  {lang === 'th' ? 'ไม่มียอดล็อก' : 'No locked reserves'}
+                </div>
+              )}
+
+              {/* ── ประวัติหนี้เสีย ── */}
+              {reserveData.scamItems.length > 0 && (
+                <div style={{ marginTop: 20 }}>
+                  <div style={{ fontSize: 11, color: D_T.blushDeep, fontWeight: 700,
+                                letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+                    {lang === 'th' ? 'ประวัติหนี้เสีย' : 'Default history'}
+                  </div>
+
+                  {/* Summary bar */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
+                    {[
+                      [lang === 'th' ? 'สูญต้น' : 'Principal lost', formatCurrency(reserveData.totalScamPrincipal), D_T.blushDeep],
+                      [lang === 'th' ? 'ดอกดูดซับ' : 'Interest offset', formatCurrency(reserveData.totalInterestAbsorbed), D_T.butterDeep],
+                      [lang === 'th' ? 'ขาดทุนสุทธิ' : 'Net loss', formatCurrency(reserveData.totalNetLoss), reserveData.totalNetLoss <= 0 ? D_T.mintDeep : D_T.blushDeep],
+                    ].map(([label, val, color]) => (
+                      <div key={label as string} style={{ padding: '10px 12px', borderRadius: 10,
+                                  background: D_T.blush + '30', border: `1px solid ${D_T.blush}` }}>
+                        <div style={{ fontSize: 9, color: D_T.blushDeep, fontWeight: 700,
+                                      letterSpacing: '.05em', textTransform: 'uppercase' }}>{label}</div>
+                        <div style={{ fontSize: 13, fontWeight: 800, fontFamily: mono,
+                                      color: color as string, marginTop: 3 }}>{val}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* รายคน */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {reserveData.scamItems.map((sc, idx) => (
+                      <div key={idx} style={{ padding: '12px 14px', borderRadius: 14,
+                                  background: D_T.surface2, border: `1px solid ${D_T.blush}` }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                          <div>
+                            <div style={{ fontSize: 13.5, fontWeight: 700 }}>{sc.name}</div>
+                            <div style={{ fontSize: 10.5, color: D_T.mute, marginTop: 1 }}>
+                              {sc.id} · {lang === 'th' ? 'ต่อดอก' : 'renewed'} {sc.renewalCount} {lang === 'th' ? 'ครั้งก่อนบิด' : 'x before default'}
+                            </div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: 11, color: D_T.mute }}>{lang === 'th' ? 'ขาดทุนสุทธิ' : 'Net loss'}</div>
+                            <div style={{ fontSize: 14, fontWeight: 800, fontFamily: mono,
+                                          color: sc.netLoss <= 0 ? D_T.mintDeep : D_T.blushDeep }}>
+                              {sc.netLoss <= 0 ? '+' : '-'}{formatCurrency(Math.abs(sc.netLoss))}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ height: 5, borderRadius: 99, background: D_T.blush + '60', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', borderRadius: 99,
+                                        width: `${Math.min(100, sc.principal > 0 ? (sc.interestAbsorbed / sc.principal) * 100 : 0)}%`,
+                                        background: sc.interestAbsorbed >= sc.principal ? D_T.mintDeep : D_T.butterDeep }} />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
+                          <span style={{ fontSize: 10, color: D_T.mute }}>
+                            {lang === 'th' ? 'ต้นสูญ' : 'Lost'} {formatCurrency(sc.principal)}
+                          </span>
+                          <span style={{ fontSize: 10, color: D_T.butterDeep, fontWeight: 700 }}>
+                            {lang === 'th' ? 'ดอกดูดซับ' : 'Offset'} {formatCurrency(sc.interestAbsorbed)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showWithdrawModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center',
