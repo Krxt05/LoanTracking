@@ -125,57 +125,56 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let payload: object | null = null;
 
     if (type === 'morning') {
-      // 🌅 06:00 น. — สรุปยอดประจำวัน
+      // 06:00 น. — สรุปยอดประจำวัน
       const total = dueToday.length + overdue.length;
       if (total === 0) {
         payload = {
-          title: '🌅 LoanTrack — สรุปยอดวันนี้',
-          body: '✅ วันนี้ไม่มียอดที่ต้องติดตาม',
+          title: 'LoanTrack · สรุปยอดวันนี้',
+          body: 'วันนี้ไม่มียอดที่ต้องติดตาม',
           icon: '/icon.png', url: '/'
         };
       } else {
         const todayTotal = dueToday.reduce((s, l) => s + l.totalExpected, 0);
         const overdueTotal = overdue.reduce((s, l) => s + l.totalExpected, 0);
         const lines: string[] = [];
-        if (dueToday.length > 0) lines.push(`📋 วันนี้: ${formatNameList(dueToday)} | รวม ${formatBaht(todayTotal)}`);
+        if (dueToday.length > 0) lines.push(`นัดวันนี้  ${formatNameList(dueToday)}  รวม ${formatBaht(todayTotal)}`);
         if (overdue.length > 0) {
           const maxDays = Math.max(...overdue.map(l => l.daysLate));
-          lines.push(`⚠️ ค้างชำระ: ${overdue.length} ราย (+${maxDays}วัน) | รวม ${formatBaht(overdueTotal)}`);
+          lines.push(`ค้างชำระ  ${overdue.length} ราย  [+${maxDays} วัน]  รวม ${formatBaht(overdueTotal)}`);
         }
         payload = {
-          title: '🌅 LoanTrack — สรุปยอดวันนี้',
+          title: 'LoanTrack · สรุปยอดวันนี้',
           body: lines.join('\n'),
           icon: '/icon.png', url: '/'
         };
       }
 
     } else if (type === 'afternoon') {
-      // 🔔 16:00 น. — รายการที่ยังไม่ชำระ
+      // 16:00 น. — รายการที่ยังไม่ชำระ
       if (dueToday.length === 0) {
         payload = {
-          title: '🔔 LoanTrack — รายการรอติดตาม',
-          body: '✅ ยอดทั้งหมดของวันนี้ชำระแล้ว!',
+          title: 'LoanTrack · รายการรอติดตาม',
+          body: 'ยอดทั้งหมดชำระครบแล้ว',
           icon: '/icon.png', url: '/'
         };
       } else {
         const total = dueToday.reduce((s, l) => s + l.totalExpected, 0);
         payload = {
-          title: '🔔 LoanTrack — รายการรอติดตาม',
-          body: `ยังมี ${dueToday.length} ราย รอติดตาม — ทักก่อนดึก\n${formatNameList(dueToday)} | รวม ${formatBaht(total)}`,
+          title: 'LoanTrack · รายการรอติดตาม',
+          body: `${dueToday.length} ราย ยังไม่ชำระ  รวม ${formatBaht(total)}\n${formatNameList(dueToday)}`,
           icon: '/icon.png', url: '/'
         };
       }
 
     } else if (type === 'evening') {
-      // 📅 18:00 น. — แจ้งล่วงหน้าครบกำหนดพรุ่งนี้
+      // 18:00 น. — แจ้งล่วงหน้าครบกำหนดพรุ่งนี้
       if (dueTomorrow.length === 0) {
-        // ไม่มีอะไรพรุ่งนี้ ไม่ต้องส่ง
         return res.status(200).json({ success: true, type, skipped: true, reason: 'no loans due tomorrow' });
       }
       const total = dueTomorrow.reduce((s, l) => s + l.totalExpected, 0);
       payload = {
-        title: '📅 LoanTrack — ครบกำหนดพรุ่งนี้',
-        body: `${dueTomorrow.length} ราย นัดชำระพรุ่งนี้ รวม ${formatBaht(total)}\n${formatNameList(dueTomorrow)}`,
+        title: 'LoanTrack · ครบกำหนดพรุ่งนี้',
+        body: `${dueTomorrow.length} ราย นัดชำระพรุ่งนี้  รวม ${formatBaht(total)}\n${formatNameList(dueTomorrow)}`,
         icon: '/icon.png', url: '/'
       };
     }
