@@ -4,9 +4,9 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import webpush from 'web-push';
-import fs from 'fs';
+import { kv } from '@vercel/kv';
 
-const SUBS_PATH = '/tmp/subscriptions.json';
+const KV_KEY = 'push_subscriptions';
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRYsFTD4K-tyIFIJry2YLJtnv6gUxZy9VZCvRZcOeGrD9X7inE8udy-cJU_ajJEWcouDSswJZYdAjE8/pub?gid=164801172&single=true&output=csv';
 
 webpush.setVapidDetails(
@@ -72,18 +72,13 @@ async function fetchLoanData() {
   return loans;
 }
 
-function loadSubscriptions(): object[] {
-  try {
-    if (fs.existsSync(SUBS_PATH)) {
-      const data = JSON.parse(fs.readFileSync(SUBS_PATH, 'utf-8'));
-      return Object.values(data);
-    }
-  } catch (_) {}
-  return [];
+async function loadSubscriptions(): Promise<object[]> {
+  const data = await kv.get<Record<string, object>>(KV_KEY);
+  return data ? Object.values(data) : [];
 }
 
 async function sendToAll(payload: object) {
-  const subs = loadSubscriptions();
+  const subs = await loadSubscriptions();
   console.log(`📤 Sending to ${subs.length} subscription(s)...`);
   
   const results = await Promise.allSettled(
