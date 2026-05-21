@@ -755,14 +755,50 @@ export default function App() {
     showToast(t('notifDisabledToast', lang), 'success');
   };
 
-  const handleTestNotif = async (type: 'morning' | 'afternoon') => {
+  const handleTestNotif = async (type: 'morning' | 'afternoon' | 'evening') => {
     setIsSendingTestNotif(true);
-    const dueCount = dueTodayLoans.length;
-    const overdueCount = overdueLoans.length;
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dueTomorrowLoans = data ? data.loans.filter(l => {
+      if (l.isPaid || l.isScam || l.isRenewed || l.isWithdrawn) return false;
+      const parsed = parseThaiDate(l.dueDate);
+      return parsed && parsed.getTime() === tomorrow.getTime();
+    }) : [];
+
+    const fmt = (n: number) => '฿' + n.toLocaleString('th-TH', { maximumFractionDigits: 0 });
+    const nameList = (loans: typeof dueTodayLoans, limit = 3) => {
+      const shown = loans.slice(0, limit).map(l => `${l.name} ${fmt(l.totalExpected)}`);
+      const extra = loans.length - limit;
+      return shown.join(', ') + (extra > 0 ? ` +${extra} ราย` : '');
+    };
+
     if (type === 'morning') {
-      await sendTestNotification('📊 สรุปยอดวันนี้', `ครบกำหนด ${dueCount} รายการ | ค้างชำระ ${overdueCount} รายการ`);
+      const total = dueTodayLoans.length + overdueLoans.length;
+      if (total === 0) {
+        await sendTestNotification('LoanTrack · สรุปยอดวันนี้', 'วันนี้ไม่มียอดที่ต้องติดตาม');
+      } else {
+        const lines: string[] = [];
+        if (dueTodayLoans.length > 0) lines.push(`นัดวันนี้  ${nameList(dueTodayLoans)}  รวม ${fmt(dueTodayLoans.reduce((s, l) => s + l.totalExpected, 0))}`);
+        if (overdueLoans.length > 0) {
+          const maxDays = Math.max(...overdueLoans.map(l => l.daysLate));
+          lines.push(`ค้างชำระ  ${overdueLoans.length} ราย  [+${maxDays} วัน]  รวม ${fmt(overdueLoans.reduce((s, l) => s + l.totalExpected, 0))}`);
+        }
+        await sendTestNotification('LoanTrack · สรุปยอดวันนี้', lines.join('\n'));
+      }
+    } else if (type === 'afternoon') {
+      if (dueTodayLoans.length === 0) {
+        await sendTestNotification('LoanTrack · รายการรอติดตาม', 'ยอดทั้งหมดชำระครบแล้ว');
+      } else {
+        const total = fmt(dueTodayLoans.reduce((s, l) => s + l.totalExpected, 0));
+        await sendTestNotification('LoanTrack · รายการรอติดตาม', `${dueTodayLoans.length} ราย ยังไม่ชำระ  รวม ${total}\n${nameList(dueTodayLoans)}`);
+      }
     } else {
-      await sendTestNotification('🔔 แจ้งเตือนทวง', `มี ${dueCount} รายการที่ยังไม่ชำระวันนี้`);
+      if (dueTomorrowLoans.length === 0) {
+        await sendTestNotification('LoanTrack · ครบกำหนดพรุ่งนี้', 'ไม่มีรายการครบกำหนดพรุ่งนี้');
+      } else {
+        const total = fmt(dueTomorrowLoans.reduce((s, l) => s + l.totalExpected, 0));
+        await sendTestNotification('LoanTrack · ครบกำหนดพรุ่งนี้', `${dueTomorrowLoans.length} ราย นัดชำระพรุ่งนี้  รวม ${total}\n${nameList(dueTomorrowLoans)}`);
+      }
     }
     setIsSendingTestNotif(false);
   };
@@ -2388,7 +2424,7 @@ export default function App() {
                   )}
                 </div>
                 {isSubscribed && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
                     <button onClick={() => handleTestNotif('morning')} disabled={isSendingTestNotif}
                       style={{ padding: '7px 0', borderRadius: 10, background: D_T.lavender,
                                color: D_T.lavDeep, border: 'none', fontSize: 11, fontWeight: 700,
@@ -2400,6 +2436,12 @@ export default function App() {
                                color: D_T.lavDeep, border: 'none', fontSize: 11, fontWeight: 700,
                                cursor: 'pointer', fontFamily: font }}>
                       {lang === 'th' ? 'ทดสอบ บ่าย' : 'Test Afternoon'}
+                    </button>
+                    <button onClick={() => handleTestNotif('evening')} disabled={isSendingTestNotif}
+                      style={{ padding: '7px 0', borderRadius: 10, background: D_T.lavender,
+                               color: D_T.lavDeep, border: 'none', fontSize: 11, fontWeight: 700,
+                               cursor: 'pointer', fontFamily: font }}>
+                      {lang === 'th' ? 'ทดสอบ เย็น' : 'Test Evening'}
                     </button>
                   </div>
                 )}
