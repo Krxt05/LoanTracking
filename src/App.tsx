@@ -3045,7 +3045,7 @@ export default function App() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 14 }}>
                 {[
-                  [lang === 'th' ? 'ยอดว่าง' : 'Available', formatCurrency(data!.summary.available), D_T.ink],
+                  [lang === 'th' ? 'ยอดว่าง' : 'Available', formatCurrency(data?.summary.available ?? 0), D_T.ink],
                   [lang === 'th' ? 'สำรองล็อก' : 'Reserved', formatCurrency(reserveData.totalLocked), D_T.blushDeep],
                   [lang === 'th' ? 'เบิกได้' : 'Safe', formatCurrency(reserveData.safeWithdrawable), D_T.mintDeep],
                   [lang === 'th' ? 'Coverage Ratio' : 'Coverage Ratio', `${reserveData.coverageRatio.toFixed(1)}%`,
@@ -3123,7 +3123,7 @@ export default function App() {
                           </div>
                           <div style={{ fontSize: 13, fontWeight: 800, marginTop: 2,
                                         color: renewalsNeeded <= 2 ? D_T.butterDeep : D_T.blushDeep }}>
-                            {`อีก ${renewalsNeeded} ครั้ง`}
+                            {lang === 'th' ? `อีก ${renewalsNeeded} ครั้ง` : `${renewalsNeeded} more`}
                           </div>
                         </div>
                       </div>
@@ -3227,7 +3227,7 @@ export default function App() {
                   {/* รายคน */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {reserveData.scamItems.map((sc, idx) => (
-                      <div key={idx} style={{ padding: '12px 14px', borderRadius: 14,
+                      <div key={sc.id} style={{ padding: '12px 14px', borderRadius: 14,
                                   background: D_T.surface2, border: `1px solid ${D_T.blush}` }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                           <div>
