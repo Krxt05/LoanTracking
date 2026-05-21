@@ -10,10 +10,26 @@ import { t, Lang } from './lib/i18n';
 import { motion, AnimatePresence } from 'framer-motion';
 
 
+// ─────────────────────────────────────────────────────────────
+// App — root component (SPA ไฟล์เดียว)
+//
+// Layout:
+//   Desktop (≥768px) = sidebar ซ้าย + main area 3 ส่วน
+//   Mobile           = bottom nav 4 tabs (dashboard / loans / analytics / you)
+//
+// Data flow:
+//   Google Sheets (CSV) → /api/data proxy (server.ts) → fetchAppData() → state
+//   การแก้ไข (ชำระ/ต่อดอก/สร้างใหม่) → Google Apps Script Web App URL
+//   Refresh อัตโนมัติทุก 2 นาที + manual sync button
+//
+// ไม่มี global store — state ทั้งหมดอยู่ใน component นี้
+// ─────────────────────────────────────────────────────────────
 export default function App() {
+  // ── DATA STATE ────────────────────────────────────────────────
   const [data, setData] = useState<AppData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<boolean>(false);
+  // ── UI STATE ──────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'all' | 'renewals' | 'paid' | 'defaulted' | 'withdrawn' | 'raw'>('all');
   const [selectedLoan, setSelectedLoan] = useState<LoanRecord | null>(null);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
@@ -51,6 +67,7 @@ export default function App() {
     if (el) el.scrollLeft = portfolioScrollPos.current < 0 ? el.scrollWidth : portfolioScrollPos.current;
   }, []);
 
+  // ── RESPONSIVE BREAKPOINT ─────────────────────────────────────
   useEffect(() => {
     const checkIsDesktop = () => setIsDesktop(window.innerWidth >= 768);
     checkIsDesktop();
@@ -79,6 +96,7 @@ export default function App() {
     expectedInterest: 175
   });
 
+  // ── FORM STATE ────────────────────────────────────────────────
   // Reset states when selected loan changes
   useEffect(() => {
     setIsEditingLoan(false);
@@ -156,12 +174,16 @@ export default function App() {
   const [overdueListRef] = useAutoAnimate<HTMLDivElement>();
   const [tableRef] = useAutoAnimate<HTMLTableSectionElement>();
 
+  // ── COMPUTED VALUES ────────────────────────────────────────────
+  // useMemo ทุกตัวด้านล่างจะคำนวณใหม่เมื่อ data หรือ deps เปลี่ยนเท่านั้น
+
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     return d;
   }, []);
 
+  // รายการที่ครบกำหนดวันนี้ (ใช้แสดงบนแดชบอร์ดและ document title)
   const dueTodayLoans = useMemo(() => {
     if (!data) return [];
     return data.loans.filter(l => {
@@ -179,6 +201,7 @@ export default function App() {
     data ? data.loans.filter(l => !l.isPaid && !l.isScam && !l.isRenewed && !l.isWithdrawn).length : 0,
   [data]);
 
+  // รายการที่แสดงในตาราง — กรองตาม tab + search + sort
   const filteredLoans = useMemo(() => {
     if (!data) return [];
     let loans = data.loans.filter(l => {
@@ -214,6 +237,7 @@ export default function App() {
     };
   }, [data]);
 
+  // Cashflow trend: จัดกลุ่มดอกตามวันครบกำหนดและวันที่จ่ายจริง (14/30 วัน)
   const { trendData14, trendData30, labelToFullDate } = useMemo(() => {
     if (!data) return { trendData14: [], trendData30: [], labelToFullDate: new Map<string, string>() };
 
@@ -259,6 +283,7 @@ export default function App() {
     return result;
   }, [data, today]);
 
+  // สรุปรายเดือน: ดอกที่เก็บได้, หนี้เสีย, เบิก — ใช้ใน analytics
   const monthlySummary = useMemo(() => {
     if (!data) return [];
     const months: Record<string, { interest: number; scam: number; withdrawn: number; count: number; month: number; year: number }> = {};
@@ -294,6 +319,7 @@ export default function App() {
       .map(([key, val]) => ({ key, ...val }));
   }, [data]);
 
+  // สรุปรายสัปดาห์ (จันทร์–อาทิตย์) — ใช้ใน weekly sheet modal
   const weeklySummary = useMemo(() => {
     if (!data) return [];
     const getMonKey = (d: Date): string => {
@@ -325,7 +351,7 @@ export default function App() {
       .map(([key, val]) => ({ key, ...val, isCurrentWeek: key === thisKey }));
   }, [data]);
 
-  // Per-person stats for loyalty tiers and leaderboard
+  // สถิติต่อคน: จำนวนต่อดอก, ดอกสะสม, มี active/scam — ใช้ loyalty tier
   const borrowerStats = useMemo(() => {
     if (!data) return [];
     const map: Record<string, { name: string; totalRenewals: number; totalEarned: number; hasActive: boolean; hasScam: boolean }> = {};
@@ -343,6 +369,10 @@ export default function App() {
     [...new Set(data?.loans.map(l => l.name) ?? [])].sort()
   , [data]);
 
+  // ดอกสำรอง: คำนวณว่า "ยอดว่าง" จริงๆ เบิกได้เท่าไหน
+  //   locked = ดอกสะสมที่ยังไม่ถึงต้น (ต้องสำรองไว้กันความเสี่ยง)
+  //   safeWithdrawable = available - totalLocked
+  //   scamItems = ประวัติหนี้เสียพร้อมดอกที่ดูดซับความเสียหายได้
   const reserveData = useMemo(() => {
     if (!data) return { totalLocked: 0, safeWithdrawable: 0, items: [] };
     const latestByName: Record<string, typeof data.loans[0]> = {};
@@ -395,6 +425,9 @@ export default function App() {
     return { totalLocked, safeWithdrawable, items, coverageRatio, scamItems, totalScamPrincipal, totalInterestAbsorbed, totalNetLoss };
   }, [data]);
 
+  // Portfolio growth chart: historical + forecast line
+  //   historical = running total จากดอกจริง/scam/เบิก ตามลำดับวันที่
+  //   forecast   = ต่อจาก historical ด้วยดอกที่คาดว่าจะได้จาก active loans
   const portfolioGrowthData = useMemo(() => {
     if (!data) return [];
     const INITIAL = 20000;
@@ -513,6 +546,9 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // ── ACTION HANDLERS ───────────────────────────────────────────
+
+  // สร้างลูกหนี้ใหม่ → POST ไปยัง Google Apps Script แล้ว refresh data หลัง 2.5 วิ
   const handleCreateNewLoan = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newLoanForm.name || !newLoanForm.principal) return;
@@ -547,6 +583,7 @@ export default function App() {
     }
   };
 
+  // บันทึกการเบิกเงิน → ใช้ createNewLoan เดียวกัน แต่ status = "เบิก"
   const handleWithdrawSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!withdrawForm.principal) return;
@@ -582,6 +619,9 @@ export default function App() {
     }
   };
 
+  // อัปเดตสถานะ loan: ชำระแล้ว / ต่อดอก / โดนบิด
+  //   Optimistic update: อัปเดต UI ทันที ไม่รอ API
+  //   ถ้า API ล้มเหลว: rollback state และแสดง toast error
   const handleUpdateStatus = async (action: 'ชำระแล้ว' | 'ต่อดอก' | 'โดนบิด') => {
     if (!selectedLoan || !data) return;
 
@@ -727,6 +767,9 @@ export default function App() {
     setIsSendingTestNotif(false);
   };
 
+  // ── INITIAL LOAD + AUTO-REFRESH ───────────────────────────────
+  // โหลดข้อมูลครั้งแรก + ลงทะเบียน Service Worker สำหรับ push notification
+  // loadData() (ถูกนิยามในไฟล์นี้ด้านบน) ถูกเรียกซ้ำทุก 2 นาทีด้วย
   useEffect(() => {
     fetchAppData()
       .then(res => {
@@ -747,6 +790,8 @@ export default function App() {
     });
   }, []);
 
+  // ── DESIGN TOKENS ─────────────────────────────────────────────
+  // สีทั้งหมดของ app อยู่ที่นี่ — เปลี่ยนตรงนี้จุดเดียวเพื่อเปลี่ยน theme
   const D_T = {
     bg: '#f7f1e3', surface: '#ffffff', surface2: '#fbf6ec',
     ink: '#1b1f2a', ink2: '#3a4254', mute: '#7a8298', mute2: '#aab1bd',
@@ -901,10 +946,13 @@ export default function App() {
     );
   };
 
+  // ── INLINE COMPONENTS ─────────────────────────────────────────
+  // Component เล็กๆ ที่ใช้ D_T และ state จาก scope นี้ จึงนิยามไว้ใน App
   const font = '"Hanken Grotesk", "IBM Plex Sans Thai", system-ui, sans-serif';
   const mono = '"DM Mono", ui-monospace, monospace';
 
-  // --- Portfolio Growth Chart ---
+  // กราฟเส้น Portfolio Growth: historical (เส้นทึบ) + forecast (เส้นประ)
+  // รองรับ 3 เส้น: portfolio net / gross / interest-only (toggle ได้)
   const PortfolioGrowthChart = ({ compact = false, hideControls = false }: { compact?: boolean; hideControls?: boolean }) => {
     const pts = filteredPortfolioData;
     const YELLOW = '#f5a623', RED = '#e04545';
@@ -1290,6 +1338,11 @@ export default function App() {
     return lang === 'th' ? `เก็บหนี้ ${dueTodayLoans.length} รายวันนี้` : `${dueTodayLoans.length} collection${dueTodayLoans.length > 1 ? 's' : ''} today`;
   })();
 
+  // ── RENDER ────────────────────────────────────────────────────
+  // Desktop: sidebar ซ้าย (224px) + main area (flex-1)
+  //   main area แบ่ง 3 ส่วน: dashboard | loans table | analytics
+  // Mobile:  bottom nav bar + content ตาม activeMobileTab
+  // Modal stack: ทุก modal render ที่ท้าย return ด้วย position:fixed z-index 70+
   return (
     <div style={{ minHeight: '100vh', background: D_T.bg, color: D_T.ink, fontFamily: font }}>
 

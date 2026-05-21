@@ -1,3 +1,13 @@
+// ─────────────────────────────────────────────────────────────
+// server.ts — Express + Vite dev server
+//
+// ทำงานอย่างไร:
+//   1. เปิด Express รับ request บน PORT (default 3002)
+//   2. GET /api/data  → proxy ดึง CSV จาก Google Sheets แล้วส่งกลับ
+//      (หลีกเลี่ยง CORS error ที่เกิดเมื่อ browser ดึง Sheet โดยตรง)
+//   3. Vite middleware จัดการ React HMR ในโหมด development
+//   4. โหมด production: serve static files จาก dist/
+// ─────────────────────────────────────────────────────────────
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
