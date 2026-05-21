@@ -29,15 +29,27 @@ function parseNum(val: any): number {
   return parseFloat(String(val).replace(/,/g, '')) || 0;
 }
 
+function formatBaht(n: number): string {
+  return '฿' + n.toLocaleString('th-TH', { maximumFractionDigits: 0 });
+}
+
+function formatNameList(loans: { name: string; totalExpected: number }[], limit = 3): string {
+  const shown = loans.slice(0, limit).map(l => `${l.name} ${formatBaht(l.totalExpected)}`);
+  const extra = loans.length - limit;
+  return shown.join(', ') + (extra > 0 ? ` +${extra} ราย` : '');
+}
+
 async function fetchLoanData() {
   const resp = await fetch(`${CSV_URL}&_=${Date.now()}`);
   const text = await resp.text();
-  
+
   const rows = text.split('\n').map(r => r.split(',').map(c => c.replace(/^"|"$/g, '').trim()));
   if (rows.length < 4) return [];
-  
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
 
   const loans = [];
   for (let i = 3; i < rows.length; i++) {
@@ -48,23 +60,25 @@ async function fetchLoanData() {
     const isScam = status.includes('บิด');
     const isRenewed = status.includes('ต่อดอก');
     const isWithdrawn = status.includes('เบิก');
-    
+
     if (isPaid || isScam || isRenewed || isWithdrawn) continue;
-    
+
     const dueDate = parseThaiDate(String(row[4] || ''));
     if (!dueDate) continue;
-    
+
     const dueTime = dueDate.getTime();
     const isDueToday = dueTime === today.getTime();
     const isOverdue = dueTime < today.getTime();
-    
-    if (isDueToday || isOverdue) {
+    const isDueTomorrow = dueTime === tomorrow.getTime();
+
+    if (isDueToday || isOverdue || isDueTomorrow) {
       loans.push({
         name: String(row[1] || '').trim(),
         totalExpected: parseNum(row[11]),
         dueDate: String(row[4] || ''),
         isDueToday,
         isOverdue,
+        isDueTomorrow,
         daysLate: parseNum(row[7])
       });
     }
@@ -80,11 +94,11 @@ async function loadSubscriptions(): Promise<object[]> {
 async function sendToAll(payload: object) {
   const subs = await loadSubscriptions();
   console.log(`📤 Sending to ${subs.length} subscription(s)...`);
-  
+
   const results = await Promise.allSettled(
     subs.map(sub => webpush.sendNotification(sub as webpush.PushSubscription, JSON.stringify(payload)))
   );
-  
+
   const success = results.filter(r => r.status === 'fulfilled').length;
   const failed = results.filter(r => r.status === 'rejected') as PromiseRejectedResult[];
   failed.forEach((r, i) => console.error(`❌ Push fail [${i}]:`, r.reason?.statusCode, r.reason?.body || r.reason?.message));
@@ -92,10 +106,8 @@ async function sendToAll(payload: object) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // ป้องกัน unauthorized access
   const secret = req.headers['x-cron-secret'];
   if (secret !== process.env.CRON_SECRET) {
-    // อนุญาตสำหรับการ test จาก UI ด้วย
     const bodySecret = (req.body as any)?.secret;
     if (bodySecret !== process.env.CRON_SECRET && req.method !== 'GET') {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -106,42 +118,79 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const loans = await fetchLoanData();
     const dueToday = loans.filter(l => l.isDueToday);
     const overdue = loans.filter(l => l.isOverdue);
+    const dueTomorrow = loans.filter(l => l.isDueTomorrow);
 
-    // เช็คว่าเป็น trigger แบบไหน (6โมงเช้า หรือ 16.00น.)
     const type = (req.query.type || req.body?.type || 'morning') as string;
 
-    let payload;
+    let payload: object | null = null;
+
     if (type === 'morning') {
-      // 🌅 แจ้งเตือนตอน 6:00น.
+      // 🌅 06:00 น. — สรุปยอดประจำวัน
       const total = dueToday.length + overdue.length;
+      if (total === 0) {
+        payload = {
+          title: '🌅 LoanTrack — สรุปยอดวันนี้',
+          body: '✅ วันนี้ไม่มียอดที่ต้องติดตาม',
+          icon: '/icon.png', url: '/'
+        };
+      } else {
+        const todayTotal = dueToday.reduce((s, l) => s + l.totalExpected, 0);
+        const overdueTotal = overdue.reduce((s, l) => s + l.totalExpected, 0);
+        const lines: string[] = [];
+        if (dueToday.length > 0) lines.push(`📋 วันนี้: ${formatNameList(dueToday)} | รวม ${formatBaht(todayTotal)}`);
+        if (overdue.length > 0) {
+          const maxDays = Math.max(...overdue.map(l => l.daysLate));
+          lines.push(`⚠️ ค้างชำระ: ${overdue.length} ราย (+${maxDays}วัน) | รวม ${formatBaht(overdueTotal)}`);
+        }
+        payload = {
+          title: '🌅 LoanTrack — สรุปยอดวันนี้',
+          body: lines.join('\n'),
+          icon: '/icon.png', url: '/'
+        };
+      }
+
+    } else if (type === 'afternoon') {
+      // 🔔 16:00 น. — รายการที่ยังไม่ชำระ
+      if (dueToday.length === 0) {
+        payload = {
+          title: '🔔 LoanTrack — รายการรอติดตาม',
+          body: '✅ ยอดทั้งหมดของวันนี้ชำระแล้ว!',
+          icon: '/icon.png', url: '/'
+        };
+      } else {
+        const total = dueToday.reduce((s, l) => s + l.totalExpected, 0);
+        payload = {
+          title: '🔔 LoanTrack — รายการรอติดตาม',
+          body: `ยังมี ${dueToday.length} ราย รอติดตาม — ทักก่อนดึก\n${formatNameList(dueToday)} | รวม ${formatBaht(total)}`,
+          icon: '/icon.png', url: '/'
+        };
+      }
+
+    } else if (type === 'evening') {
+      // 📅 18:00 น. — แจ้งล่วงหน้าครบกำหนดพรุ่งนี้
+      if (dueTomorrow.length === 0) {
+        // ไม่มีอะไรพรุ่งนี้ ไม่ต้องส่ง
+        return res.status(200).json({ success: true, type, skipped: true, reason: 'no loans due tomorrow' });
+      }
+      const total = dueTomorrow.reduce((s, l) => s + l.totalExpected, 0);
       payload = {
-        title: `🌅 LoanTrack - สรุปยอดวันนี้`,
-        body: total === 0
-          ? '✅ วันนี้ไม่มียอดที่ต้องติดตาม'
-          : `📋 นัดชำระวันนี้: ${dueToday.length} ราย | ⚠️ ค้างชำระ: ${overdue.length} ราย`,
-        icon: '/icon.png',
-        url: '/'
-      };
-    } else {
-      // 🔔 แจ้งเตือนตอน 16:00น.
-      const unpaids = dueToday.filter(l => l.isDueToday);
-      payload = {
-        title: `🔔 LoanTrack - ต้องทวงวันนี้!`,
-        body: unpaids.length === 0
-          ? '✅ ยอดทั้งหมดของวันนี้ชำระแล้ว!'
-          : `💬 ยังมี ${unpaids.length} ราย ที่ยังไม่ชำระในวันนี้ รีบตามทวงด่วน!`,
-        icon: '/icon.png',
-        url: '/'
+        title: '📅 LoanTrack — ครบกำหนดพรุ่งนี้',
+        body: `${dueTomorrow.length} ราย นัดชำระพรุ่งนี้ รวม ${formatBaht(total)}\n${formatNameList(dueTomorrow)}`,
+        icon: '/icon.png', url: '/'
       };
     }
 
+    if (!payload) {
+      return res.status(400).json({ error: `Unknown type: ${type}` });
+    }
+
     const result = await sendToAll(payload);
-    
+
     return res.status(200).json({
-      success: true,
-      type,
+      success: true, type,
       dueToday: dueToday.length,
       overdue: overdue.length,
+      dueTomorrow: dueTomorrow.length,
       notification: payload,
       sent: result
     });
