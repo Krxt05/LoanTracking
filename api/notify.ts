@@ -86,8 +86,9 @@ async function sendToAll(payload: object) {
   );
   
   const success = results.filter(r => r.status === 'fulfilled').length;
-  const fail = results.filter(r => r.status === 'rejected').length;
-  return { success, fail };
+  const failed = results.filter(r => r.status === 'rejected') as PromiseRejectedResult[];
+  failed.forEach((r, i) => console.error(`❌ Push fail [${i}]:`, r.reason?.statusCode, r.reason?.body || r.reason?.message));
+  return { success, fail: failed.length };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

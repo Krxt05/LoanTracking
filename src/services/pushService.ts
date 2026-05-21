@@ -1,7 +1,7 @@
 // Push Notification Service
 // จัดการการขอสิทธิ์, การ subscribe และการแจ้งเตือนภายในแอป
 
-const VAPID_PUBLIC_KEY = 'BJ9ux0HOM7ynfEnwkxkrcQuUZ6e7kKYLcEKV07Cwgz1fAH5tSxFGoYnlW1FDVSrStAueMd6JSWLQ31c_Jx90vGw';
+const VAPID_PUBLIC_KEY = 'BIvApW9EtSWYjN351JzFxIhm3IaVxWKKrMD7NBIAvu-ABEW7DGuPw1rV7H9JP5IBBxrKI0OL5mrWXWgBg-k5D14';
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
