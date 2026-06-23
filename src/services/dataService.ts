@@ -19,7 +19,7 @@ import { parseNumeric, parseThaiDate } from '../lib/utils';
 export const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRYsFTD4K-tyIFIJry2YLJtnv6gUxZy9VZCvRZcOeGrD9X7inE8udy-cJU_ajJEWcouDSswJZYdAjE8/pub?gid=164801172&single=true&output=csv';
 
 // เงินต้นเริ่มต้นที่ลงทุน — แก้ตรงนี้เมื่อเพิ่มทุน
-export const INITIAL_CAPITAL = 20000;
+export const INITIAL_CAPITAL = 40000;
 
 export interface DashboardSummary {
   available: number;       // ยอดว่าง

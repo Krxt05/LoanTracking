@@ -430,7 +430,7 @@ export default function App() {
   //   forecast   = ต่อจาก historical ด้วยดอกที่คาดว่าจะได้จาก active loans
   const portfolioGrowthData = useMemo(() => {
     if (!data) return [];
-    const INITIAL = 20000;
+    const INITIAL = 40000;
 
     type DayEv = { earned: number; scam: number; withdrawn: number; wNames: string[]; sNames: string[] };
     const byMs = new Map<number, DayEv & { label: string }>();
@@ -992,7 +992,7 @@ export default function App() {
   const PortfolioGrowthChart = ({ compact = false, hideControls = false }: { compact?: boolean; hideControls?: boolean }) => {
     const pts = filteredPortfolioData;
     const YELLOW = '#f5a623', RED = '#e04545';
-    const INITIAL = 20000;
+    const INITIAL = 40000;
     const sfx = compact ? 'c' : 'f';
 
     const h = compact ? 150 : 210;
@@ -2350,7 +2350,7 @@ export default function App() {
                 {lang === 'th' ? 'ภาพรวมทุน' : 'Capital Overview'}
               </div>
               {([
-                [lang === 'th' ? 'ทุนตั้งต้น' : 'Initial capital', formatCurrency(20000), D_T.ink, D_T.surface2],
+                [lang === 'th' ? 'ทุนตั้งต้น' : 'Initial capital', formatCurrency(40000), D_T.ink, D_T.surface2],
                 [lang === 'th' ? 'วงเงินปัจจุบัน' : 'Current limit', formatCurrency(s.totalLimit), D_T.ink, D_T.surface2],
                 [lang === 'th' ? 'ออกอยู่' : 'Deployed', formatCurrency(s.totalBorrowed - s.scamPrincipal), D_T.ink2, D_T.surface2],
                 [lang === 'th' ? 'เงินสดว่าง' : 'Available', formatCurrency(s.available), D_T.mintDeep, D_T.mint + '25'],

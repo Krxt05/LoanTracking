@@ -7,6 +7,10 @@
 const SPREADSHEET_ID = "1DlIwl4EPWCmG5jRsYjtz-DePuU5ehOmjqCaxYrU85CM";
 
 function doGet(e) {
+  // state layer (Customers/Config/EventLog) — dispatch ก่อน logic ledger
+  if (e.parameter.action && typeof isStateAction === "function" && isStateAction(e.parameter.action)) {
+    return handleStateAction(e.parameter);
+  }
   if (e.parameter.id && e.parameter.action) {
     let loanData = {
       actionDate: e.parameter.actionDate,
@@ -26,6 +30,10 @@ function doPost(e) {
   try {
     if (e.postData && e.postData.contents) {
       const payload = JSON.parse(e.postData.contents);
+      // state layer — dispatch ก่อน logic ledger
+      if (payload.action && typeof isStateAction === "function" && isStateAction(payload.action)) {
+        return handleStateAction(payload);
+      }
       return processData(payload.id, payload.action, payload.loanData);
     }
   } catch (error) {
