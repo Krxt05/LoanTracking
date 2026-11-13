@@ -8,7 +8,7 @@ import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, getNotificationPermission, sendTestNotification } from './services/pushService';
 import { t, Lang } from './lib/i18n';
 import { motion, AnimatePresence } from 'framer-motion';
-import { House, HandCoins, ChartLineUp, User, Plus, X, ArrowClockwise, PencilSimple, CaretRight, Bell, BellSlash, ChatCircleText, Copy, PaperPlaneTilt } from '@phosphor-icons/react';
+import { House, HandCoins, ChartLineUp, User, Plus, X, ArrowClockwise, PencilSimple, CaretRight, Bell, BellSlash, ChatCircleText, Copy, MessengerLogo } from '@phosphor-icons/react';
 
 
 // ─────────────────────────────────────────────────────────────
@@ -634,8 +634,16 @@ export default function App() {
     }
   };
 
-  const shareReminderLine = () => {
-    window.open('https://line.me/R/share?text=' + encodeURIComponent(reminderText), '_blank', 'noopener');
+  // Messenger ไม่รับข้อความผ่านลิงก์ → คัดลอกไว้ก่อน แล้วเปิดเมนูแชร์ของเครื่อง (เลือก Messenger ได้ ข้อความติดไปด้วย)
+  //   เครื่องที่ไม่มีเมนูแชร์ (คอม) → เปิด Messenger ให้วางเอง
+  const shareReminderMessenger = async () => {
+    try { await navigator.clipboard.writeText(reminderText); } catch {}
+    if (navigator.share) {
+      try { await navigator.share({ text: reminderText }); return; }
+      catch (e: any) { if (e?.name === 'AbortError') return; }
+    }
+    window.open('https://www.messenger.com/', '_blank', 'noopener');
+    showToast(lang === 'th' ? 'คัดลอกแล้ว เปิดแชทแล้ววางได้เลย' : 'Copied. Open the chat and paste.');
   };
 
   const openTemplateEditor = () => {
@@ -3415,12 +3423,12 @@ export default function App() {
                 <Copy size={18} weight="bold" aria-hidden="true" />
                 {lang === 'th' ? 'คัดลอก' : 'Copy'}
               </button>
-              <button onClick={shareReminderLine} className="lt-btn"
-                style={{ padding: '12px 0', borderRadius: 12, background: '#06C755', color: '#fff', border: 'none',
+              <button onClick={shareReminderMessenger} className="lt-btn"
+                style={{ padding: '12px 0', borderRadius: 12, background: '#0866FF', color: '#fff', border: 'none',
                          fontSize: 14, fontWeight: 600, fontFamily: font, cursor: 'pointer',
                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                <PaperPlaneTilt size={18} weight="bold" aria-hidden="true" />
-                {lang === 'th' ? 'ส่งทาง LINE' : 'Send via LINE'}
+                <MessengerLogo size={18} weight="fill" aria-hidden="true" />
+                {lang === 'th' ? 'ส่งทาง Messenger' : 'Send via Messenger'}
               </button>
             </div>
             <button onClick={openTemplateEditor} className="lt-btn"
