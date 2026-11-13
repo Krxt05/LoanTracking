@@ -582,6 +582,14 @@ export default function App() {
     showToast(lang === 'th' ? `ปรับแล้ว เงินในบัญชี ${formatCurrency(bank)}` : `Updated. Cash in account ${formatCurrency(bank)}`);
   };
 
+  // ทำให้ div/span/tr ที่กดได้ ใช้คีย์บอร์ดได้ด้วย (Enter / Space)
+  const tap = (fn?: ((e?: any) => void) | null) => fn ? ({
+    onClick: fn,
+    onKeyDown: (e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(e); } },
+    role: 'button' as const,
+    tabIndex: 0,
+  }) : {};
+
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ text, type });
     setTimeout(() => setToastMessage(null), 3500);
@@ -944,7 +952,7 @@ export default function App() {
             Pocket Bank
           </div>
           <div style={{ fontSize: 12, color: D_T.mute, marginBottom: 24 }}>
-            {lang === 'th' ? 'กำลังโหลดข้อมูล...' : 'Loading your data...'}
+            {lang === 'th' ? 'กำลังโหลดข้อมูล…' : 'Loading your data…'}
           </div>
           <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
             {[0, 120, 240].map(d => (
@@ -1457,7 +1465,7 @@ export default function App() {
             [lang === 'th' ? 'รายงาน' : 'Reports', 'analytics', '◑', null],
           ] as [string, string, string, number | null][]).map(([label, tab, icon, badge]) => (
             <div key={tab}
-              onClick={() => setActiveMobileTab(tab as any)}
+              {...tap(() => setActiveMobileTab(tab as any))}
               style={{ padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
                        background: activeMobileTab === tab ? D_T.surface : 'transparent',
                        color: activeMobileTab === tab ? D_T.ink : D_T.ink2,
@@ -1480,7 +1488,7 @@ export default function App() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
               <span style={{ width: 7, height: 7, borderRadius: 99,
                              background: isSyncing ? D_T.butterDeep : D_T.mintDeep, display: 'block' }} />
-              <span style={{ fontSize: 12, fontWeight: 700 }}>{isSyncing ? (lang === 'th' ? 'กำลังซิงค์...' : 'Syncing...') : (lang === 'th' ? 'ซิงค์แล้ว' : 'Synced')}</span>
+              <span style={{ fontSize: 12, fontWeight: 700 }}>{isSyncing ? (lang === 'th' ? 'กำลังซิงค์…' : 'Syncing…') : (lang === 'th' ? 'ซิงค์แล้ว' : 'Synced')}</span>
             </div>
             <div style={{ fontSize: 11, color: D_T.mute, lineHeight: 1.5 }}>
               {lang === 'th' ? 'ดึงจาก Google Sheets' : 'Pulled from your Sheets ledger.'}
@@ -1489,19 +1497,19 @@ export default function App() {
 
           {/* Lang + refresh */}
           <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={toggleLang}
+            <button onClick={toggleLang} aria-label={lang === 'th' ? 'Switch to English' : 'เปลี่ยนเป็นภาษาไทย'}
               style={{ flex: 1, padding: '8px 0', borderRadius: 10, background: D_T.surface,
                        border: `1px solid ${D_T.line}`, fontSize: 11, fontWeight: 700,
                        color: D_T.ink2, cursor: 'pointer', fontFamily: font }}>
               {lang === 'th' ? 'EN' : 'TH'}
             </button>
-            <button onClick={() => loadData()}
+            <button onClick={() => loadData()} aria-label={lang === 'th' ? 'รีเฟรชข้อมูล' : 'Refresh data'}
               style={{ flex: 1, padding: '8px 0', borderRadius: 10, background: D_T.surface,
                        border: `1px solid ${D_T.line}`, fontSize: 11, fontWeight: 700,
                        color: D_T.ink2, cursor: 'pointer', fontFamily: font }}>
               ↺
             </button>
-            <button onClick={() => setShowNotifModal(true)}
+            <button onClick={() => setShowNotifModal(true)} aria-label={lang === 'th' ? 'ตั้งค่าการแจ้งเตือน' : 'Notification settings'}
               style={{ flex: 1, padding: '8px 0', borderRadius: 10, background: D_T.surface,
                        border: `1px solid ${D_T.line}`, fontSize: 14, cursor: 'pointer' }}>
               {isSubscribed ? '🔔' : '🔕'}
@@ -1550,7 +1558,7 @@ export default function App() {
             ] as [string, string, string | null, boolean | null][]).map(([label, value, arrow, pos], i) => (
               <div key={label}
                 title={i === 3 ? (lang === 'th' ? 'คลิกเพื่อเช็คกับบัญชีจริง' : 'Click to match bank balance') : undefined}
-                onClick={i === 1 ? () => setShowProfitModal(true) : i === 3 ? openReconcile : undefined}
+                {...tap(i === 1 ? () => setShowProfitModal(true) : i === 3 ? openReconcile : undefined)}
                 style={{ padding: '20px 24px', borderRight: `1px solid ${D_T.line}`,
                          display: 'flex', flexDirection: 'column', gap: 10,
                          cursor: i === 1 || i === 3 ? 'pointer' : 'default' }}>
@@ -1649,7 +1657,7 @@ export default function App() {
 
                   {/* เบิกได้จริง — desktop analytics */}
                   {reserveData.totalLocked > 0 && (
-                    <div onClick={() => setShowReserveBreakdown(true)}
+                    <div {...tap(() => setShowReserveBreakdown(true))}
                       style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
                                borderRadius: 18, padding: '18px 22px', marginBottom: 20, cursor: 'pointer',
                                display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1744,7 +1752,7 @@ export default function App() {
                           ['defaulted', lang === 'th' ? 'หนี้เสีย' : 'Defaulted', tabCounts.defaulted],
                           ['withdrawn', lang === 'th' ? 'เบิก' : 'Withdrawn', tabCounts.withdrawn],
                         ] as [string, string, number][]).map(([tab, label, count]) => (
-                          <span key={tab} onClick={() => { setActiveTab(tab as any); setSearchQuery(''); }}
+                          <span key={tab} {...tap(() => { setActiveTab(tab as any); setSearchQuery(''); })}
                             style={{ padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
                                      background: activeTab === tab ? D_T.ink : D_T.surface2,
                                      color: activeTab === tab ? D_T.bg : D_T.ink2,
@@ -1757,13 +1765,13 @@ export default function App() {
                       </div>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                          placeholder={lang === 'th' ? 'ค้นหา...' : 'Search...'}
+                          placeholder={lang === 'th' ? 'ค้นหา…' : 'Search…'}
                           style={{ padding: '6px 12px', borderRadius: 999, border: `1px solid ${D_T.line}`,
-                                   background: D_T.surface2, fontSize: 11, color: D_T.ink,
+                                   background: D_T.surface2, fontSize: 14, color: D_T.ink,
                                    outline: 'none', fontFamily: font, width: 140 }} />
                         <select value={sortBy} onChange={e => setSortBy(e.target.value as any)}
                           style={{ padding: '6px 10px', borderRadius: 999, border: `1px solid ${D_T.line}`,
-                                   background: D_T.surface2, fontSize: 11, color: D_T.ink2,
+                                   background: D_T.surface2, fontSize: 14, color: D_T.ink2,
                                    outline: 'none', fontFamily: font, cursor: 'pointer' }}>
                           <option value="default">{lang === 'th' ? 'ล่าสุด' : 'Latest'}</option>
                           <option value="amount-desc">{lang === 'th' ? 'มากสุด' : 'Highest'}</option>
@@ -1792,7 +1800,7 @@ export default function App() {
                       </thead>
                       <tbody ref={tableRef}>
                         {filteredLoans.map(l => (
-                          <tr key={l.id} onClick={() => setSelectedLoan(l)}
+                          <tr key={l.id} {...tap(() => setSelectedLoan(l))}
                             style={{ borderBottom: `1px solid ${D_T.line2}`, cursor: 'pointer',
                                      background: selectedLoan?.id === l.id ? D_T.surface2 : 'transparent',
                                      transition: 'background 300ms cubic-bezier(0.22,1,0.36,1)' }}
@@ -1909,7 +1917,7 @@ export default function App() {
                   </div>
                   <div ref={overdueListRef} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {overdueLoans.map(l => (
-                      <div key={l.id} onClick={() => setSelectedLoan(l)}
+                      <div key={l.id} {...tap(() => setSelectedLoan(l))}
                         style={{ padding: 14, borderRadius: 14, background: D_T.blush, cursor: 'pointer' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                           <span style={{ fontSize: 12, fontWeight: 700 }}>{l.name}</span>
@@ -1990,17 +1998,17 @@ export default function App() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={toggleLang}
+            <button onClick={toggleLang} aria-label={lang === 'th' ? 'Switch to English' : 'เปลี่ยนเป็นภาษาไทย'}
               style={{ width: 32, height: 32, borderRadius: 10, background: D_T.surface,
                        border: `1px solid ${D_T.line}`, fontSize: 10, fontWeight: 700,
                        color: D_T.ink2, cursor: 'pointer', fontFamily: font }}>
               {lang === 'th' ? 'EN' : 'TH'}
             </button>
-            <button onClick={() => loadData(false)} disabled={isSyncing}
+            <button onClick={() => loadData(false)} disabled={isSyncing} aria-label={lang === 'th' ? 'รีเฟรชข้อมูล' : 'Refresh data'}
               style={{ width: 32, height: 32, borderRadius: 10, background: D_T.surface,
                        border: `1px solid ${D_T.line}`, display: 'grid', placeItems: 'center',
                        fontSize: 14, cursor: isSyncing ? 'default' : 'pointer', opacity: isSyncing ? 0.5 : 1 }}>
-              <span style={{ display: 'inline-block', animation: isSyncing ? 'ptr-spin .7s linear infinite' : 'none' }}>↻</span>
+              <span aria-hidden="true" style={{ display: 'inline-block', animation: isSyncing ? 'ptr-spin .7s linear infinite' : 'none' }}>↻</span>
               <style>{`@keyframes ptr-spin { to { transform: rotate(360deg); } }`}</style>
             </button>
           </div>
@@ -2096,7 +2104,7 @@ export default function App() {
                   <DChip tone="ghost">{dueTodayLoans.length} {lang === 'th' ? 'ราย' : 'due'}</DChip>
                 </div>
                 {dueTodayLoans.map(l => (
-                  <div key={l.id} onClick={() => setSelectedLoan(l)}
+                  <div key={l.id} {...tap(() => setSelectedLoan(l))}
                     style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 10,
                              background: 'rgba(255,255,255,.6)', borderRadius: 12, marginTop: 8, cursor: 'pointer' }}>
                     <div style={{ width: 36, height: 36, borderRadius: 10, background: D_T.ink,
@@ -2140,7 +2148,7 @@ export default function App() {
                 </div>
                 <div ref={overdueListRef} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {overdueLoans.slice(0, 3).map(l => (
-                    <div key={l.id} onClick={() => setSelectedLoan(l)}
+                    <div key={l.id} {...tap(() => setSelectedLoan(l))}
                       style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
                                background: 'rgba(255,255,255,.55)', borderRadius: 12, cursor: 'pointer' }}>
                       <div style={{ width: 32, height: 32, borderRadius: 9, background: D_T.blushDeep,
@@ -2175,12 +2183,12 @@ export default function App() {
             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
               <div style={{ flex: 1, position: 'relative' }}>
                 <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                  placeholder={lang === 'th' ? 'ค้นหา...' : 'Search...'}
+                  placeholder={lang === 'th' ? 'ค้นหา…' : 'Search…'}
                   style={{ width: '100%', padding: '10px 36px 10px 14px', borderRadius: 12,
-                           border: `1px solid ${D_T.line}`, background: D_T.surface, fontSize: 12,
+                           border: `1px solid ${D_T.line}`, background: D_T.surface, fontSize: 16,
                            color: D_T.ink, outline: 'none', fontFamily: font, boxSizing: 'border-box' }} />
                 {searchQuery && (
-                  <button onClick={() => setSearchQuery('')}
+                  <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setSearchQuery('')}
                     style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
                              background: 'none', border: 'none', cursor: 'pointer', color: D_T.mute, fontSize: 14 }}>✕</button>
                 )}
@@ -2188,7 +2196,7 @@ export default function App() {
             </div>
             <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 12, paddingBottom: 4 }} className="no-scrollbar">
               {(['all', 'renewals', 'paid', 'defaulted', 'withdrawn'] as const).map(tab => (
-                <span key={tab} onClick={() => { setActiveTab(tab); setSearchQuery(''); }}
+                <span key={tab} {...tap(() => { setActiveTab(tab); setSearchQuery(''); })}
                   style={{ padding: '6px 14px', borderRadius: 999, flexShrink: 0, cursor: 'pointer',
                            background: activeTab === tab ? D_T.ink : D_T.surface,
                            color: activeTab === tab ? D_T.bg : D_T.ink2,
@@ -2205,7 +2213,7 @@ export default function App() {
             </div>
             <div ref={tableRef as any}>
               {filteredLoans.map(l => (
-                <div key={l.id} onClick={() => setSelectedLoan(l)}
+                <div key={l.id} {...tap(() => setSelectedLoan(l))}
                   style={{ background: D_T.surface, borderRadius: 14, padding: '12px 14px', marginBottom: 8,
                            display: 'flex', alignItems: 'center', gap: 12,
                            border: `1px solid ${l.isOverdue ? D_T.blush : D_T.line2}`, cursor: 'pointer' }}>
@@ -2277,7 +2285,7 @@ export default function App() {
                 [lang === 'th' ? 'หนี้เสีย' : 'NPL', nplRatio.toFixed(1) + '%', nplRatio > 10 ? 'blush' : 'mint', null],
                 [lang === 'th' ? 'เงินในบัญชี' : 'Cash in account', formatCurrency(s.available), 'butter', null],
               ] as [string, string, string, (() => void) | null][]).map(([label, value, tone, onTap]) => (
-                <div key={label} onClick={onTap ?? undefined}
+                <div key={label} {...tap(onTap ?? undefined)}
                   style={{ padding: '14px 16px', borderRadius: 14,
                             background: D_T.surface, border: `1px solid ${D_T.line}`,
                             cursor: onTap ? 'pointer' : 'default' }}>
@@ -2356,7 +2364,7 @@ export default function App() {
 
             {/* เบิกได้จริง — mobile analytics */}
             {reserveData.totalLocked > 0 && (
-              <div onClick={() => setShowReserveBreakdown(true)}
+              <div {...tap(() => setShowReserveBreakdown(true))}
                 style={{ borderRadius: 18, cursor: 'pointer', marginBottom: 12,
                           background: D_T.surface, border: `1px solid ${D_T.line}`,
                           padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2555,7 +2563,7 @@ export default function App() {
                            color: isSyncing ? D_T.mute : D_T.bg, border: 'none',
                            fontSize: 12, fontWeight: 700, cursor: isSyncing ? 'default' : 'pointer',
                            fontFamily: font, transition: 'opacity 300ms cubic-bezier(0.22,1,0.36,1), transform 300ms cubic-bezier(0.22,1,0.36,1), background 300ms cubic-bezier(0.22,1,0.36,1)' }}>
-                  {isSyncing ? (lang === 'th' ? 'กำลังซิงค์...' : 'Syncing...') : (lang === 'th' ? 'รีเฟรช' : 'Refresh')}
+                  {isSyncing ? (lang === 'th' ? 'กำลังซิงค์…' : 'Syncing…') : (lang === 'th' ? 'รีเฟรช' : 'Refresh')}
                 </button>
               </div>
               <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2583,10 +2591,12 @@ export default function App() {
             const isActive = activeMobileTab === id;
             return (
               <div key={id}
-                onClick={() => {
+                {...tap(() => {
                   if (id === 'fab') setShowFabMenu(v => !v);
                   else setActiveMobileTab(id as any);
-                }}
+                })}
+                aria-label={id === 'fab' ? (lang === 'th' ? 'เมนูเพิ่มรายการ' : 'Add menu') : undefined}
+                aria-current={!isPrimary && isActive ? 'page' : undefined}
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
                 <div style={{ width: isPrimary ? 44 : 26, height: isPrimary ? 44 : 26,
                                borderRadius: isPrimary ? 14 : 0,
@@ -2641,7 +2651,7 @@ export default function App() {
                                background: isEditingLoan ? D_T.lavender : D_T.surface,
                                color: isEditingLoan ? D_T.lavDeep : D_T.ink,
                                fontSize: 12, cursor: 'pointer' }}>✎</button>
-                    <button onClick={() => setSelectedLoan(null)}
+                    <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setSelectedLoan(null)}
                       style={{ width: 30, height: 30, borderRadius: 99, border: 'none',
                                background: 'rgba(27,31,42,.06)', fontSize: 14, cursor: 'pointer' }}>✕</button>
                   </div>
@@ -2921,7 +2931,7 @@ export default function App() {
                         <input type="number" value={penaltyAmount}
                           onChange={e => setPenaltyAmount(Math.max(0, parseInt(e.target.value) || 0))}
                           style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border: `1px solid ${D_T.butter}`,
-                                   background: D_T.butter + '60', fontSize: 14, fontWeight: 700,
+                                   background: D_T.butter + '60', fontSize: 16, fontWeight: 700,
                                    color: D_T.butterDeep, outline: 'none', fontFamily: mono }} />
                         <span style={{ fontSize: 12, fontWeight: 700, color: D_T.butterDeep }}>฿</span>
                       </div>
@@ -2952,7 +2962,7 @@ export default function App() {
                     style={{ width: '100%', padding: '13px 0', borderRadius: 999, background: D_T.ink,
                              color: D_T.bg, border: 'none', fontSize: 14, fontWeight: 700,
                              fontFamily: font, cursor: 'pointer', opacity: isSyncing ? 0.5 : 1 }}>
-                    {isSyncing ? (lang === 'th' ? 'กำลังบันทึก...' : 'Saving...') : (lang === 'th' ? 'บันทึกการเปลี่ยนแปลง' : 'Save changes')}
+                    {isSyncing ? (lang === 'th' ? 'กำลังบันทึก…' : 'Saving…') : (lang === 'th' ? 'บันทึกการเปลี่ยนแปลง' : 'Save changes')}
                   </button>
                 ) : selectedLoan.isPaid || selectedLoan.isScam || selectedLoan.isRenewed || selectedLoan.isWithdrawn ? (
                   <div style={{ textAlign: 'center', fontSize: 12, color: D_T.mute, padding: '8px 0' }}>
@@ -3026,7 +3036,7 @@ export default function App() {
                     {lang === 'th' ? 'การวิเคราะห์ขั้นสูง' : 'Advanced Analysis'}
                   </div>
                 </div>
-                <button onClick={() => { setShowExpandedTrend(false); setInsightDate(null); }}
+                <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => { setShowExpandedTrend(false); setInsightDate(null); }}
                   style={{ width: 32, height: 32, borderRadius: 99, background: 'rgba(27,31,42,.08)',
                            border: 'none', fontSize: 16, cursor: 'pointer', flexShrink: 0 }}>✕</button>
               </div>
@@ -3112,7 +3122,7 @@ export default function App() {
                             Daily Insight
                           </div>
                         </div>
-                        <button onClick={() => setInsightDate(null)}
+                        <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setInsightDate(null)}
                           style={{ marginLeft: 'auto', width: 26, height: 26, borderRadius: 99,
                                    background: 'rgba(27,31,42,.06)', border: 'none', fontSize: 12, cursor: 'pointer' }}>✕</button>
                       </div>
@@ -3128,7 +3138,7 @@ export default function App() {
                             {lang === 'th' ? 'ไม่มีรายการ' : 'None'}
                           </div>
                         ) : expDue.map(l => (
-                          <div key={'exp-' + l.id} onClick={() => { setInsightDate(null); setShowExpandedTrend(false); setSelectedLoan(l); }}
+                          <div key={'exp-' + l.id} {...tap(() => { setInsightDate(null); setShowExpandedTrend(false); setSelectedLoan(l); })}
                             style={{ padding: '9px 12px', background: D_T.surface2, borderRadius: 10,
                                      border: `1px solid ${D_T.line}`, marginBottom: 6,
                                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -3155,7 +3165,7 @@ export default function App() {
                             {lang === 'th' ? 'ไม่มีการชำระ' : 'None'}
                           </div>
                         ) : expPaid.map(l => (
-                          <div key={'act-' + l.id} onClick={() => { setInsightDate(null); setShowExpandedTrend(false); setSelectedLoan(l); }}
+                          <div key={'act-' + l.id} {...tap(() => { setInsightDate(null); setShowExpandedTrend(false); setSelectedLoan(l); })}
                             style={{ padding: '9px 12px', background: D_T.mint + '35', borderRadius: 10,
                                      border: `1px solid ${D_T.mint}`, marginBottom: 6,
                                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -3200,7 +3210,7 @@ export default function App() {
             onClick={() => setShowReconcile(false)}>
             <div role="dialog" aria-modal="true" aria-labelledby="reconcile-title"
               style={{ background: D_T.surface, borderRadius: '24px 24px 0 0', width: '100%', maxWidth: 520,
-                        maxHeight: '90vh', overflowY: 'auto', padding: '24px 24px 32px',
+                        maxHeight: '90vh', overflowY: 'auto', overscrollBehavior: 'contain', padding: '24px 24px 32px',
                         boxShadow: '0 -12px 40px rgba(27,31,42,.2)' }}
               onClick={e => e.stopPropagation()}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
@@ -3220,7 +3230,7 @@ export default function App() {
               <label htmlFor="bank-input" style={{ fontSize: 14, fontWeight: 500, color: D_T.ink2 }}>
                 {lang === 'th' ? 'เงินในบัญชีตอนนี้ (บาท)' : 'Bank balance now (THB)'}
               </label>
-              <input id="bank-input" inputMode="decimal" autoFocus value={bankInput}
+              <input id="bank-input" inputMode="decimal" autoFocus={isDesktop} autoComplete="off" name="bankBalance" value={bankInput}
                 onChange={e => setBankInput(e.target.value.replace(/[^0-9.,]/g, ''))}
                 onKeyDown={e => { if (e.key === 'Enter' && valid && !isSavingCapital) applyReconcile(); }}
                 style={{ width: '100%', marginTop: 8, padding: '12px 16px', borderRadius: 12, fontSize: 24,
@@ -3275,7 +3285,7 @@ export default function App() {
                       justifyContent: 'center', background: 'rgba(27,31,42,.5)', backdropFilter: 'blur(4px)' }}
           onClick={() => setShowReserveBreakdown(false)}>
           <div style={{ background: D_T.surface, borderRadius: '22px 22px 0 0', width: '100%', maxWidth: 520,
-                        maxHeight: '85vh', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+                        maxHeight: '85vh', overflow: 'hidden', overscrollBehavior: 'contain', display: 'flex', flexDirection: 'column',
                         boxShadow: '0 -12px 40px rgba(27,31,42,.2)' }}
             onClick={e => e.stopPropagation()}>
             <div style={{ padding: '20px 22px 16px', borderBottom: `1px solid ${D_T.line}`, background: D_T.surface2 }}>
@@ -3288,7 +3298,7 @@ export default function App() {
                     {lang === 'th' ? 'เบิกได้จริง' : 'Safe to Withdraw'}
                   </div>
                 </div>
-                <button onClick={() => setShowReserveBreakdown(false)}
+                <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setShowReserveBreakdown(false)}
                   style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
                            border: 'none', fontSize: 14, cursor: 'pointer' }}>✕</button>
               </div>
@@ -3534,7 +3544,7 @@ export default function App() {
                   {lang === 'th' ? 'บันทึกการเบิกเงิน' : 'Record a payout'}
                 </div>
               </div>
-              <button onClick={() => setShowWithdrawModal(false)}
+              <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setShowWithdrawModal(false)}
                 style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
                          border: 'none', fontSize: 14, cursor: 'pointer' }}>✕</button>
             </div>
@@ -3578,9 +3588,9 @@ export default function App() {
                 </label>
                 <input type="text" value={withdrawForm.name}
                   onChange={e => setWithdrawForm({ ...withdrawForm, name: e.target.value })}
-                  placeholder={lang === 'th' ? 'ค่าใช้จ่าย...' : 'Expense...'}
+                  placeholder={lang === 'th' ? 'ค่าใช้จ่าย…' : 'Expense…'}
                   style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: `1px solid ${D_T.line}`,
-                           background: D_T.surface2, fontSize: 14, color: D_T.ink, outline: 'none',
+                           background: D_T.surface2, fontSize: 16, color: D_T.ink, outline: 'none',
                            fontFamily: font, boxSizing: 'border-box' }} />
               </div>
               <div style={{ display: 'flex', gap: 10, paddingTop: 4, borderTop: `1px solid ${D_T.line}` }}>
@@ -3594,7 +3604,7 @@ export default function App() {
                   style={{ flex: 1, padding: '12px 0', borderRadius: 999, background: D_T.ink,
                            color: D_T.bg, border: 'none', fontSize: 12, fontWeight: 700,
                            cursor: 'pointer', fontFamily: font, opacity: isSyncing ? 0.5 : 1 }}>
-                  {isSyncing ? (lang === 'th' ? 'กำลังบันทึก...' : 'Saving...') : (lang === 'th' ? 'ยืนยันการเบิก' : 'Confirm payout')}
+                  {isSyncing ? (lang === 'th' ? 'กำลังบันทึก…' : 'Saving…') : (lang === 'th' ? 'ยืนยันการเบิก' : 'Confirm payout')}
                 </button>
               </div>
             </form>
@@ -3625,7 +3635,7 @@ export default function App() {
                   {lang === 'th' ? 'แค่ 3 ช่อง ระบบคำนวณดอกและกำหนดให้' : 'Three details. Pocket figures out the rest.'}
                 </div>
               </div>
-              <button onClick={() => setShowNewLoanModal(false)}
+              <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setShowNewLoanModal(false)}
                 style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
                          border: 'none', fontSize: 14, cursor: 'pointer', alignSelf: 'flex-start' }}>✕</button>
             </div>
@@ -3643,7 +3653,7 @@ export default function App() {
                     autoComplete="off"
                     style={{ width: '100%', padding: '12px 14px', borderRadius: 12,
                              border: newLoanForm.name ? `1.5px solid ${D_T.ink}` : `1px solid ${D_T.line}`,
-                             background: D_T.surface2, fontSize: 14, fontWeight: 600, color: D_T.ink,
+                             background: D_T.surface2, fontSize: 16, fontWeight: 600, color: D_T.ink,
                              outline: 'none', fontFamily: font, boxSizing: 'border-box' }} />
                   {/* Autocomplete dropdown */}
                   {newLoanForm.name.length > 0 && (() => {
@@ -3692,7 +3702,7 @@ export default function App() {
                   </div>
                   <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
                     {['500', '1000', '1500', '2000', '3000'].map((p, i) => (
-                      <span key={p} onClick={() => setNewLoanForm(f => ({ ...f, principal: p }))}
+                      <span key={p} {...tap(() => setNewLoanForm(f => ({ ...f, principal: p })))}
                         style={{ padding: '5px 9px', borderRadius: 999, cursor: 'pointer',
                                  background: newLoanForm.principal === p ? D_T.ink : D_T.surface2,
                                  color: newLoanForm.principal === p ? D_T.bg : D_T.ink2,
@@ -3727,7 +3737,7 @@ export default function App() {
                   </div>
                   <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                     {[3, 5, 7].map(d => (
-                      <span key={d} onClick={() => handleDaysChange(d)}
+                      <span key={d} {...tap(() => handleDaysChange(d))}
                         style={{ padding: '5px 12px', borderRadius: 999, cursor: 'pointer',
                                  background: newLoanForm.daysBorrowed === d ? D_T.ink : D_T.surface2,
                                  color: newLoanForm.daysBorrowed === d ? D_T.bg : D_T.ink2,
@@ -3803,10 +3813,10 @@ export default function App() {
                 </label>
                 <textarea rows={2} value={newLoanForm.note}
                   onChange={e => setNewLoanForm({ ...newLoanForm, note: e.target.value })}
-                  placeholder={lang === 'th' ? 'เพิ่มหมายเหตุหรือรายละเอียดเพิ่มเติม...' : 'Add a note or extra details...'}
+                  placeholder={lang === 'th' ? 'เพิ่มหมายเหตุหรือรายละเอียดเพิ่มเติม…' : 'Add a note or extra details…'}
                   style={{ width: '100%', padding: '10px 14px', borderRadius: 12,
                            border: `1px solid ${D_T.line}`, background: D_T.surface2,
-                           fontSize: 12, color: D_T.ink, outline: 'none', fontFamily: font,
+                           fontSize: 16, color: D_T.ink, outline: 'none', fontFamily: font,
                            boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.5 }} />
               </div>
             </form>
@@ -3823,7 +3833,7 @@ export default function App() {
                 style={{ flex: 1, padding: '12px 16px', borderRadius: 999, background: D_T.ink,
                          color: D_T.bg, border: 'none', fontSize: 12, fontWeight: 700,
                          cursor: 'pointer', fontFamily: font, opacity: isSyncing || !newLoanForm.name ? 0.5 : 1 }}>
-                {isSyncing ? (lang === 'th' ? 'กำลังบันทึก...' : 'Saving...') :
+                {isSyncing ? (lang === 'th' ? 'กำลังบันทึก…' : 'Saving…') :
                   newLoanForm.name ? (lang === 'th' ? `ส่งให้ ${newLoanForm.name} →` : `Hand ${newLoanForm.name} ${formatCurrency(parseFloat(newLoanForm.principal || '0'))} →`) :
                   (lang === 'th' ? 'กรุณาใส่ชื่อผู้กู้' : 'Enter a borrower name')}
               </button>
@@ -3846,7 +3856,7 @@ export default function App() {
               <div style={{ fontSize: 18, fontWeight: 700 }}>
                 {lang === 'th' ? 'การแจ้งเตือน' : 'Notifications'}
               </div>
-              <button onClick={() => setShowNotifModal(false)}
+              <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setShowNotifModal(false)}
                 style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
                          border: 'none', fontSize: 14, cursor: 'pointer' }}>✕</button>
             </div>
@@ -3993,7 +4003,7 @@ export default function App() {
                   {formatCurrency(s.netProfit)}
                 </div>
               </div>
-              <button onClick={() => setShowProfitModal(false)}
+              <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setShowProfitModal(false)}
                 style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
                          border: 'none', fontSize: 14, cursor: 'pointer' }}>✕</button>
             </div>
@@ -4073,7 +4083,7 @@ export default function App() {
                   {lang === 'th' ? 'กำไรรายสัปดาห์' : 'Weekly Profit'}
                 </div>
               </div>
-              <button onClick={() => setShowWeeklySheet(false)}
+              <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setShowWeeklySheet(false)}
                 style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
                          border: 'none', fontSize: 14, cursor: 'pointer' }}>✕</button>
             </div>
@@ -4126,7 +4136,7 @@ export default function App() {
       )}
 
       {toastMessage && (
-        <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 100 }} className="animate-slide-up">
+        <div role="status" aria-live="polite" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 100 }} className="animate-slide-up">
           <div style={{ padding: '12px 20px', borderRadius: 14, background: toastMessage.type === 'success' ? D_T.mintDeep : D_T.blushDeep,
                         color: '#fff', fontWeight: 700, fontSize: 12, display: 'flex', alignItems: 'center', gap: 10,
                         boxShadow: '0 8px 24px rgba(27,31,42,.3)', fontFamily: font }}>

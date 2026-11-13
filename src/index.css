@@ -153,10 +153,13 @@ body {
 :root { --ease-base: cubic-bezier(0.22, 1, 0.36, 1); }
 button { transition: transform 300ms var(--ease-base), opacity 300ms var(--ease-base); }
 button:not(:disabled):active { transform: scale(0.98); }
-button:focus-visible, input:focus-visible, select:focus-visible, [role="button"]:focus-visible {
-  outline: 2px solid #2f7a5a;
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
+  outline: 2px solid #2f7a5a !important;   /* ชนะ inline outline: none */
   outline-offset: 2px;
 }
+button, [role="button"], a, input, select, textarea, label { touch-action: manipulation; }
+[role="button"] { cursor: pointer; }
+td, .lt-num { font-variant-numeric: tabular-nums; }
 .lt-btn:not(:disabled):hover { opacity: 0.85; }
 h1, h2, h3 { text-wrap: balance; }
 p { text-wrap: pretty; }
