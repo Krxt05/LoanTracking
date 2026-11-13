@@ -8,6 +8,7 @@ import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, getNotificationPermission, sendTestNotification } from './services/pushService';
 import { t, Lang } from './lib/i18n';
 import { motion, AnimatePresence } from 'framer-motion';
+import { House, HandCoins, ChartLineUp, User, Plus, X, ArrowClockwise, PencilSimple, CaretRight, Bell, BellSlash } from '@phosphor-icons/react';
 
 
 // ─────────────────────────────────────────────────────────────
@@ -582,6 +583,15 @@ export default function App() {
     showToast(lang === 'th' ? `ปรับแล้ว เงินในบัญชี ${formatCurrency(bank)}` : `Updated. Cash in account ${formatCurrency(bank)}`);
   };
 
+  const navIcon = (name: string, active: boolean, size: number) => {
+    const w = active ? 'fill' : 'regular';
+    if (name === 'dashboard') return <House size={size} weight={w} aria-hidden="true" />;
+    if (name === 'loans') return <HandCoins size={size} weight={w} aria-hidden="true" />;
+    if (name === 'analytics') return <ChartLineUp size={size} weight={active ? 'bold' : 'regular'} aria-hidden="true" />;
+    if (name === 'you') return <User size={size} weight={w} aria-hidden="true" />;
+    return <Plus size={size} weight="bold" aria-hidden="true" />;
+  };
+
   // ทำให้ div/span/tr ที่กดได้ ใช้คีย์บอร์ดได้ด้วย (Enter / Space)
   const tap = (fn?: ((e?: any) => void) | null) => fn ? ({
     onClick: fn,
@@ -879,6 +889,24 @@ export default function App() {
       setIsSubscribed(!!sub);
     });
   }, []);
+
+  // Esc ปิดหน้าต่างที่เด้งขึ้นมา (บนสุดก่อน)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (showReconcile) setShowReconcile(false);
+      else if (showReserveBreakdown) setShowReserveBreakdown(false);
+      else if (showProfitModal) setShowProfitModal(false);
+      else if (showWeeklySheet) setShowWeeklySheet(false);
+      else if (showNotifModal) setShowNotifModal(false);
+      else if (showWithdrawModal) setShowWithdrawModal(false);
+      else if (showNewLoanModal) setShowNewLoanModal(false);
+      else if (showFabMenu) setShowFabMenu(false);
+      else if (selectedLoan) setSelectedLoan(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showReconcile, showReserveBreakdown, showProfitModal, showWeeklySheet, showNotifModal, showWithdrawModal, showNewLoanModal, showFabMenu, selectedLoan]);
 
   // ── DESIGN TOKENS ─────────────────────────────────────────────
   // สีทั้งหมดของ app อยู่ที่นี่ — เปลี่ยนตรงนี้จุดเดียวเพื่อเปลี่ยน theme
@@ -1472,7 +1500,7 @@ export default function App() {
                        fontSize: 12, fontWeight: activeMobileTab === tab ? 700 : 500,
                        display: 'flex', alignItems: 'center', gap: 10,
                        boxShadow: activeMobileTab === tab ? '0 1px 0 rgba(27,31,42,.04)' : 'none' }}>
-              <span style={{ width: 16, color: activeMobileTab === tab ? D_T.mintDeep : D_T.mute2 }}>{icon}</span>
+              <span style={{ width: 16, display: 'grid', placeItems: 'center', color: activeMobileTab === tab ? D_T.mintDeep : D_T.mute2 }}>{navIcon(tab, activeMobileTab === tab, 16)}</span>
               <span style={{ flex: 1 }}>{label}</span>
               {badge !== null && (
                 <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 999,
@@ -1507,12 +1535,12 @@ export default function App() {
               style={{ flex: 1, padding: '8px 0', borderRadius: 10, background: D_T.surface,
                        border: `1px solid ${D_T.line}`, fontSize: 11, fontWeight: 700,
                        color: D_T.ink2, cursor: 'pointer', fontFamily: font }}>
-              ↺
+              <ArrowClockwise size={16} weight="bold" aria-hidden="true" />
             </button>
             <button onClick={() => setShowNotifModal(true)} aria-label={lang === 'th' ? 'ตั้งค่าการแจ้งเตือน' : 'Notification settings'}
               style={{ flex: 1, padding: '8px 0', borderRadius: 10, background: D_T.surface,
                        border: `1px solid ${D_T.line}`, fontSize: 14, cursor: 'pointer' }}>
-              {isSubscribed ? '🔔' : '🔕'}
+              {isSubscribed ? <Bell size={16} weight="bold" aria-hidden="true" /> : <BellSlash size={16} weight="bold" aria-hidden="true" />}
             </button>
           </div>
         </aside>
@@ -1673,7 +1701,7 @@ export default function App() {
                           {lang === 'th' ? `ล็อกดอกสำรองไว้ ${formatCurrency(reserveData.totalLocked)}` : `Reserve locked ${formatCurrency(reserveData.totalLocked)}`}
                         </div>
                       </div>
-                      <div style={{ fontSize: 20, opacity: .4 }}>›</div>
+                      <CaretRight size={20} style={{ opacity: .4 }} aria-hidden="true" />
                     </div>
                   )}
 
@@ -2008,7 +2036,7 @@ export default function App() {
               style={{ width: 32, height: 32, borderRadius: 10, background: D_T.surface,
                        border: `1px solid ${D_T.line}`, display: 'grid', placeItems: 'center',
                        fontSize: 14, cursor: isSyncing ? 'default' : 'pointer', opacity: isSyncing ? 0.5 : 1 }}>
-              <span aria-hidden="true" style={{ display: 'inline-block', animation: isSyncing ? 'ptr-spin .7s linear infinite' : 'none' }}>↻</span>
+              <span aria-hidden="true" style={{ display: 'grid', placeItems: 'center', animation: isSyncing ? 'ptr-spin .7s linear infinite' : 'none' }}><ArrowClockwise size={16} weight="bold" /></span>
               <style>{`@keyframes ptr-spin { to { transform: rotate(360deg); } }`}</style>
             </button>
           </div>
@@ -2050,7 +2078,9 @@ export default function App() {
                   {formatCurrency(s.available)}
                 </div>
                 <div style={{ fontSize: 12, color: D_T.mintDeep, fontWeight: 600, marginTop: 4 }}>
-                  {lang === 'th' ? 'เช็คกับบัญชีจริง ›' : 'Match bank balance ›'}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                    {lang === 'th' ? 'เช็คกับบัญชีจริง' : 'Match bank balance'}<CaretRight size={12} weight="bold" aria-hidden="true" />
+                  </span>
                 </div>
               </button>
               <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -2190,7 +2220,7 @@ export default function App() {
                 {searchQuery && (
                   <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setSearchQuery('')}
                     style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-                             background: 'none', border: 'none', cursor: 'pointer', color: D_T.mute, fontSize: 14 }}>✕</button>
+                             background: 'none', border: 'none', cursor: 'pointer', color: D_T.mute, fontSize: 14 }}><X size={16} weight="bold" aria-hidden="true" /></button>
                 )}
               </div>
             </div>
@@ -2380,7 +2410,7 @@ export default function App() {
                     {lang === 'th' ? `ล็อกดอกสำรอง ${formatCurrency(reserveData.totalLocked)}` : `Reserve locked ${formatCurrency(reserveData.totalLocked)}`}
                   </div>
                 </div>
-                <div style={{ fontSize: 18, opacity: .5 }}>›</div>
+                <CaretRight size={18} style={{ opacity: .5 }} aria-hidden="true" />
               </div>
             )}
 
@@ -2436,7 +2466,7 @@ export default function App() {
                 <span style={{ fontSize: 14, fontWeight: 600 }}>
                   {lang === 'th' ? 'เช็คกับบัญชีจริง' : 'Match bank balance'}
                 </span>
-                <span style={{ fontSize: 14, color: D_T.mute }}>›</span>
+                <CaretRight size={16} color={D_T.mute} aria-hidden="true" />
               </button>
             </div>
 
@@ -2602,9 +2632,9 @@ export default function App() {
                                borderRadius: isPrimary ? 14 : 0,
                                background: isPrimary ? D_T.ink : 'transparent',
                                color: isPrimary ? D_T.butter : isActive ? D_T.mintDeep : D_T.mute2,
-                               display: 'grid', placeItems: 'center',
+                               display: 'grid', placeItems: 'center', position: 'relative',
                                fontSize: isPrimary ? 22 : 16, fontWeight: 700 }}>
-                  {icon}
+                  {navIcon(id, isActive, isPrimary ? 22 : 24)}
                   {id === 'loans' && overdueLoans.length > 0 && (
                     <span style={{ position: 'absolute', top: -2, right: -6, width: 14, height: 14,
                                    borderRadius: 99, background: D_T.blushDeep, color: '#fff',
@@ -2646,14 +2676,14 @@ export default function App() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <DChip tone="ghost">{selectedLoan.id}</DChip>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button onClick={() => setIsEditingLoan(!isEditingLoan)}
+                    <button onClick={() => setIsEditingLoan(!isEditingLoan)} aria-label={lang === 'th' ? 'แก้ไขรายการ' : 'Edit loan'}
                       style={{ width: 30, height: 30, borderRadius: 99, border: `1px solid ${D_T.line}`,
                                background: isEditingLoan ? D_T.lavender : D_T.surface,
                                color: isEditingLoan ? D_T.lavDeep : D_T.ink,
-                               fontSize: 12, cursor: 'pointer' }}>✎</button>
+                               fontSize: 12, cursor: 'pointer' }}><PencilSimple size={16} weight="bold" aria-hidden="true" /></button>
                     <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setSelectedLoan(null)}
                       style={{ width: 30, height: 30, borderRadius: 99, border: 'none',
-                               background: 'rgba(27,31,42,.06)', fontSize: 14, cursor: 'pointer' }}>✕</button>
+                               background: 'rgba(27,31,42,.06)', fontSize: 14, cursor: 'pointer' }}><X size={16} weight="bold" aria-hidden="true" /></button>
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 14 }}>
@@ -3038,7 +3068,7 @@ export default function App() {
                 </div>
                 <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => { setShowExpandedTrend(false); setInsightDate(null); }}
                   style={{ width: 32, height: 32, borderRadius: 99, background: 'rgba(27,31,42,.08)',
-                           border: 'none', fontSize: 16, cursor: 'pointer', flexShrink: 0 }}>✕</button>
+                           border: 'none', fontSize: 16, cursor: 'pointer', flexShrink: 0 }}><X size={16} weight="bold" aria-hidden="true" /></button>
               </div>
 
               {/* Body */}
@@ -3124,7 +3154,7 @@ export default function App() {
                         </div>
                         <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setInsightDate(null)}
                           style={{ marginLeft: 'auto', width: 26, height: 26, borderRadius: 99,
-                                   background: 'rgba(27,31,42,.06)', border: 'none', fontSize: 12, cursor: 'pointer' }}>✕</button>
+                                   background: 'rgba(27,31,42,.06)', border: 'none', fontSize: 12, cursor: 'pointer' }}><X size={16} weight="bold" aria-hidden="true" /></button>
                       </div>
 
                       {/* Expected due */}
@@ -3224,7 +3254,7 @@ export default function App() {
                 </div>
                 <button onClick={() => setShowReconcile(false)} aria-label={lang === 'th' ? 'ปิด' : 'Close'}
                   style={{ width: 32, height: 32, borderRadius: 999, background: 'rgba(27,31,42,.06)',
-                           border: 'none', fontSize: 14, cursor: 'pointer' }}>✕</button>
+                           border: 'none', fontSize: 14, cursor: 'pointer' }}><X size={16} weight="bold" aria-hidden="true" /></button>
               </div>
 
               <label htmlFor="bank-input" style={{ fontSize: 14, fontWeight: 500, color: D_T.ink2 }}>
@@ -3300,7 +3330,7 @@ export default function App() {
                 </div>
                 <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setShowReserveBreakdown(false)}
                   style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
-                           border: 'none', fontSize: 14, cursor: 'pointer' }}>✕</button>
+                           border: 'none', fontSize: 14, cursor: 'pointer' }}><X size={16} weight="bold" aria-hidden="true" /></button>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 14 }}>
                 {[
@@ -3546,7 +3576,7 @@ export default function App() {
               </div>
               <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setShowWithdrawModal(false)}
                 style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
-                         border: 'none', fontSize: 14, cursor: 'pointer' }}>✕</button>
+                         border: 'none', fontSize: 14, cursor: 'pointer' }}><X size={16} weight="bold" aria-hidden="true" /></button>
             </div>
             <form onSubmit={handleWithdrawSubmit} style={{ padding: '24px 26px 22px', display: 'flex', flexDirection: 'column', gap: 18 }}>
               <div>
@@ -3637,7 +3667,7 @@ export default function App() {
               </div>
               <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setShowNewLoanModal(false)}
                 style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
-                         border: 'none', fontSize: 14, cursor: 'pointer', alignSelf: 'flex-start' }}>✕</button>
+                         border: 'none', fontSize: 14, cursor: 'pointer', alignSelf: 'flex-start' }}><X size={16} weight="bold" aria-hidden="true" /></button>
             </div>
             {/* Form */}
             <form onSubmit={handleCreateNewLoan} style={{ padding: '24px 26px 14px', display: 'flex', flexDirection: 'column', gap: 18, overflowY: 'auto', flex: 1 }}>
@@ -3858,7 +3888,7 @@ export default function App() {
               </div>
               <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setShowNotifModal(false)}
                 style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
-                         border: 'none', fontSize: 14, cursor: 'pointer' }}>✕</button>
+                         border: 'none', fontSize: 14, cursor: 'pointer' }}><X size={16} weight="bold" aria-hidden="true" /></button>
             </div>
             <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ padding: 14, borderRadius: 14, textAlign: 'center',
@@ -4005,7 +4035,7 @@ export default function App() {
               </div>
               <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setShowProfitModal(false)}
                 style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
-                         border: 'none', fontSize: 14, cursor: 'pointer' }}>✕</button>
+                         border: 'none', fontSize: 14, cursor: 'pointer' }}><X size={16} weight="bold" aria-hidden="true" /></button>
             </div>
             <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {[
@@ -4085,7 +4115,7 @@ export default function App() {
               </div>
               <button aria-label={lang === 'th' ? 'ปิด' : 'Close'} onClick={() => setShowWeeklySheet(false)}
                 style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
-                         border: 'none', fontSize: 14, cursor: 'pointer' }}>✕</button>
+                         border: 'none', fontSize: 14, cursor: 'pointer' }}><X size={16} weight="bold" aria-hidden="true" /></button>
             </div>
             <div style={{ overflowY: 'auto', flex: 1 }}>
               {(() => {
