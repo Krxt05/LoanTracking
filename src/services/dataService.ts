@@ -239,6 +239,43 @@ export async function fetchAppData(capital: number = DEFAULT_CAPITAL): Promise<A
   return Promise.race([fetchProcess(), timeoutPromise]);
 }
 
+// ── ข้อความทวงหนี้ ──
+// ตัวแปรที่ใช้ได้: {ยอด} {ต้น} {ดอก} {ชื่อ} {กำหนด}
+export const DEFAULT_REMINDER =
+`🚨วันนี้มีส่งยอด {ยอด} ก่อน 16.00 นะครับ ช้าปรับชั่วโมงละ20 เลทวันถัดไปปรับวันละ200นะครับ😊 หากไม่สะดวกปิดยอดสามารถต่อดอกได้ครับ
+————————————-
+(ใส่เลขบัญชี ธนาคาร และชื่อบัญชี ในแท็บ "คุณ" → ข้อความทวงหนี้)
+ส่งยอดบช.นี้นะครับ`;
+
+export async function fetchReminderTemplate(): Promise<string | null> {
+  try {
+    const res = await fetch('/api/reminder', { cache: 'no-store' });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return typeof json?.template === 'string' ? json.template : null;
+  } catch { return null; }
+}
+
+export async function saveReminderTemplate(template: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/reminder', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ template }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+export function renderReminder(template: string, l: LoanRecord): string {
+  const n = (v: number) => String(Math.round(v));
+  const total = l.principal + l.expectedInterest + (l.penalty || 0);
+  return template
+    .replace(/\{ยอด\}/g, n(total))
+    .replace(/\{ต้น\}/g, n(l.principal))
+    .replace(/\{ดอก\}/g, n(l.expectedInterest))
+    .replace(/\{ชื่อ\}/g, l.name)
+    .replace(/\{กำหนด\}/g, l.dueDate);
+}
+
 // สรุปยอดจากรายการกู้ + ทุนตั้งต้น
 //   วงเงิน   = ทุน + ดอกที่ได้รับ − โดนบิด − เบิก
 //   ยอดว่าง = วงเงิน − ต้นที่ปล่อยกู้อยู่  (= เงินที่ควรอยู่ในบัญชีจริง)

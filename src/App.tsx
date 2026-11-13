@@ -1,14 +1,14 @@
 import React, { useEffect, useLayoutEffect, useState, useCallback, useMemo } from 'react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { fetchAppData, AppData, LoanRecord, updateLoanStatus, createNewLoan, editExistingLoan, fetchCapital, saveCapital, computeSummary, DEFAULT_CAPITAL, CapitalConfig } from './services/dataService';
+import { fetchAppData, AppData, LoanRecord, updateLoanStatus, createNewLoan, editExistingLoan, fetchCapital, saveCapital, computeSummary, DEFAULT_CAPITAL, CapitalConfig, DEFAULT_REMINDER, fetchReminderTemplate, saveReminderTemplate, renderReminder } from './services/dataService';
 import { formatCurrency, parseThaiDate } from './lib/utils';
 import { ResponsiveContainer, Tooltip as RechartsTooltip, Legend, ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 import { registerServiceWorker, subscribeToPush, unsubscribeFromPush, getNotificationPermission, sendTestNotification } from './services/pushService';
 import { t, Lang } from './lib/i18n';
 import { motion, AnimatePresence } from 'framer-motion';
-import { House, HandCoins, ChartLineUp, User, Plus, X, ArrowClockwise, PencilSimple, CaretRight, Bell, BellSlash } from '@phosphor-icons/react';
+import { House, HandCoins, ChartLineUp, User, Plus, X, ArrowClockwise, PencilSimple, CaretRight, Bell, BellSlash, ChatCircleText, Copy, PaperPlaneTilt } from '@phosphor-icons/react';
 
 
 // ─────────────────────────────────────────────────────────────
@@ -37,6 +37,12 @@ export default function App() {
   const [showReconcile, setShowReconcile] = useState(false);
   const [bankInput, setBankInput] = useState('');
   const [isSavingCapital, setIsSavingCapital] = useState(false);
+  // ทวงหนี้
+  const [reminderTemplate, setReminderTemplate] = useState<string>(DEFAULT_REMINDER);
+  const [reminderLoan, setReminderLoan] = useState<LoanRecord | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState(false);
+  const [templateDraft, setTemplateDraft] = useState('');
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   // ── UI STATE ──────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'all' | 'renewals' | 'paid' | 'defaulted' | 'withdrawn' | 'raw'>('all');
   const [selectedLoan, setSelectedLoan] = useState<LoanRecord | null>(null);
@@ -617,6 +623,38 @@ export default function App() {
     tabIndex: 0,
   }) : {};
 
+  const reminderText = reminderLoan ? renderReminder(reminderTemplate, reminderLoan) : '';
+
+  const copyReminder = async () => {
+    try {
+      await navigator.clipboard.writeText(reminderText);
+      showToast(lang === 'th' ? 'คัดลอกแล้ว วางในแชทได้เลย' : 'Copied. Paste it in the chat.');
+    } catch {
+      showToast(lang === 'th' ? 'คัดลอกไม่ได้ กดค้างที่ข้อความเพื่อคัดลอกเอง' : 'Copy failed. Long press the text to copy it.', 'error');
+    }
+  };
+
+  const shareReminderLine = () => {
+    window.open('https://line.me/R/share?text=' + encodeURIComponent(reminderText), '_blank', 'noopener');
+  };
+
+  const openTemplateEditor = () => {
+    setTemplateDraft(reminderTemplate);
+    setEditingTemplate(true);
+  };
+
+  const saveTemplate = async () => {
+    const t = templateDraft.trim();
+    if (!t) { showToast(lang === 'th' ? 'ข้อความว่างอยู่' : 'Message is empty', 'error'); return; }
+    setIsSavingTemplate(true);
+    const ok = await saveReminderTemplate(t);
+    setIsSavingTemplate(false);
+    if (!ok) { showToast(lang === 'th' ? 'บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง' : 'Could not save. Try again.', 'error'); return; }
+    setReminderTemplate(t);
+    setEditingTemplate(false);
+    showToast(lang === 'th' ? 'บันทึกข้อความทวงหนี้แล้ว' : 'Reminder message saved');
+  };
+
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ text, type });
     setTimeout(() => setToastMessage(null), 3500);
@@ -927,6 +965,10 @@ export default function App() {
   // โหลดข้อมูลครั้งแรก + ลงทะเบียน Service Worker สำหรับ push notification
   // loadData() (ถูกนิยามในไฟล์นี้ด้านบน) ถูกเรียกซ้ำทุก 2 นาทีด้วย
   useEffect(() => {
+    fetchReminderTemplate().then(t => { if (t) setReminderTemplate(t); });
+  }, []);
+
+  useEffect(() => {
     fetchCapital()
       .then(cfg => {
         capitalRef.current = cfg.capital;
@@ -955,7 +997,9 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (showReconcile) setShowReconcile(false);
+      if (editingTemplate) setEditingTemplate(false);
+      else if (reminderLoan) setReminderLoan(null);
+      else if (showReconcile) setShowReconcile(false);
       else if (showReserveBreakdown) setShowReserveBreakdown(false);
       else if (showProfitModal) setShowProfitModal(false);
       else if (showWeeklySheet) setShowWeeklySheet(false);
@@ -967,7 +1011,7 @@ export default function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [showReconcile, showReserveBreakdown, showProfitModal, showWeeklySheet, showNotifModal, showWithdrawModal, showNewLoanModal, showFabMenu, selectedLoan]);
+  }, [editingTemplate, reminderLoan, showReconcile, showReserveBreakdown, showProfitModal, showWeeklySheet, showNotifModal, showWithdrawModal, showNewLoanModal, showFabMenu, selectedLoan]);
 
   // ── DESIGN TOKENS ─────────────────────────────────────────────
   // สีทั้งหมดของ app อยู่ที่นี่ — เปลี่ยนตรงนี้จุดเดียวเพื่อเปลี่ยน theme
@@ -1988,11 +2032,11 @@ export default function App() {
                                      cursor: 'pointer', fontFamily: font }}>
                             {lang === 'th' ? 'รับเงินแล้ว' : 'Got paid'}
                           </button>
-                          <button onClick={() => setSelectedLoan(l)}
+                          <button onClick={() => setReminderLoan(l)}
                             style={{ flex: 1, padding: '8px 0', background: 'rgba(255,255,255,.6)',
                                      color: D_T.ink, border: 'none', borderRadius: 999,
                                      fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>
-                            {lang === 'th' ? 'ต่อสัญญา' : 'Renew'}
+                            {lang === 'th' ? 'ทวง' : 'Remind'}
                           </button>
                         </div>
                       </div>
@@ -2218,6 +2262,14 @@ export default function App() {
                         {formatCurrency(l.principal)} + {formatCurrency(l.expectedInterest)} · {l.id}
                       </div>
                     </div>
+<button onClick={e => { e.stopPropagation(); setReminderLoan(l); }}
+                      aria-label={lang === 'th' ? `ทวง ${l.name}` : `Remind ${l.name}`}
+                      style={{ padding: '8px 12px', borderRadius: 999, background: D_T.surface,
+                               color: D_T.ink, border: 'none', fontSize: 12, fontWeight: 700,
+                               fontFamily: font, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <ChatCircleText size={14} weight="bold" aria-hidden="true" />
+                      {lang === 'th' ? 'ทวง' : 'Remind'}
+                    </button>
                     <button onClick={e => { e.stopPropagation(); setSelectedLoan(l); }}
                       style={{ padding: '8px 12px', borderRadius: 999, background: D_T.ink,
                                color: D_T.bg, border: 'none', fontSize: 12, fontWeight: 700,
@@ -2262,7 +2314,14 @@ export default function App() {
                           {l.daysLate} {lang === 'th' ? 'วัน' : 'd'} · {formatCurrency(l.totalExpected)}
                         </div>
                       </div>
-                      <DChip tone="blush">{l.daysLate}{lang === 'th' ? 'ว' : 'd'}</DChip>
+                      <button onClick={e => { e.stopPropagation(); setReminderLoan(l); }}
+                      aria-label={lang === 'th' ? `ทวง ${l.name}` : `Remind ${l.name}`}
+                      style={{ padding: '8px 12px', borderRadius: 999, background: D_T.blushDeep,
+                               color: '#fff', border: 'none', fontSize: 12, fontWeight: 700,
+                               fontFamily: font, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <ChatCircleText size={14} weight="bold" aria-hidden="true" />
+                      {lang === 'th' ? 'ทวง' : 'Remind'}
+                    </button>
                     </div>
                   ))}
                   {overdueLoans.length > 3 && (
@@ -2535,6 +2594,16 @@ export default function App() {
                          cursor: 'pointer', fontFamily: font, color: D_T.ink }}>
                 <span style={{ fontSize: 14, fontWeight: 600 }}>
                   {lang === 'th' ? 'เช็คกับบัญชีจริง' : 'Match bank balance'}
+                </span>
+                <CaretRight size={16} color={D_T.mute} aria-hidden="true" />
+              </button>
+              <button onClick={openTemplateEditor} className="lt-btn"
+                style={{ width: '100%', padding: '12px 16px', background: D_T.surface, border: 'none',
+                         borderTop: `1px solid ${D_T.line2}`,
+                         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                         cursor: 'pointer', fontFamily: font, color: D_T.ink }}>
+                <span style={{ fontSize: 14, fontWeight: 600 }}>
+                  {lang === 'th' ? 'ข้อความทวงหนี้' : 'Reminder message'}
                 </span>
                 <CaretRight size={16} color={D_T.mute} aria-hidden="true" />
               </button>
@@ -3071,6 +3140,14 @@ export default function App() {
                   </div>
                 ) : (
                   <>
+                    <button onClick={() => setReminderLoan(selectedLoan)} className="lt-btn"
+                      style={{ width: '100%', padding: '12px 0', borderRadius: 999, background: D_T.surface,
+                               color: D_T.ink, border: `1px solid ${D_T.line}`, fontSize: 14, fontWeight: 700,
+                               fontFamily: font, cursor: 'pointer', display: 'flex', alignItems: 'center',
+                               justifyContent: 'center', gap: 8 }}>
+                      <ChatCircleText size={18} weight="bold" aria-hidden="true" />
+                      {lang === 'th' ? 'ส่งข้อความทวง' : 'Send reminder'}
+                    </button>
                     <button onClick={() => handleUpdateStatus('ชำระแล้ว')}
                       style={{ width: '100%', padding: '12px 0', borderRadius: 999, background: D_T.ink,
                                color: D_T.bg, border: 'none', fontSize: 14, fontWeight: 700,
@@ -3291,6 +3368,121 @@ export default function App() {
           </div>
         );
       })()}
+
+      {reminderLoan && !editingTemplate && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 90, display: 'flex', alignItems: 'flex-end',
+                      justifyContent: 'center', background: 'rgba(27,31,42,.5)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setReminderLoan(null)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="reminder-title"
+            style={{ background: D_T.surface, borderRadius: '24px 24px 0 0', width: '100%', maxWidth: 520,
+                     maxHeight: '90vh', overflowY: 'auto', overscrollBehavior: 'contain', padding: '24px 24px 32px',
+                     boxShadow: '0 -12px 40px rgba(27,31,42,.2)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 500 }}>
+                  {reminderLoan.name} · {reminderLoan.id}
+                  {reminderLoan.isOverdue ? (lang === 'th' ? ` · ช้า ${reminderLoan.daysLate} วัน` : ` · ${reminderLoan.daysLate}d late`) : ''}
+                </div>
+                <div id="reminder-title" style={{ fontSize: 20, fontWeight: 600, marginTop: 4 }}>
+                  {lang === 'th' ? 'ข้อความทวงหนี้' : 'Payment reminder'}
+                </div>
+              </div>
+              <button onClick={() => setReminderLoan(null)} aria-label={lang === 'th' ? 'ปิด' : 'Close'}
+                style={{ width: 32, height: 32, borderRadius: 999, background: 'rgba(27,31,42,.06)',
+                         border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                <X size={16} weight="bold" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div style={{ padding: 16, borderRadius: 16, background: D_T.surface2, border: `1px solid ${D_T.line}`,
+                          fontSize: 14, lineHeight: '20px', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                          color: D_T.ink, userSelect: 'text' }}>
+              {reminderText}
+            </div>
+
+            {reminderTemplate.includes('ใส่เลขบัญชี') && (
+              <div style={{ fontSize: 12, color: D_T.blushDeep, marginTop: 8 }}>
+                {lang === 'th' ? 'ยังไม่ได้ใส่เลขบัญชี กด "แก้ข้อความ" ด้านล่าง' : 'Bank details missing. Tap "Edit message" below.'}
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 16 }}>
+              <button onClick={copyReminder} className="lt-btn"
+                style={{ padding: '12px 0', borderRadius: 12, background: D_T.ink, color: D_T.bg, border: 'none',
+                         fontSize: 14, fontWeight: 600, fontFamily: font, cursor: 'pointer',
+                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <Copy size={18} weight="bold" aria-hidden="true" />
+                {lang === 'th' ? 'คัดลอก' : 'Copy'}
+              </button>
+              <button onClick={shareReminderLine} className="lt-btn"
+                style={{ padding: '12px 0', borderRadius: 12, background: '#06C755', color: '#fff', border: 'none',
+                         fontSize: 14, fontWeight: 600, fontFamily: font, cursor: 'pointer',
+                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <PaperPlaneTilt size={18} weight="bold" aria-hidden="true" />
+                {lang === 'th' ? 'ส่งทาง LINE' : 'Send via LINE'}
+              </button>
+            </div>
+            <button onClick={openTemplateEditor} className="lt-btn"
+              style={{ width: '100%', marginTop: 8, padding: '12px 0', borderRadius: 12, background: 'none',
+                       border: 'none', color: D_T.mute, fontSize: 14, fontWeight: 500, fontFamily: font, cursor: 'pointer' }}>
+              {lang === 'th' ? 'แก้ข้อความ' : 'Edit message'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {editingTemplate && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 95, display: 'flex', alignItems: 'flex-end',
+                      justifyContent: 'center', background: 'rgba(27,31,42,.5)', backdropFilter: 'blur(4px)' }}
+          onClick={() => setEditingTemplate(false)}>
+          <div role="dialog" aria-modal="true" aria-labelledby="template-title"
+            style={{ background: D_T.surface, borderRadius: '24px 24px 0 0', width: '100%', maxWidth: 520,
+                     maxHeight: '90vh', overflowY: 'auto', overscrollBehavior: 'contain', padding: '24px 24px 32px',
+                     boxShadow: '0 -12px 40px rgba(27,31,42,.2)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+              <div id="template-title" style={{ fontSize: 20, fontWeight: 600 }}>
+                {lang === 'th' ? 'แก้ข้อความทวงหนี้' : 'Edit reminder message'}
+              </div>
+              <button onClick={() => setEditingTemplate(false)} aria-label={lang === 'th' ? 'ปิด' : 'Close'}
+                style={{ width: 32, height: 32, borderRadius: 999, background: 'rgba(27,31,42,.06)',
+                         border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center' }}>
+                <X size={16} weight="bold" aria-hidden="true" />
+              </button>
+            </div>
+            <label htmlFor="template-input" style={{ fontSize: 14, fontWeight: 500, color: D_T.ink2 }}>
+              {lang === 'th' ? 'ข้อความ' : 'Message'}
+            </label>
+            <textarea id="template-input" name="reminderTemplate" rows={9} value={templateDraft}
+              onChange={e => setTemplateDraft(e.target.value)} autoComplete="off"
+              style={{ width: '100%', marginTop: 8, padding: 12, borderRadius: 12, fontSize: 16, lineHeight: '24px',
+                       border: `1px solid ${D_T.line}`, background: D_T.surface2, color: D_T.ink, fontFamily: font,
+                       boxSizing: 'border-box', resize: 'vertical' }} />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: 12, color: D_T.mute, marginRight: 4 }}>
+                {lang === 'th' ? 'แตะเพื่อแทรก:' : 'Tap to insert:'}
+              </span>
+              {['{ยอด}', '{ต้น}', '{ดอก}', '{ชื่อ}', '{กำหนด}'].map(tok => (
+                <button key={tok} type="button" onClick={() => setTemplateDraft(d => d + tok)}
+                  style={{ padding: '4px 8px', borderRadius: 999, border: `1px solid ${D_T.line}`, background: D_T.surface,
+                           fontSize: 12, fontWeight: 600, color: D_T.ink2, cursor: 'pointer', fontFamily: font }}>{tok}</button>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: D_T.mute, marginTop: 8, lineHeight: '16px' }}>
+              {lang === 'th'
+                ? '{ยอด} = ต้น + ดอก + ค่าปรับ ของรายการนั้น เช่น 4050 · ข้อความเก็บบนเซิร์ฟเวอร์ ไม่อยู่ในโค้ด'
+                : '{ยอด} = principal + interest + penalty, e.g. 4050. Stored on the server, not in the code.'}
+            </div>
+            <button onClick={saveTemplate} disabled={isSavingTemplate} className="lt-btn"
+              style={{ width: '100%', marginTop: 24, padding: '12px 16px', borderRadius: 12, border: 'none',
+                       background: D_T.ink, color: D_T.bg, fontSize: 16, fontWeight: 600, fontFamily: font,
+                       cursor: isSavingTemplate ? 'default' : 'pointer', opacity: isSavingTemplate ? 0.4 : 1 }}>
+              {isSavingTemplate ? (lang === 'th' ? 'กำลังบันทึก…' : 'Saving…') : (lang === 'th' ? 'บันทึกข้อความ' : 'Save message')}
+            </button>
+          </div>
+        </div>
+      )}
 
       {showReconcile && data && (() => {
         const bank = parseFloat(bankInput.replace(/,/g, ''));
