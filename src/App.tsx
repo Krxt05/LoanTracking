@@ -60,7 +60,24 @@ export default function App() {
   const [showWeeklySheet, setShowWeeklySheet] = useState(false);
   const [hasPenalty, setHasPenalty] = useState(false);
   const [penaltyAmount, setPenaltyAmount] = useState(200);
-  const [activeMobileTab, setActiveMobileTab] = useState<'dashboard' | 'loans' | 'analytics' | 'you'>('dashboard');
+  type MobileTab = 'dashboard' | 'loans' | 'analytics' | 'you';
+  const TABS: MobileTab[] = ['dashboard', 'loans', 'analytics', 'you'];
+  const tabFromHash = (): MobileTab => {
+    const h = (typeof window !== 'undefined' ? window.location.hash.slice(1) : '') as MobileTab;
+    return TABS.includes(h) ? h : 'dashboard';
+  };
+  const [activeMobileTab, setActiveMobileTabState] = useState<MobileTab>(tabFromHash);
+  // แท็บอยู่ใน URL (#loans) — รีเฟรชแล้วอยู่แท็บเดิม ปุ่ม back ย้อนแท็บได้
+  const setActiveMobileTab = (tab: MobileTab) => {
+    setActiveMobileTabState(tab);
+    const next = tab === 'dashboard' ? window.location.pathname : '#' + tab;
+    if ((window.location.hash || '') !== (tab === 'dashboard' ? '' : '#' + tab)) window.history.pushState(null, '', next);
+  };
+  useEffect(() => {
+    const onPop = () => setActiveMobileTabState(tabFromHash());
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
   const [isDesktop, setIsDesktop] = useState(true);
   const [showPortfolioLine2, setShowPortfolioLine2] = useState(false);
@@ -608,6 +625,19 @@ export default function App() {
   // ── ACTION HANDLERS ───────────────────────────────────────────
 
   // สร้างลูกหนี้ใหม่ → POST ไปยัง Google Apps Script แล้ว refresh data หลัง 2.5 วิ
+  // อัปเดตรายการกู้บนจอทันที + คำนวณสรุปยอดใหม่ (เงินในบัญชี/กำไร) ไม่ต้องรอรีเฟรช
+  const applyLoans = (loans: LoanRecord[]) =>
+    setData(d => d ? { ...d, loans, summary: computeSummary(loans, capitalRef.current) } : d);
+
+  const makeLocalLoan = (fields: Partial<LoanRecord>): LoanRecord => ({
+    id: 'N' + Date.now().toString().slice(-6), name: '', principal: 0, borrowDate: '', dueDate: '', actualDate: '',
+    daysBorrowed: 0, daysLate: 0, interestRate: 0, expectedInterest: 0, penalty: 0, totalExpected: 0,
+    status: 'ยังไม่ชำระ', paidAmount: 0, paidPrincipal: 0, paidInterest: 0,
+    isPaid: false, isOverdue: false, isScam: false, isRenewed: false, isWithdrawn: false,
+    historicalRenewalInterest: 0, historicalRenewalCount: 0, penaltyHistory: [], note: '',
+    ...fields,
+  } as LoanRecord);
+
   const handleCreateNewLoan = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newLoanForm.name || !newLoanForm.principal) return;
@@ -627,6 +657,15 @@ export default function App() {
       });
 
       if (res.success) {
+        if (data) {
+          const interest = Math.round(pValue * newLoanForm.interestRate / 100);
+          applyLoans([...data.loans, makeLocalLoan({
+            name: newLoanForm.name, principal: pValue,
+            borrowDate: formatToThaiStr(newLoanForm.borrowDate), dueDate: formatToThaiStr(newLoanForm.dueDate),
+            daysBorrowed: newLoanForm.daysBorrowed, interestRate: newLoanForm.interestRate,
+            expectedInterest: interest, totalExpected: pValue + interest, note: newLoanForm.note || '',
+          })]);
+        }
         showToast(t('loanAddedSuccess', lang), 'success');
         setShowNewLoanModal(false);
         setNewLoanForm({ ...newLoanForm, name: '', principal: '500' });
@@ -663,6 +702,13 @@ export default function App() {
       });
 
       if (res.success) {
+        if (data) {
+          const d = formatToThaiStr(withdrawForm.date);
+          applyLoans([...data.loans, makeLocalLoan({
+            name, principal: pValue, borrowDate: d, dueDate: d, actualDate: d,
+            status: 'เบิก', isWithdrawn: true, totalExpected: pValue,
+          })]);
+        }
         showToast(t('withdrawalSuccess', lang), 'success');
         setShowWithdrawModal(false);
         setWithdrawForm({ name: '', principal: '', date: new Date() });
@@ -698,15 +744,26 @@ export default function App() {
     if (loanIndex > -1) {
       const targetLoan = { ...updatedLoans[loanIndex] };
 
+      const pen = hasPenalty ? penaltyAmount : 0;
+      targetLoan.actualDate = formattedActionDate;
       if (action === 'ชำระแล้ว') {
         targetLoan.isPaid = true;
+        targetLoan.isOverdue = false;
         targetLoan.status = "ชำระแล้ว";
+        targetLoan.penalty = pen;
+        targetLoan.paidPrincipal = targetLoan.principal;
+        targetLoan.paidInterest = targetLoan.expectedInterest + pen;
+        targetLoan.paidAmount = targetLoan.principal + targetLoan.expectedInterest + pen;
       } else if (action === 'โดนบิด') {
         targetLoan.isScam = true;
         targetLoan.status = "โดนบิด";
       } else if (action === 'ต่อดอก') {
         targetLoan.isRenewed = true;
+        targetLoan.isOverdue = false;
         targetLoan.status = "ต่อดอก";
+        targetLoan.penalty = pen;
+        targetLoan.paidInterest = targetLoan.expectedInterest + pen;
+        targetLoan.paidAmount = targetLoan.expectedInterest + pen;
 
         // สร้างรายการจำลองขึ้นมาใหม่
         const newLoan = { ...targetLoan };
@@ -717,6 +774,8 @@ export default function App() {
         newLoan.isOverdue = false;
         newLoan.isWithdrawn = false;
         newLoan.status = "ยังไม่ชำระ";
+        newLoan.penalty = 0; newLoan.paidAmount = 0; newLoan.paidPrincipal = 0; newLoan.paidInterest = 0;
+        newLoan.actualDate = '';
 
         const startD = renewStartDate;
         const dd = String(startD.getDate()).padStart(2, '0');
@@ -734,13 +793,15 @@ export default function App() {
       }
 
       updatedLoans[loanIndex] = targetLoan;
-      setData({ ...data, loans: updatedLoans });
+      applyLoans(updatedLoans);
     }
+    const prevLoans = data.loans;
 
     const renewFromDateStr = action === 'ต่อดอก' ? formatToThaiStr(renewStartDate) : undefined;
     const success = await updateLoanStatus(currentLoan.id, action, formattedActionDate, hasPenalty ? penaltyAmount : 0, renewFromDateStr);
 
     if (!success) {
+      applyLoans(prevLoans); // rollback
       showToast(t('sheetsUpdateFailed', lang), 'error');
       setIsSyncing(false);
     } else {
@@ -783,7 +844,7 @@ export default function App() {
             expectedInterest: editLoanForm.expectedInterest,
             totalExpected: parseFloat(editLoanForm.principal) + editLoanForm.expectedInterest
           };
-          setData({ ...data, loans: updatedLoans });
+          applyLoans(updatedLoans);
           setSelectedLoan(updatedLoans[loanIndex]);
         }
       } else {
@@ -931,8 +992,8 @@ export default function App() {
   const DChip = ({ children, tone = 'mint' }: { children: React.ReactNode; tone?: string }) => {
     const [bg, fg] = dChipMap[tone] ?? dChipMap.ghost;
     return (
-      <span style={{ padding: '3px 9px', borderRadius: 999, background: bg, color: fg,
-                     fontSize: 10.5, fontWeight: 700, letterSpacing: '.02em', textTransform: 'uppercase',
+      <span style={{ padding: '2px 8px', borderRadius: 999, background: bg, color: fg,
+                     fontSize: 12, fontWeight: 700, letterSpacing: '.02em', textTransform: 'uppercase',
                      display: 'inline-block', whiteSpace: 'nowrap' }}>
         {children}
       </span>
@@ -969,26 +1030,35 @@ export default function App() {
   };
 
   if (loading) {
+    // Skeleton ที่หน้าตาเหมือนหน้าหลักจริง (แทนจุดเด้ง) — ผู้ใช้เห็นโครงก่อนข้อมูลมา
+    const bar = (w: number | string, h: number, r = 8, extra: React.CSSProperties = {}) => (
+      <div className="lt-sk" style={{ width: w, height: h, borderRadius: r, background: D_T.line, ...extra }} />
+    );
     return (
-      <div style={{ minHeight: '100vh', background: D_T.bg, display: 'flex', alignItems: 'center',
-                    justifyContent: 'center', fontFamily: '"Manrope", "IBM Plex Sans Thai", system-ui, sans-serif' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 52, height: 52, borderRadius: 16, background: D_T.ink, color: D_T.butter,
-                        display: 'grid', placeItems: 'center', fontSize: 24, fontWeight: 700,
-                        margin: '0 auto 20px' }}>P</div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: D_T.ink, letterSpacing: '-.02em', marginBottom: 8 }}>
-            Pocket Bank
+      <div role="status" aria-label={lang === 'th' ? 'กำลังโหลดข้อมูล…' : 'Loading your data…'}
+        style={{ minHeight: '100vh', background: D_T.bg, padding: '12px 16px', maxWidth: 560, margin: '0 auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {bar(32, 32, 8)}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>{bar(80, 12, 4)}{bar(48, 16, 4)}</div>
           </div>
-          <div style={{ fontSize: 12, color: D_T.mute, marginBottom: 24 }}>
-            {lang === 'th' ? 'กำลังโหลดข้อมูล…' : 'Loading your data…'}
-          </div>
-          <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
-            {[0, 120, 240].map(d => (
-              <div key={d} style={{ width: 8, height: 8, borderRadius: 99, background: D_T.mintDeep,
-                                    animation: 'bounce-dot 1.4s ease-in-out infinite', animationDelay: `${d}ms` }} />
-            ))}
-          </div>
+          <div style={{ display: 'flex', gap: 8 }}>{bar(32, 32, 8)}{bar(32, 32, 8)}</div>
         </div>
+        <div style={{ padding: 24, borderRadius: 24, background: D_T.surface, border: `1px solid ${D_T.line}`, marginBottom: 12 }}>
+          {bar(96, 12, 4, { marginBottom: 12 })}
+          {bar(200, 40, 8, { marginBottom: 12 })}
+          {bar(120, 12, 4, { marginBottom: 24 })}
+          {bar('100%', 120, 12, { marginBottom: 16 })}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>{bar('100%', 64, 12)}{bar('100%', 64, 12)}</div>
+        </div>
+        {[0, 1, 2].map(i => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 16, borderRadius: 16,
+                                background: D_T.surface, border: `1px solid ${D_T.line}`, marginBottom: 8 }}>
+            {bar(40, 40, 12)}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>{bar('60%', 12, 4)}{bar('40%', 12, 4)}</div>
+            {bar(64, 16, 4)}
+          </div>
+        ))}
       </div>
     );
   }
@@ -997,7 +1067,7 @@ export default function App() {
     return (
       <div style={{ minHeight: '100vh', background: D_T.bg, display: 'flex', alignItems: 'center',
                     justifyContent: 'center', padding: 24, fontFamily: '"Manrope", "IBM Plex Sans Thai", system-ui, sans-serif' }}>
-        <div style={{ background: D_T.surface, padding: 32, borderRadius: 20, border: `1px solid ${D_T.line}`,
+        <div style={{ background: D_T.surface, padding: 32, borderRadius: 16, border: `1px solid ${D_T.line}`,
                       textAlign: 'center', maxWidth: 360, width: '100%' }}>
           <div style={{ fontSize: 30, marginBottom: 12 }}>⚠️</div>
           <div style={{ fontSize: 18, fontWeight: 700, color: D_T.ink, marginBottom: 8 }}>ไม่สามารถเชื่อมต่อได้</div>
@@ -1138,13 +1208,13 @@ export default function App() {
         {/* Controls */}
         {!hideControls && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
+                        marginBottom: 8, flexWrap: 'wrap', gap: 4 }}>
             {/* Timeframe */}
-            <div style={{ display: 'flex', gap: 3 }}>
+            <div style={{ display: 'flex', gap: 2 }}>
               {(['1W', '1M', '3M', '6M', 'all'] as const).map(tf => (
                 <button key={tf} onClick={() => { setPortfolioTimeframe(tf); setPortfolioTooltipIdx(null); }}
-                  style={{ padding: '4px 9px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: font,
-                           fontSize: 10.5, fontWeight: 700,
+                  style={{ padding: '4px 8px', borderRadius: 999, border: 'none', cursor: 'pointer', fontFamily: font,
+                           fontSize: 12, fontWeight: 700,
                            background: portfolioTimeframe === tf ? D_T.ink : D_T.surface2,
                            color: portfolioTimeframe === tf ? D_T.bg : D_T.mute }}>
                   {tf === 'all' ? (lang === 'th' ? 'ทั้งหมด' : 'All') : tf}
@@ -1154,16 +1224,16 @@ export default function App() {
             {/* Line toggles */}
             <div style={{ display: 'flex', gap: 4 }}>
               <button onClick={() => setShowPortfolioLine2(v => !v)}
-                style={{ padding: '3px 9px', borderRadius: 999, cursor: 'pointer', fontFamily: font,
-                         fontSize: 10, fontWeight: 700,
+                style={{ padding: '2px 8px', borderRadius: 999, cursor: 'pointer', fontFamily: font,
+                         fontSize: 12, fontWeight: 700,
                          background: showPortfolioLine2 ? D_T.butter : D_T.surface2,
                          color: showPortfolioLine2 ? D_T.butterDeep : D_T.mute,
                          border: `1px solid ${showPortfolioLine2 ? D_T.butterDeep : D_T.line}` }}>
                 {lang === 'th' ? 'กรอส' : 'Gross'}
               </button>
               <button onClick={() => setShowPortfolioLine3(v => !v)}
-                style={{ padding: '3px 9px', borderRadius: 999, cursor: 'pointer', fontFamily: font,
-                         fontSize: 10, fontWeight: 700,
+                style={{ padding: '2px 8px', borderRadius: 999, cursor: 'pointer', fontFamily: font,
+                         fontSize: 12, fontWeight: 700,
                          background: showPortfolioLine3 ? D_T.lavender : D_T.surface2,
                          color: showPortfolioLine3 ? D_T.lavDeep : D_T.mute,
                          border: `1px solid ${showPortfolioLine3 ? D_T.lavDeep : D_T.line}` }}>
@@ -1300,32 +1370,32 @@ export default function App() {
               position: 'absolute',
               left: Math.max(4, Math.min(ttX - 70, W - padR - 148)),
               top: Math.max(4, ttY - (ttPt.isForecast ? 80 : ttPt.hasW || ttPt.hasS ? 100 : 68)),
-              width: 140, padding: '8px 10px', borderRadius: 10,
-              background: D_T.ink, color: D_T.bg, fontSize: 11, fontFamily: font,
+              width: 140, padding: '8px 8px', borderRadius: 8,
+              background: D_T.ink, color: D_T.bg, fontSize: 12, fontFamily: font,
               boxShadow: '0 4px 16px rgba(27,31,42,.35)', pointerEvents: 'none', zIndex: 20,
             }}>
-              <div style={{ fontSize: 10, opacity: 0.6, marginBottom: 4 }}>
+              <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 4 }}>
                 {ttPt.isForecast ? (lang === 'th' ? '⟳ คาดการณ์' : '⟳ Forecast') : ttPt.date}
               </div>
               <div style={{ fontSize: 14, fontWeight: 700, fontFamily: mono, marginBottom: 4 }}>
                 {formatCurrency(ttVal)}
               </div>
               {!ttPt.isForecast && (ttPt.earned > 0 || ttPt.scam > 0 || ttPt.withdrawn > 0) && (
-                <div style={{ borderTop: '1px solid rgba(255,255,255,.15)', paddingTop: 5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <div style={{ borderTop: '1px solid rgba(255,255,255,.15)', paddingTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {ttPt.earned > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                       <span style={{ opacity: 0.7 }}>{lang === 'th' ? '+ ดอก/ปรับ' : '+ interest'}</span>
                       <span style={{ color: '#7ef0a8', fontFamily: mono }}>+{formatCurrency(ttPt.earned)}</span>
                     </div>
                   )}
                   {ttPt.hasW && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                       <span style={{ color: YELLOW }}>{lang === 'th' ? `เบิก (${ttPt.wNames.join(',')})` : `W/D (${ttPt.wNames.join(',')})`}</span>
                       <span style={{ color: YELLOW, fontFamily: mono }}>−{formatCurrency(ttPt.withdrawn)}</span>
                     </div>
                   )}
                   {ttPt.hasS && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                       <span style={{ color: RED }}>{lang === 'th' ? `บิด (${ttPt.sNames.join(',')})` : `Default (${ttPt.sNames.join(',')})`}</span>
                       <span style={{ color: RED, fontFamily: mono }}>−{formatCurrency(ttPt.scam)}</span>
                     </div>
@@ -1333,7 +1403,7 @@ export default function App() {
                 </div>
               )}
               {ttPt.isForecast && (ttPt as any).names?.length > 0 && (
-                <div style={{ fontSize: 9.5, opacity: 0.65, marginTop: 2 }}>
+                <div style={{ fontSize: 12, opacity: 0.65, marginTop: 2 }}>
                   {(ttPt as any).names.join(', ')}
                 </div>
               )}
@@ -1353,7 +1423,7 @@ export default function App() {
         </div>{/* end two-column layout */}
 
         {/* Legend row */}
-        <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
           {([
             [D_T.mintDeep, lang === 'th' ? 'พอร์ตสุทธิ' : 'Net portfolio', false],
             ...(showPortfolioLine2 ? [[D_T.butterDeep, lang === 'th' ? 'กรอส' : 'Gross', true]] : []),
@@ -1365,7 +1435,7 @@ export default function App() {
               {dashed
                 ? <svg width={16} height={8}><line x1="0" y1="4" x2="16" y2="4" stroke={color} strokeWidth={2} strokeDasharray="4 2" /></svg>
                 : <div style={{ width: 14, height: 2.5, background: color, borderRadius: 2 }} />}
-              <span style={{ fontSize: 9.5, color: D_T.mute, fontWeight: 600 }}>{label}</span>
+              <span style={{ fontSize: 12, color: D_T.mute, fontWeight: 600 }}>{label}</span>
             </div>
           ))}
         </div>
@@ -1472,15 +1542,15 @@ export default function App() {
                         flexDirection: 'column', gap: 4, background: D_T.surface2,
                         borderRight: `1px solid ${D_T.line}`, position: 'sticky', top: 0, alignSelf: 'flex-start', maxHeight: '100vh', overflowY: 'auto' }}>
           {/* Brand */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 10px 18px',
-                        borderBottom: `1px solid ${D_T.line}`, marginBottom: 14 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 10, background: D_T.ink, color: D_T.butter,
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px 16px',
+                        borderBottom: `1px solid ${D_T.line}`, marginBottom: 12 }}>
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: D_T.ink, color: D_T.butter,
                           display: 'grid', placeItems: 'center', fontSize: 14, fontWeight: 700 }}>P</div>
             <div>
               <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '-.02em' }}>
                 {lang === 'th' ? 'พ็อกเก็ต แบงก์' : 'Pocket Bank'}
               </div>
-              <div style={{ fontSize: 10, color: D_T.mute }}>
+              <div style={{ fontSize: 12, color: D_T.mute }}>
                 {lang === 'th' ? 'โต๊ะปล่อยกู้เล็กๆ' : 'your tiny lending desk'}
               </div>
             </div>
@@ -1494,16 +1564,16 @@ export default function App() {
           ] as [string, string, string, number | null][]).map(([label, tab, icon, badge]) => (
             <div key={tab}
               {...tap(() => setActiveMobileTab(tab as any))}
-              style={{ padding: '10px 12px', borderRadius: 12, cursor: 'pointer',
+              style={{ padding: '8px 12px', borderRadius: 12, cursor: 'pointer',
                        background: activeMobileTab === tab ? D_T.surface : 'transparent',
                        color: activeMobileTab === tab ? D_T.ink : D_T.ink2,
                        fontSize: 12, fontWeight: activeMobileTab === tab ? 700 : 500,
-                       display: 'flex', alignItems: 'center', gap: 10,
+                       display: 'flex', alignItems: 'center', gap: 8,
                        boxShadow: activeMobileTab === tab ? '0 1px 0 rgba(27,31,42,.04)' : 'none' }}>
               <span style={{ width: 16, display: 'grid', placeItems: 'center', color: activeMobileTab === tab ? D_T.mintDeep : D_T.mute2 }}>{navIcon(tab, activeMobileTab === tab, 16)}</span>
               <span style={{ flex: 1 }}>{label}</span>
               {badge !== null && (
-                <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 999,
+                <span style={{ fontSize: 12, padding: '2px 8px', borderRadius: 999,
                                background: D_T.bg, color: D_T.mute, fontWeight: 700 }}>{badge}</span>
               )}
             </div>
@@ -1512,33 +1582,33 @@ export default function App() {
           <div style={{ flex: 1 }} />
 
           {/* Sync status */}
-          <div style={{ padding: 14, borderRadius: 14, background: D_T.surface, border: `1px solid ${D_T.line}`, marginBottom: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+          <div style={{ padding: 12, borderRadius: 12, background: D_T.surface, border: `1px solid ${D_T.line}`, marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
               <span style={{ width: 7, height: 7, borderRadius: 99,
                              background: isSyncing ? D_T.butterDeep : D_T.mintDeep, display: 'block' }} />
               <span style={{ fontSize: 12, fontWeight: 700 }}>{isSyncing ? (lang === 'th' ? 'กำลังซิงค์…' : 'Syncing…') : (lang === 'th' ? 'ซิงค์แล้ว' : 'Synced')}</span>
             </div>
-            <div style={{ fontSize: 11, color: D_T.mute, lineHeight: 1.5 }}>
+            <div style={{ fontSize: 12, color: D_T.mute, lineHeight: 1.5 }}>
               {lang === 'th' ? 'ดึงจาก Google Sheets' : 'Pulled from your Sheets ledger.'}
             </div>
           </div>
 
           {/* Lang + refresh */}
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 4 }}>
             <button onClick={toggleLang} aria-label={lang === 'th' ? 'Switch to English' : 'เปลี่ยนเป็นภาษาไทย'}
-              style={{ flex: 1, padding: '8px 0', borderRadius: 10, background: D_T.surface,
-                       border: `1px solid ${D_T.line}`, fontSize: 11, fontWeight: 700,
+              style={{ flex: 1, padding: '8px 0', borderRadius: 8, background: D_T.surface,
+                       border: `1px solid ${D_T.line}`, fontSize: 12, fontWeight: 700,
                        color: D_T.ink2, cursor: 'pointer', fontFamily: font }}>
               {lang === 'th' ? 'EN' : 'TH'}
             </button>
             <button onClick={() => loadData()} aria-label={lang === 'th' ? 'รีเฟรชข้อมูล' : 'Refresh data'}
-              style={{ flex: 1, padding: '8px 0', borderRadius: 10, background: D_T.surface,
-                       border: `1px solid ${D_T.line}`, fontSize: 11, fontWeight: 700,
+              style={{ flex: 1, padding: '8px 0', borderRadius: 8, background: D_T.surface,
+                       border: `1px solid ${D_T.line}`, fontSize: 12, fontWeight: 700,
                        color: D_T.ink2, cursor: 'pointer', fontFamily: font }}>
               <ArrowClockwise size={16} weight="bold" aria-hidden="true" />
             </button>
             <button onClick={() => setShowNotifModal(true)} aria-label={lang === 'th' ? 'ตั้งค่าการแจ้งเตือน' : 'Notification settings'}
-              style={{ flex: 1, padding: '8px 0', borderRadius: 10, background: D_T.surface,
+              style={{ flex: 1, padding: '8px 0', borderRadius: 8, background: D_T.surface,
                        border: `1px solid ${D_T.line}`, fontSize: 14, cursor: 'pointer' }}>
               {isSubscribed ? <Bell size={16} weight="bold" aria-hidden="true" /> : <BellSlash size={16} weight="bold" aria-hidden="true" />}
             </button>
@@ -1550,9 +1620,9 @@ export default function App() {
 
           {/* Top bar */}
           <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                           padding: '20px 28px', borderBottom: `1px solid ${D_T.line}`, background: D_T.bg }}>
+                           padding: '16px 24px', borderBottom: `1px solid ${D_T.line}`, background: D_T.bg }}>
             <div>
-              <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em',
+              <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em',
                             textTransform: 'uppercase', marginBottom: 4 }}>{todayLabel}</div>
               <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0, letterSpacing: '-.02em' }}>
                 {lang === 'th' ? 'สวัสดี,' : 'Hey,'}{' '}
@@ -1561,13 +1631,13 @@ export default function App() {
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={() => setShowWithdrawModal(true)}
-                style={{ padding: '9px 16px', borderRadius: 999, background: D_T.surface,
+                style={{ padding: '8px 16px', borderRadius: 999, background: D_T.surface,
                          color: D_T.ink, border: `1px solid ${D_T.line}`,
                          fontFamily: font, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                 {lang === 'th' ? 'ถอนเงิน' : 'Withdraw'}
               </button>
               <button onClick={() => setShowNewLoanModal(true)}
-                style={{ padding: '9px 18px', borderRadius: 999, background: D_T.ink,
+                style={{ padding: '8px 16px', borderRadius: 999, background: D_T.ink,
                          color: D_T.bg, border: 'none',
                          fontFamily: font, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                 {lang === 'th' ? '+ ปล่อยกู้' : '+ Lend money'}
@@ -1587,10 +1657,10 @@ export default function App() {
               <div key={label}
                 title={i === 3 ? (lang === 'th' ? 'คลิกเพื่อเช็คกับบัญชีจริง' : 'Click to match bank balance') : undefined}
                 {...tap(i === 1 ? () => setShowProfitModal(true) : i === 3 ? openReconcile : undefined)}
-                style={{ padding: '20px 24px', borderRight: `1px solid ${D_T.line}`,
-                         display: 'flex', flexDirection: 'column', gap: 10,
+                style={{ padding: '16px 24px', borderRight: `1px solid ${D_T.line}`,
+                         display: 'flex', flexDirection: 'column', gap: 8,
                          cursor: i === 1 || i === 3 ? 'pointer' : 'default' }}>
-                <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
+                <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700,
                               letterSpacing: '.06em', textTransform: 'uppercase' }}>{label}</div>
                 <div style={{ fontSize: 24, fontWeight: 700, color: D_T.ink,
                               letterSpacing: '-.025em', fontVariantNumeric: 'tabular-nums', lineHeight: 1,
@@ -1606,15 +1676,15 @@ export default function App() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', flex: 1, overflow: 'hidden' }}>
 
             {/* Left: content area — switches by tab */}
-            <section style={{ padding: '22px 28px', overflowY: 'auto' }}>
+            <section style={{ padding: '24px 24px', overflowY: 'auto' }}>
 
               {activeMobileTab === 'analytics' ? (
                 /* ── ANALYTICS TAB ── */
                 <>
                   {/* Portfolio growth chart */}
                   <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
-                                borderRadius: 18, padding: '20px 22px 16px', marginBottom: 20 }}>
-                    <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
+                                borderRadius: 16, padding: '16px 24px 16px', marginBottom: 16 }}>
+                    <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700,
                                   letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>
                       {lang === 'th' ? 'การเติบโตของพอร์ต' : 'Portfolio Growth'}
                     </div>
@@ -1623,14 +1693,14 @@ export default function App() {
 
                   {/* Interest received chart */}
                   <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
-                                borderRadius: 18, padding: '20px 22px 16px', marginBottom: 20 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14 }}>
+                                borderRadius: 16, padding: '16px 24px 16px', marginBottom: 16 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 }}>
                       <div>
-                        <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
+                        <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700,
                                       letterSpacing: '.06em', textTransform: 'uppercase' }}>
                           {lang === 'th' ? 'ดอกเบี้ยที่ได้รับ · 30 วันล่าสุด' : 'Interest received · last 30 days'}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginTop: 6 }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
                           <span style={{ fontSize: 24, fontWeight: 700, letterSpacing: '-.02em',
                                          fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
                             {formatCurrency(s.paidInterest)}
@@ -1639,8 +1709,8 @@ export default function App() {
                         </div>
                       </div>
                       <button onClick={() => setShowExpandedTrend(true)}
-                        style={{ padding: '5px 12px', borderRadius: 999, background: D_T.ink, color: D_T.bg,
-                                 fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', fontFamily: font }}>
+                        style={{ padding: '4px 12px', borderRadius: 999, background: D_T.ink, color: D_T.bg,
+                                 fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer', fontFamily: font }}>
                         {lang === 'th' ? 'ขยาย' : 'Expand'}
                       </button>
                     </div>
@@ -1648,8 +1718,8 @@ export default function App() {
                       <DAreaChart sparkData={trendData30} w={640} h={160} showYAxis />
                     </div>
                     {trendData30.length > 0 && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6,
-                                    fontFamily: mono, fontSize: 10, color: D_T.mute2, paddingLeft: 56 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4,
+                                    fontFamily: mono, fontSize: 12, color: D_T.mute2, paddingLeft: 48 }}>
                         {trendData30.filter((_, i) => i % Math.ceil(trendData30.length / 6) === 0).map(m => (
                           <span key={m.date}>{m.date}</span>
                         ))}
@@ -1668,12 +1738,12 @@ export default function App() {
                       { label: lang === 'th' ? 'Avg. ระยะกู้' : 'Avg. Loan Days', value: avgDays > 0 ? avgDays.toFixed(1) + (lang === 'th' ? ' วัน' : 'd') : '—', pct: Math.min(100, (avgDays / 14) * 100), good: avgDays <= 7 && avgDays > 0, ok: avgDays <= 14, hint: lang === 'th' ? (avgDays <= 7 ? 'หมุนเร็ว' : avgDays <= 14 ? 'ปานกลาง' : 'วงจรยาว') : (avgDays <= 7 ? 'Fast cycle' : avgDays <= 14 ? 'Medium' : 'Long cycle') },
                     ];
                     return (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 20 }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 16 }}>
                         {metrics.map(m => (
-                          <div key={m.label} style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 18, padding: '16px 20px' }}>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: D_T.mute, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>{m.label}</div>
+                          <div key={m.label} style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 16, padding: '16px 16px' }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: D_T.mute, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>{m.label}</div>
                             <div style={{ fontSize: 24, fontWeight: 700, fontFamily: mono, color: m.good ? D_T.mintDeep : m.ok ? D_T.butterDeep : D_T.blushDeep, marginBottom: 4 }}>{m.value}</div>
-                            <div style={{ fontSize: 11, fontWeight: 600, color: m.good ? D_T.mintDeep : m.ok ? D_T.butterDeep : D_T.blushDeep, marginBottom: 10 }}>{m.hint}</div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: m.good ? D_T.mintDeep : m.ok ? D_T.butterDeep : D_T.blushDeep, marginBottom: 8 }}>{m.hint}</div>
                             <div style={{ height: 5, borderRadius: 99, background: D_T.line2 }}>
                               <div style={{ height: '100%', width: m.pct + '%', borderRadius: 99, transition: 'width 500ms cubic-bezier(0.22,1,0.36,1)', background: m.good ? D_T.mintDeep : m.ok ? D_T.butterDeep : D_T.blushDeep }} />
                             </div>
@@ -1687,17 +1757,17 @@ export default function App() {
                   {reserveData.totalLocked > 0 && (
                     <div {...tap(() => setShowReserveBreakdown(true))}
                       style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
-                               borderRadius: 18, padding: '18px 22px', marginBottom: 20, cursor: 'pointer',
+                               borderRadius: 16, padding: '16px 24px', marginBottom: 16, cursor: 'pointer',
                                display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
-                        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
-                                      color: D_T.mute, marginBottom: 6 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
+                                      color: D_T.mute, marginBottom: 4 }}>
                           {lang === 'th' ? 'เบิกได้จริง' : 'Safe to withdraw'}
                         </div>
                         <div style={{ fontSize: 30, fontWeight: 700, fontVariantNumeric: 'tabular-nums', fontFamily: mono, lineHeight: 1, letterSpacing: '-.025em' }}>
                           {formatCurrency(reserveData.safeWithdrawable)}
                         </div>
-                        <div style={{ fontSize: 11, color: D_T.mute, marginTop: 6 }}>
+                        <div style={{ fontSize: 12, color: D_T.mute, marginTop: 4 }}>
                           {lang === 'th' ? `ล็อกดอกสำรองไว้ ${formatCurrency(reserveData.totalLocked)}` : `Reserve locked ${formatCurrency(reserveData.totalLocked)}`}
                         </div>
                       </div>
@@ -1708,9 +1778,9 @@ export default function App() {
                   {/* Monthly summary with breakdown */}
                   {monthlySummary.length > 0 && (
                     <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
-                                  borderRadius: 18, overflow: 'hidden' }}>
-                      <div style={{ padding: '14px 22px', borderBottom: `1px solid ${D_T.line}`,
-                                    fontSize: 11, fontWeight: 700, color: D_T.mute,
+                                  borderRadius: 16, overflow: 'hidden' }}>
+                      <div style={{ padding: '12px 24px', borderBottom: `1px solid ${D_T.line}`,
+                                    fontSize: 12, fontWeight: 700, color: D_T.mute,
                                     letterSpacing: '.06em', textTransform: 'uppercase' }}>
                         {lang === 'th' ? 'สรุปรายเดือน' : 'Monthly Summary'}
                       </div>
@@ -1719,11 +1789,11 @@ export default function App() {
                         const label = d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { month: 'long', year: 'numeric' });
                         const net = m.interest - m.scam - m.withdrawn;
                         return (
-                          <div key={m.key} style={{ padding: '14px 22px', borderBottom: `1px solid ${D_T.line2}` }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                          <div key={m.key} style={{ padding: '12px 24px', borderBottom: `1px solid ${D_T.line2}` }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                               <div>
                                 <div style={{ fontSize: 12, fontWeight: 700, color: D_T.ink }}>{label}</div>
-                                <div style={{ fontSize: 11, color: D_T.mute, marginTop: 2 }}>
+                                <div style={{ fontSize: 12, color: D_T.mute, marginTop: 2 }}>
                                   {m.count} {lang === 'th' ? 'รายการ' : 'records'}
                                 </div>
                               </div>
@@ -1738,8 +1808,8 @@ export default function App() {
                                 [lang === 'th' ? 'เบิก' : 'Withdrawn', m.withdrawn, D_T.butterDeep, D_T.butter],
                                 [lang === 'th' ? 'สุทธิ' : 'Total net', net, net >= 0 ? D_T.mintDeep : D_T.blushDeep, net >= 0 ? D_T.mint : D_T.blush],
                               ] as [string, number, string, string][]).map(([lbl, val, fg, bg]) => (
-                                <div key={lbl} style={{ padding: '8px 10px', borderRadius: 10, background: bg + '40' }}>
-                                  <div style={{ fontSize: 9.5, fontWeight: 700, color: fg, letterSpacing: '.04em',
+                                <div key={lbl} style={{ padding: '8px 8px', borderRadius: 8, background: bg + '40' }}>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color: fg, letterSpacing: '.04em',
                                                 textTransform: 'uppercase', marginBottom: 4 }}>{lbl}</div>
                                   <div style={{ fontSize: 12, fontWeight: 700, color: fg,
                                                 fontFamily: mono, fontVariantNumeric: 'tabular-nums' }}>
@@ -1760,8 +1830,8 @@ export default function App() {
                   {/* Portfolio growth chart — overview tab only */}
                   {activeMobileTab !== 'loans' && (
                     <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
-                                  borderRadius: 18, padding: '20px 22px 16px', marginBottom: 22 }}>
-                      <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
+                                  borderRadius: 16, padding: '16px 24px 16px', marginBottom: 24 }}>
+                      <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700,
                                     letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>
                         {lang === 'th' ? 'การเติบโตของพอร์ต' : 'Portfolio Growth'}
                       </div>
@@ -1770,9 +1840,9 @@ export default function App() {
                   )}
 
                   {/* Table card */}
-                  <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 18, padding: '18px 22px' }}>
+                  <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 16, padding: '16px 24px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                         {([
                           ['all', lang === 'th' ? 'ทั้งหมด' : 'All', tabCounts.all],
                           ['renewals', lang === 'th' ? 'ต่อสัญญา' : 'Renewed', tabCounts.renewals],
@@ -1781,24 +1851,24 @@ export default function App() {
                           ['withdrawn', lang === 'th' ? 'เบิก' : 'Withdrawn', tabCounts.withdrawn],
                         ] as [string, string, number][]).map(([tab, label, count]) => (
                           <span key={tab} {...tap(() => { setActiveTab(tab as any); setSearchQuery(''); })}
-                            style={{ padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
+                            style={{ padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
                                      background: activeTab === tab ? D_T.ink : D_T.surface2,
                                      color: activeTab === tab ? D_T.bg : D_T.ink2,
-                                     fontSize: 11.5, fontWeight: 700,
-                                     display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                                     fontSize: 12, fontWeight: 700,
+                                     display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                             {label}
-                            {count > 0 && <span style={{ fontSize: 10, opacity: 0.7 }}>{count}</span>}
+                            {count > 0 && <span style={{ fontSize: 12, opacity: 0.7 }}>{count}</span>}
                           </span>
                         ))}
                       </div>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                           placeholder={lang === 'th' ? 'ค้นหา…' : 'Search…'}
-                          style={{ padding: '6px 12px', borderRadius: 999, border: `1px solid ${D_T.line}`,
+                          style={{ padding: '4px 12px', borderRadius: 999, border: `1px solid ${D_T.line}`,
                                    background: D_T.surface2, fontSize: 14, color: D_T.ink,
                                    outline: 'none', fontFamily: font, width: 140 }} />
                         <select value={sortBy} onChange={e => setSortBy(e.target.value as any)}
-                          style={{ padding: '6px 10px', borderRadius: 999, border: `1px solid ${D_T.line}`,
+                          style={{ padding: '4px 8px', borderRadius: 999, border: `1px solid ${D_T.line}`,
                                    background: D_T.surface2, fontSize: 14, color: D_T.ink2,
                                    outline: 'none', fontFamily: font, cursor: 'pointer' }}>
                           <option value="default">{lang === 'th' ? 'ล่าสุด' : 'Latest'}</option>
@@ -1821,7 +1891,7 @@ export default function App() {
                             [lang === 'th' ? 'สถานะ' : 'Status', 'right'],
                           ] as [string, string][]).map(([h, align]) => (
                             <th key={h} style={{ padding: '8px 8px', textAlign: align as any,
-                                                 fontSize: 10, color: D_T.mute2, fontWeight: 700,
+                                                 fontSize: 12, color: D_T.mute2, fontWeight: 700,
                                                  letterSpacing: '.06em', textTransform: 'uppercase' }}>{h}</th>
                           ))}
                         </tr>
@@ -1834,33 +1904,33 @@ export default function App() {
                                      transition: 'background 300ms cubic-bezier(0.22,1,0.36,1)' }}
                             onMouseEnter={e => (e.currentTarget.style.background = D_T.surface2)}
                             onMouseLeave={e => (e.currentTarget.style.background = selectedLoan?.id === l.id ? D_T.surface2 : 'transparent')}>
-                            <td style={{ padding: '13px 8px', fontFamily: mono, fontSize: 11, color: D_T.mute2 }}>{l.id}</td>
-                            <td style={{ padding: '13px 8px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <div style={{ width: 28, height: 28, borderRadius: 9, background: D_T.surface2,
+                            <td style={{ padding: '12px 8px', fontFamily: mono, fontSize: 12, color: D_T.mute2 }}>{l.id}</td>
+                            <td style={{ padding: '12px 8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <div style={{ width: 28, height: 28, borderRadius: 8, background: D_T.surface2,
                                               border: `1px solid ${D_T.line}`, display: 'grid', placeItems: 'center',
-                                              fontSize: 10, color: D_T.ink, fontWeight: 700, flexShrink: 0 }}>
+                                              fontSize: 12, color: D_T.ink, fontWeight: 700, flexShrink: 0 }}>
                                   {l.name.charAt(0).toUpperCase()}
                                 </div>
                                 <span style={{ fontSize: 12, color: D_T.ink, fontWeight: 600 }}>{l.name}</span>
                                 {l.isOverdue && <DChip tone="blush">{l.daysLate}d</DChip>}
                               </div>
                             </td>
-                            <td style={{ padding: '13px 8px', fontFamily: mono, fontSize: 12, color: D_T.ink,
+                            <td style={{ padding: '12px 8px', fontFamily: mono, fontSize: 12, color: D_T.ink,
                                          textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
                               {formatCurrency(l.principal)}
                             </td>
-                            <td style={{ padding: '13px 8px', fontFamily: mono, fontSize: 12,
+                            <td style={{ padding: '12px 8px', fontFamily: mono, fontSize: 12,
                                          color: D_T.mintDeep, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                               +{formatCurrency(l.expectedInterest)}
                             </td>
-                            <td style={{ padding: '13px 8px', fontFamily: mono, fontSize: 12, color: D_T.ink2, textAlign: 'right' }}>
+                            <td style={{ padding: '12px 8px', fontFamily: mono, fontSize: 12, color: D_T.ink2, textAlign: 'right' }}>
                               {l.interestRate}%
                             </td>
-                            <td style={{ padding: '13px 8px', fontSize: 12, color: l.isOverdue ? D_T.blushDeep : D_T.ink2, textAlign: 'right' }}>
+                            <td style={{ padding: '12px 8px', fontSize: 12, color: l.isOverdue ? D_T.blushDeep : D_T.ink2, textAlign: 'right' }}>
                               {l.dueDate}
                             </td>
-                            <td style={{ padding: '13px 8px', textAlign: 'right' }}>
+                            <td style={{ padding: '12px 8px', textAlign: 'right' }}>
                               <DChip tone={getLoanTone(l)}>{getLoanStatusText(l)}</DChip>
                             </td>
                           </tr>
@@ -1879,18 +1949,18 @@ export default function App() {
             </section>
 
             {/* Right rail */}
-            <aside style={{ borderLeft: `1px solid ${D_T.line}`, padding: '22px 24px',
-                            background: D_T.bg, display: 'flex', flexDirection: 'column', gap: 18,
+            <aside style={{ borderLeft: `1px solid ${D_T.line}`, padding: '24px 24px',
+                            background: D_T.bg, display: 'flex', flexDirection: 'column', gap: 16,
                             overflowY: 'auto' }}>
 
               {/* Today's collections */}
               <div>
-                <div style={{ fontSize: 11, color: D_T.butterDeep, fontWeight: 700,
-                              letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 10 }}>
+                <div style={{ fontSize: 12, color: D_T.butterDeep, fontWeight: 700,
+                              letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
                   {lang === 'th' ? 'วันนี้' : 'Today'} · {dueTodayLoans.length}
                 </div>
                 {dueTodayLoans.length === 0 ? (
-                  <div style={{ padding: 16, borderRadius: 14, background: D_T.surface2,
+                  <div style={{ padding: 16, borderRadius: 12, background: D_T.surface2,
                                 border: `1px solid ${D_T.line}`, fontSize: 12, color: D_T.mute,
                                 textAlign: 'center' }}>
                     {lang === 'th' ? 'ไม่มีนัดวันนี้ 🎉' : 'Nothing due today 🎉'}
@@ -1908,20 +1978,20 @@ export default function App() {
                                       fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
                           {formatCurrency(l.totalExpected)}
                         </div>
-                        <div style={{ fontSize: 11, color: D_T.ink2, marginTop: 2 }}>
+                        <div style={{ fontSize: 12, color: D_T.ink2, marginTop: 2 }}>
                           {formatCurrency(l.principal)} + {formatCurrency(l.expectedInterest)} {lang === 'th' ? 'ดอก' : 'interest'}
                         </div>
-                        <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+                        <div style={{ display: 'flex', gap: 4, marginTop: 12 }}>
                           <button onClick={() => setSelectedLoan(l)}
                             style={{ flex: 1, padding: '8px 0', background: D_T.ink, color: D_T.bg,
-                                     border: 'none', borderRadius: 999, fontSize: 11.5, fontWeight: 700,
+                                     border: 'none', borderRadius: 999, fontSize: 12, fontWeight: 700,
                                      cursor: 'pointer', fontFamily: font }}>
                             {lang === 'th' ? 'รับเงินแล้ว' : 'Got paid'}
                           </button>
                           <button onClick={() => setSelectedLoan(l)}
                             style={{ flex: 1, padding: '8px 0', background: 'rgba(255,255,255,.6)',
                                      color: D_T.ink, border: 'none', borderRadius: 999,
-                                     fontSize: 11.5, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>
+                                     fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>
                             {lang === 'th' ? 'ต่อสัญญา' : 'Renew'}
                           </button>
                         </div>
@@ -1934,26 +2004,26 @@ export default function App() {
               {/* Overdue */}
               {overdueLoans.length > 0 && (
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
-                    <span style={{ fontSize: 11, color: D_T.blushDeep, fontWeight: 700,
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                    <span style={{ fontSize: 12, color: D_T.blushDeep, fontWeight: 700,
                                    letterSpacing: '.06em', textTransform: 'uppercase' }}>
                       {lang === 'th' ? 'ค้างชำระ' : 'Overdue'} · {overdueLoans.length}
                     </span>
-                    <span style={{ fontSize: 11, color: D_T.blushDeep, fontWeight: 700, fontFamily: mono }}>
+                    <span style={{ fontSize: 12, color: D_T.blushDeep, fontWeight: 700, fontFamily: mono }}>
                       −{formatCurrency(overdueLoans.reduce((a, l) => a + l.totalExpected, 0))}
                     </span>
                   </div>
                   <div ref={overdueListRef} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {overdueLoans.map(l => (
                       <div key={l.id} {...tap(() => setSelectedLoan(l))}
-                        style={{ padding: 14, borderRadius: 14, background: D_T.blush, cursor: 'pointer' }}>
+                        style={{ padding: 12, borderRadius: 12, background: D_T.blush, cursor: 'pointer' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                           <span style={{ fontSize: 12, fontWeight: 700 }}>{l.name}</span>
-                          <span style={{ fontSize: 11, color: D_T.blushDeep, fontWeight: 700 }}>
+                          <span style={{ fontSize: 12, color: D_T.blushDeep, fontWeight: 700 }}>
                             {lang === 'th' ? `ช้า ${l.daysLate} วัน` : `${l.daysLate}d late`}
                           </span>
                         </div>
-                        <div style={{ fontSize: 11, color: D_T.ink2 }}>
+                        <div style={{ fontSize: 12, color: D_T.ink2 }}>
                           {formatCurrency(l.principal)} + {formatCurrency(l.expectedInterest)} · {l.dueDate}
                         </div>
                       </div>
@@ -1973,23 +2043,23 @@ export default function App() {
                 const total = Math.max(segs.reduce((a, sg) => a + sg.value, 0), 1);
                 return (
                   <div>
-                    <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>
+                    <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>
                       {lang === 'th' ? 'เงินอยู่ที่ไหน' : 'Where is my money'}
                     </div>
-                    <div style={{ display: 'flex', height: 10, borderRadius: 99, overflow: 'hidden', gap: 2, marginBottom: 14 }}>
+                    <div style={{ display: 'flex', height: 10, borderRadius: 99, overflow: 'hidden', gap: 2, marginBottom: 12 }}>
                       {segs.map(sg => (
                         <div key={sg.label} style={{ flex: sg.value / total, background: sg.color, minWidth: 4 }} />
                       ))}
                     </div>
                     {segs.map(sg => (
-                      <div key={sg.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                      <div key={sg.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ width: 9, height: 9, borderRadius: 3, background: sg.color, flexShrink: 0 }} />
+                          <div style={{ width: 9, height: 9, borderRadius: 2, background: sg.color, flexShrink: 0 }} />
                           <span style={{ fontSize: 12, fontWeight: 600, color: D_T.ink2 }}>{sg.label}</span>
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <span style={{ fontSize: 12, fontWeight: 700, fontFamily: mono, color: D_T.ink }}>{formatCurrency(sg.value)}</span>
-                          <span style={{ fontSize: 10, color: D_T.mute, marginLeft: 5 }}>{((sg.value / total) * 100).toFixed(0)}%</span>
+                          <span style={{ fontSize: 12, color: D_T.mute, marginLeft: 4 }}>{((sg.value / total) * 100).toFixed(0)}%</span>
                         </div>
                       </div>
                     ))}
@@ -1997,7 +2067,7 @@ export default function App() {
                 );
               })()}
 
-              <div style={{ marginTop: 'auto', fontSize: 11, color: D_T.mute2, fontStyle: 'italic', lineHeight: 1.5 }}>
+              <div style={{ marginTop: 'auto', fontSize: 12, color: D_T.mute2, fontStyle: 'italic', lineHeight: 1.5 }}>
                 {lang === 'th' ? '"การปล่อยกู้คือความอดทนที่มีตัวเลขกำกับ"' : '"Lending is patience with a number on it."'}
               </div>
             </aside>
@@ -2011,13 +2081,13 @@ export default function App() {
       >
 
         {/* Mobile header */}
-        <div style={{ padding: '10px 20px 6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        <div style={{ padding: '8px 16px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                       background: D_T.bg, borderBottom: `1px solid ${D_T.line}`, position: 'sticky', top: 0, zIndex: 30 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 30, height: 30, borderRadius: 10, background: D_T.ink, color: D_T.butter,
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: D_T.ink, color: D_T.butter,
                           display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700 }}>P</div>
             <div>
-              <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase' }}>
                 Pocket Bank
               </div>
               <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: '-.02em' }}>
@@ -2025,15 +2095,15 @@ export default function App() {
               </div>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 4 }}>
             <button onClick={toggleLang} aria-label={lang === 'th' ? 'Switch to English' : 'เปลี่ยนเป็นภาษาไทย'}
-              style={{ width: 32, height: 32, borderRadius: 10, background: D_T.surface,
-                       border: `1px solid ${D_T.line}`, fontSize: 10, fontWeight: 700,
+              style={{ width: 32, height: 32, borderRadius: 8, background: D_T.surface,
+                       border: `1px solid ${D_T.line}`, fontSize: 12, fontWeight: 700,
                        color: D_T.ink2, cursor: 'pointer', fontFamily: font }}>
               {lang === 'th' ? 'EN' : 'TH'}
             </button>
             <button onClick={() => loadData(false)} disabled={isSyncing} aria-label={lang === 'th' ? 'รีเฟรชข้อมูล' : 'Refresh data'}
-              style={{ width: 32, height: 32, borderRadius: 10, background: D_T.surface,
+              style={{ width: 32, height: 32, borderRadius: 8, background: D_T.surface,
                        border: `1px solid ${D_T.line}`, display: 'grid', placeItems: 'center',
                        fontSize: 14, cursor: isSyncing ? 'default' : 'pointer', opacity: isSyncing ? 0.5 : 1 }}>
               <span aria-hidden="true" style={{ display: 'grid', placeItems: 'center', animation: isSyncing ? 'ptr-spin .7s linear infinite' : 'none' }}><ArrowClockwise size={16} weight="bold" /></span>
@@ -2044,9 +2114,9 @@ export default function App() {
 
         {/* Dashboard tab */}
         {activeMobileTab === 'dashboard' && (
-          <div style={{ padding: '10px 18px 0' }}>
+          <div style={{ padding: '8px 16px 0' }}>
             {/* Hero card */}
-            <div style={{ padding: 20, borderRadius: 22, background: D_T.surface,
+            <div style={{ padding: 16, borderRadius: 24, background: D_T.surface,
                           border: `1px solid ${D_T.line}`, marginBottom: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 0 }}>
                 <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 500 }}>
@@ -2057,9 +2127,9 @@ export default function App() {
                   const fi = (v: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 0 }).format(Math.round(v));
                   return (
                     <button onClick={() => setShowWeeklySheet(true)} style={{
-                      background: D_T.mint + '60', border: 'none', borderRadius: 10,
-                      padding: '5px 10px', cursor: 'pointer', textAlign: 'right', lineHeight: 1.2 }}>
-                      <div style={{ fontSize: 9, color: D_T.mintDeep, fontWeight: 700, letterSpacing: '.04em', marginBottom: 2 }}>
+                      background: D_T.mint + '60', border: 'none', borderRadius: 8,
+                      padding: '4px 8px', cursor: 'pointer', textAlign: 'right', lineHeight: 1.2 }}>
+                      <div style={{ fontSize: 12, color: D_T.mintDeep, fontWeight: 700, letterSpacing: '.04em', marginBottom: 2 }}>
                         {lang === 'th' ? 'สัปดาห์นี้' : 'This week'}
                       </div>
                       <div style={{ fontSize: 12, fontWeight: 700, color: D_T.mintDeep, fontFamily: mono }}>
@@ -2087,12 +2157,12 @@ export default function App() {
                 <DChip tone={s.netProfit >= 0 ? 'mint' : 'blush'}>
                   {s.netProfit >= 0 ? '↗' : '↘'} {formatCurrency(Math.abs(s.netProfit))}
                 </DChip>
-                <span style={{ fontSize: 11, color: D_T.mute }}>{s.profitPct.toFixed(1)}% lifetime</span>
+                <span style={{ fontSize: 12, color: D_T.mute }}>{s.profitPct.toFixed(1)}% lifetime</span>
               </div>
-              <div style={{ marginTop: 14, marginLeft: -4, marginRight: -4, overflowX: 'hidden' }}>
+              <div style={{ marginTop: 12, marginLeft: -4, marginRight: -4, overflowX: 'hidden' }}>
                 <MiniPortfolioChart />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
                 <div style={{ padding: 12, borderRadius: 12, background: D_T.surface2 }}>
                   <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 500 }}>
                     {lang === 'th' ? 'พอร์ตรวม' : 'Portfolio'}
@@ -2106,7 +2176,7 @@ export default function App() {
                   </div>
                 </div>
                 <div style={{ padding: 12, borderRadius: 12, background: D_T.surface2 }}>
-                  <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                  <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
                     NPL
                   </div>
                   <div style={{ fontSize: 18, fontWeight: 700, marginTop: 2, color: D_T.blushDeep,
@@ -2119,10 +2189,10 @@ export default function App() {
 
             {/* Collect today */}
             {dueTodayLoans.length > 0 && (
-              <div style={{ padding: 16, borderRadius: 18, background: D_T.butter, marginBottom: 12 }}>
+              <div style={{ padding: 16, borderRadius: 16, background: D_T.butter, marginBottom: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
                   <div>
-                    <div style={{ fontSize: 11, color: D_T.butterDeep, fontWeight: 700,
+                    <div style={{ fontSize: 12, color: D_T.butterDeep, fontWeight: 700,
                                   letterSpacing: '.06em', textTransform: 'uppercase' }}>
                       {lang === 'th' ? 'เก็บวันนี้' : 'Collect today'}
                     </div>
@@ -2135,22 +2205,22 @@ export default function App() {
                 </div>
                 {dueTodayLoans.map(l => (
                   <div key={l.id} {...tap(() => setSelectedLoan(l))}
-                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 10,
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 8,
                              background: 'rgba(255,255,255,.6)', borderRadius: 12, marginTop: 8, cursor: 'pointer' }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: D_T.ink,
+                    <div style={{ width: 36, height: 36, borderRadius: 8, background: D_T.ink,
                                   color: D_T.butter, display: 'grid', placeItems: 'center',
                                   fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                       {l.name.charAt(0).toUpperCase()}
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 12, fontWeight: 700 }}>{l.name}</div>
-                      <div style={{ fontSize: 10.5, color: D_T.ink2 }}>
+                      <div style={{ fontSize: 12, color: D_T.ink2 }}>
                         {formatCurrency(l.principal)} + {formatCurrency(l.expectedInterest)} · {l.id}
                       </div>
                     </div>
                     <button onClick={e => { e.stopPropagation(); setSelectedLoan(l); }}
-                      style={{ padding: '7px 12px', borderRadius: 999, background: D_T.ink,
-                               color: D_T.bg, border: 'none', fontSize: 11, fontWeight: 700,
+                      style={{ padding: '8px 12px', borderRadius: 999, background: D_T.ink,
+                               color: D_T.bg, border: 'none', fontSize: 12, fontWeight: 700,
                                fontFamily: font, cursor: 'pointer' }}>
                       {lang === 'th' ? 'รับแล้ว' : 'Paid'}
                     </button>
@@ -2161,11 +2231,11 @@ export default function App() {
 
             {/* Overdue */}
             {overdueLoans.length > 0 && (
-              <div style={{ padding: 16, borderRadius: 18, background: D_T.blush + '60',
+              <div style={{ padding: 16, borderRadius: 16, background: D_T.blush + '60',
                             border: `1px solid ${D_T.blush}`, marginBottom: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <div>
-                    <div style={{ fontSize: 11, color: D_T.blushDeep, fontWeight: 700,
+                    <div style={{ fontSize: 12, color: D_T.blushDeep, fontWeight: 700,
                                   letterSpacing: '.06em', textTransform: 'uppercase' }}>
                       {lang === 'th' ? 'เกินกำหนด' : 'Overdue'}
                     </div>
@@ -2176,19 +2246,19 @@ export default function App() {
                   </div>
                   <DChip tone="blush">{overdueLoans.length} {lang === 'th' ? 'ราย' : 'overdue'}</DChip>
                 </div>
-                <div ref={overdueListRef} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div ref={overdueListRef} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {overdueLoans.slice(0, 3).map(l => (
                     <div key={l.id} {...tap(() => setSelectedLoan(l))}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 8px',
                                background: 'rgba(255,255,255,.55)', borderRadius: 12, cursor: 'pointer' }}>
-                      <div style={{ width: 32, height: 32, borderRadius: 9, background: D_T.blushDeep,
+                      <div style={{ width: 32, height: 32, borderRadius: 8, background: D_T.blushDeep,
                                     color: '#fff', display: 'grid', placeItems: 'center',
-                                    fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                                    fontSize: 12, fontWeight: 700, flexShrink: 0 }}>
                         {l.name.charAt(0).toUpperCase()}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 12, fontWeight: 700, color: D_T.ink }}>{l.name}</div>
-                        <div style={{ fontSize: 10.5, color: D_T.blushDeep, fontWeight: 600 }}>
+                        <div style={{ fontSize: 12, color: D_T.blushDeep, fontWeight: 600 }}>
                           {l.daysLate} {lang === 'th' ? 'วัน' : 'd'} · {formatCurrency(l.totalExpected)}
                         </div>
                       </div>
@@ -2196,7 +2266,7 @@ export default function App() {
                     </div>
                   ))}
                   {overdueLoans.length > 3 && (
-                    <div style={{ textAlign: 'center', fontSize: 11, color: D_T.blushDeep, fontWeight: 700, paddingTop: 2 }}>
+                    <div style={{ textAlign: 'center', fontSize: 12, color: D_T.blushDeep, fontWeight: 700, paddingTop: 2 }}>
                       +{overdueLoans.length - 3} {lang === 'th' ? 'รายเพิ่มเติม' : 'more'}
                     </div>
                   )}
@@ -2209,12 +2279,12 @@ export default function App() {
 
         {/* Loans tab */}
         {activeMobileTab === 'loans' && (
-          <div style={{ padding: '12px 18px 0' }}>
+          <div style={{ padding: '12px 16px 0' }}>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
               <div style={{ flex: 1, position: 'relative' }}>
                 <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                   placeholder={lang === 'th' ? 'ค้นหา…' : 'Search…'}
-                  style={{ width: '100%', padding: '10px 36px 10px 14px', borderRadius: 12,
+                  style={{ width: '100%', padding: '8px 32px 8px 12px', borderRadius: 12,
                            border: `1px solid ${D_T.line}`, background: D_T.surface, fontSize: 16,
                            color: D_T.ink, outline: 'none', fontFamily: font, boxSizing: 'border-box' }} />
                 {searchQuery && (
@@ -2224,42 +2294,42 @@ export default function App() {
                 )}
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', marginBottom: 12, paddingBottom: 4 }} className="no-scrollbar">
+            <div style={{ display: 'flex', gap: 4, overflowX: 'auto', marginBottom: 12, paddingBottom: 4 }} className="no-scrollbar">
               {(['all', 'renewals', 'paid', 'defaulted', 'withdrawn'] as const).map(tab => (
                 <span key={tab} {...tap(() => { setActiveTab(tab); setSearchQuery(''); })}
-                  style={{ padding: '6px 14px', borderRadius: 999, flexShrink: 0, cursor: 'pointer',
+                  style={{ padding: '4px 12px', borderRadius: 999, flexShrink: 0, cursor: 'pointer',
                            background: activeTab === tab ? D_T.ink : D_T.surface,
                            color: activeTab === tab ? D_T.bg : D_T.ink2,
-                           fontSize: 11.5, fontWeight: 700, border: `1px solid ${D_T.line}`,
-                           display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                           fontSize: 12, fontWeight: 700, border: `1px solid ${D_T.line}`,
+                           display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   {tab === 'all' ? (lang === 'th' ? 'ทั้งหมด' : 'All') :
                    tab === 'renewals' ? (lang === 'th' ? 'ต่อสัญญา' : 'Renewed') :
                    tab === 'paid' ? (lang === 'th' ? 'จ่ายแล้ว' : 'Paid') :
                    tab === 'defaulted' ? (lang === 'th' ? 'หนี้เสีย' : 'Default') :
                    (lang === 'th' ? 'เบิก' : 'Payout')}
-                  {tabCounts[tab] > 0 && <span style={{ fontSize: 10, opacity: .7 }}>{tabCounts[tab]}</span>}
+                  {tabCounts[tab] > 0 && <span style={{ fontSize: 12, opacity: .7 }}>{tabCounts[tab]}</span>}
                 </span>
               ))}
             </div>
             <div ref={tableRef as any}>
               {filteredLoans.map(l => (
                 <div key={l.id} {...tap(() => setSelectedLoan(l))}
-                  style={{ background: D_T.surface, borderRadius: 14, padding: '12px 14px', marginBottom: 8,
+                  style={{ background: D_T.surface, borderRadius: 12, padding: '12px 12px', marginBottom: 8,
                            display: 'flex', alignItems: 'center', gap: 12,
                            border: `1px solid ${l.isOverdue ? D_T.blush : D_T.line2}`, cursor: 'pointer' }}>
-                  <div style={{ width: 38, height: 38, borderRadius: 11, flexShrink: 0,
+                  <div style={{ width: 38, height: 38, borderRadius: 12, flexShrink: 0,
                                 background: getLoanTone(l) === 'blush' ? D_T.blush : getLoanTone(l) === 'mint' ? D_T.mint : D_T.surface2,
                                 border: `1px solid ${D_T.line}`, display: 'grid', placeItems: 'center',
                                 fontSize: 12, fontWeight: 700 }}>
                     {l.name.charAt(0).toUpperCase()}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 12, fontWeight: 700 }}>{l.name}</span>
                       <DChip tone={getLoanTone(l)}>{getLoanStatusText(l)}</DChip>
-                      {(() => { const stats = borrowerStats.find(b => b.name === l.name); const tier = (!stats?.hasScam) ? getLoyaltyTier(stats?.totalRenewals ?? 0) : null; return tier ? <span style={{ fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 999, background: tier.bg + '60', color: tier.color }}>{tier.label}</span> : null; })()}
+                      {(() => { const stats = borrowerStats.find(b => b.name === l.name); const tier = (!stats?.hasScam) ? getLoyaltyTier(stats?.totalRenewals ?? 0) : null; return tier ? <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 4px', borderRadius: 999, background: tier.bg + '60', color: tier.color }}>{tier.label}</span> : null; })()}
                     </div>
-                    <div style={{ fontSize: 11, color: D_T.mute, marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: D_T.mute, marginTop: 2 }}>
                       {l.id} · {l.isOverdue ? (lang === 'th' ? `ช้า ${l.daysLate} วัน` : `${l.daysLate}d overdue`) : `${lang === 'th' ? 'กำหนด' : 'due'} ${l.dueDate}`}
                     </div>
                   </div>
@@ -2267,7 +2337,7 @@ export default function App() {
                     <div style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
                       {formatCurrency(l.isScam || l.isWithdrawn ? l.principal : l.totalExpected)}
                     </div>
-                    <div style={{ fontSize: 10, color: D_T.mute, marginTop: 1 }}>{l.interestRate}%</div>
+                    <div style={{ fontSize: 12, color: D_T.mute, marginTop: 0 }}>{l.interestRate}%</div>
                   </div>
                 </div>
               ))}
@@ -2282,25 +2352,25 @@ export default function App() {
 
         {/* Analytics tab */}
         {activeMobileTab === 'analytics' && (
-          <div style={{ padding: '12px 18px 0' }}>
+          <div style={{ padding: '12px 16px 0' }}>
 
             {/* Portfolio growth chart */}
             <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
-                          borderRadius: 18, padding: '14px 16px 12px', marginBottom: 12 }}>
+                          borderRadius: 16, padding: '12px 16px 12px', marginBottom: 12 }}>
               <PortfolioGrowthChart compact />
             </div>
 
             <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
-                          borderRadius: 18, padding: '16px 18px', marginBottom: 12 }}>
-              <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700,
-                            letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 10 }}>
+                          borderRadius: 16, padding: '16px 16px', marginBottom: 12 }}>
+              <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700,
+                            letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
                 {lang === 'th' ? 'ดอกเบี้ยที่ได้รับ · 30 วัน' : 'Interest received · 30 days'}
               </div>
               <div style={{ overflowX: 'hidden' }}>
                 <DAreaChart sparkData={trendData30} w={320} h={110} showYAxis />
               </div>
               <button onClick={() => setShowExpandedTrend(true)}
-                style={{ marginTop: 10, width: '100%', padding: '8px 0', borderRadius: 999,
+                style={{ marginTop: 8, width: '100%', padding: '8px 0', borderRadius: 999,
                          background: D_T.ink, color: D_T.bg, border: 'none',
                          fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>
                 {lang === 'th' ? 'ดูแบบละเอียด' : 'View full chart'}
@@ -2308,7 +2378,7 @@ export default function App() {
             </div>
 
             {/* KPI grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
               {([
                 [lang === 'th' ? 'พอร์ตรวม' : 'Portfolio', formatCurrency(s.totalLimit), 'ghost', null],
                 [lang === 'th' ? 'กำไรสุทธิ' : 'Net profit', formatCurrency(s.netProfit), s.netProfit >= 0 ? 'mint' : 'blush', () => setShowProfitModal(true)],
@@ -2316,11 +2386,11 @@ export default function App() {
                 [lang === 'th' ? 'เงินในบัญชี' : 'Cash in account', formatCurrency(s.available), 'butter', null],
               ] as [string, string, string, (() => void) | null][]).map(([label, value, tone, onTap]) => (
                 <div key={label} {...tap(onTap ?? undefined)}
-                  style={{ padding: '14px 16px', borderRadius: 14,
+                  style={{ padding: '12px 16px', borderRadius: 12,
                             background: D_T.surface, border: `1px solid ${D_T.line}`,
                             cursor: onTap ? 'pointer' : 'default' }}>
-                  <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700,
-                                letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>{label}</div>
+                  <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700,
+                                letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4 }}>{label}</div>
                   <div style={{ fontSize: 20, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
                                 letterSpacing: '-.02em', fontFamily: mono }}>{value}</div>
                 </div>
@@ -2337,19 +2407,19 @@ export default function App() {
               ].filter(sg => sg.value > 0);
               const total = Math.max(segs.reduce((a, sg) => a + sg.value, 0), 1);
               return (
-                <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 18, padding: '16px 18px', marginBottom: 12 }}>
-                  <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>
+                <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 16, padding: '16px 16px', marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>
                     {lang === 'th' ? 'เงินอยู่ที่ไหน' : 'Where is my money'}
                   </div>
-                  <div style={{ display: 'flex', height: 10, borderRadius: 99, overflow: 'hidden', gap: 2, marginBottom: 14 }}>
+                  <div style={{ display: 'flex', height: 10, borderRadius: 99, overflow: 'hidden', gap: 2, marginBottom: 12 }}>
                     {segs.map(sg => <div key={sg.label} style={{ flex: sg.value / total, background: sg.color, minWidth: 4 }} />)}
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     {segs.map(sg => (
                       <div key={sg.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ width: 9, height: 9, borderRadius: 3, background: sg.color, flexShrink: 0 }} />
+                        <div style={{ width: 9, height: 9, borderRadius: 2, background: sg.color, flexShrink: 0 }} />
                         <div>
-                          <div style={{ fontSize: 9.5, color: D_T.mute, fontWeight: 700 }}>{sg.label} {((sg.value / total) * 100).toFixed(0)}%</div>
+                          <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700 }}>{sg.label} {((sg.value / total) * 100).toFixed(0)}%</div>
                           <div style={{ fontSize: 12, fontWeight: 700, fontFamily: mono, color: D_T.ink }}>{formatCurrency(sg.value)}</div>
                         </div>
                       </div>
@@ -2362,9 +2432,9 @@ export default function App() {
             {/* Monthly summary — one row per month, no net box */}
             {monthlySummary.length > 0 && (
               <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`,
-                            borderRadius: 18, overflow: 'hidden', marginBottom: 12 }}>
-                <div style={{ padding: '12px 18px', borderBottom: `1px solid ${D_T.line}`,
-                              fontSize: 11, fontWeight: 700, color: D_T.mute,
+                            borderRadius: 16, overflow: 'hidden', marginBottom: 12 }}>
+                <div style={{ padding: '12px 16px', borderBottom: `1px solid ${D_T.line}`,
+                              fontSize: 12, fontWeight: 700, color: D_T.mute,
                               letterSpacing: '.06em', textTransform: 'uppercase' }}>
                   {lang === 'th' ? 'สรุปรายเดือน' : 'Monthly Summary'}
                 </div>
@@ -2373,18 +2443,18 @@ export default function App() {
                   const label = d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { month: 'short', year: '2-digit' });
                   const net = m.interest - m.scam - m.withdrawn;
                   return (
-                    <div key={m.key} style={{ padding: '12px 18px', borderBottom: `1px solid ${D_T.line2}` }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                    <div key={m.key} style={{ padding: '12px 16px', borderBottom: `1px solid ${D_T.line2}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                         <div>
                           <span style={{ fontSize: 12, fontWeight: 700, color: D_T.ink }}>{label}</span>
-                          <span style={{ fontSize: 10, color: D_T.mute, marginLeft: 6 }}>{m.count} {lang === 'th' ? 'ราย' : 'items'}</span>
+                          <span style={{ fontSize: 12, color: D_T.mute, marginLeft: 4 }}>{m.count} {lang === 'th' ? 'ราย' : 'items'}</span>
                         </div>
                         <DChip tone={net >= 0 ? 'mint' : 'blush'}>{net >= 0 ? '+' : ''}{formatCurrency(net)}</DChip>
                       </div>
-                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                        {m.interest > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: D_T.mintDeep, fontFamily: mono }}>+{formatCurrency(m.interest)}</span>}
-                        {m.scam > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: D_T.blushDeep, fontFamily: mono }}>−{formatCurrency(m.scam)}</span>}
-                        {m.withdrawn > 0 && <span style={{ fontSize: 11, fontWeight: 700, color: D_T.butterDeep, fontFamily: mono }}>เบิก {formatCurrency(m.withdrawn)}</span>}
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        {m.interest > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: D_T.mintDeep, fontFamily: mono }}>+{formatCurrency(m.interest)}</span>}
+                        {m.scam > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: D_T.blushDeep, fontFamily: mono }}>−{formatCurrency(m.scam)}</span>}
+                        {m.withdrawn > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: D_T.butterDeep, fontFamily: mono }}>เบิก {formatCurrency(m.withdrawn)}</span>}
                       </div>
                     </div>
                   );
@@ -2395,18 +2465,18 @@ export default function App() {
             {/* เบิกได้จริง — mobile analytics */}
             {reserveData.totalLocked > 0 && (
               <div {...tap(() => setShowReserveBreakdown(true))}
-                style={{ borderRadius: 18, cursor: 'pointer', marginBottom: 12,
+                style={{ borderRadius: 16, cursor: 'pointer', marginBottom: 12,
                           background: D_T.surface, border: `1px solid ${D_T.line}`,
-                          padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          padding: '16px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
+                  <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
                                 color: D_T.mute, marginBottom: 4 }}>
                     {lang === 'th' ? 'เบิกได้จริง' : 'Safe to withdraw'}
                   </div>
                   <div style={{ fontSize: 24, fontWeight: 700, fontVariantNumeric: 'tabular-nums', fontFamily: mono, lineHeight: 1 }}>
                     {formatCurrency(reserveData.safeWithdrawable)}
                   </div>
-                  <div style={{ fontSize: 10, color: D_T.mute, marginTop: 5 }}>
+                  <div style={{ fontSize: 12, color: D_T.mute, marginTop: 4 }}>
                     {lang === 'th' ? `ล็อกดอกสำรอง ${formatCurrency(reserveData.totalLocked)}` : `Reserve locked ${formatCurrency(reserveData.totalLocked)}`}
                   </div>
                 </div>
@@ -2419,11 +2489,11 @@ export default function App() {
 
         {/* You tab */}
         {activeMobileTab === 'you' && (
-          <div style={{ padding: '16px 18px 0', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ padding: '16px 16px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
             {/* Profile card */}
-            <div style={{ background: D_T.ink, borderRadius: 20, padding: '20px 20px 18px',
-                          display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ background: D_T.ink, borderRadius: 16, padding: '16px 16px 16px',
+                          display: 'flex', alignItems: 'center', gap: 12 }}>
               <div style={{ width: 52, height: 52, borderRadius: 16, background: D_T.butter,
                             display: 'grid', placeItems: 'center', fontSize: 20, fontWeight: 700,
                             color: D_T.ink, flexShrink: 0 }}>P</div>
@@ -2431,16 +2501,16 @@ export default function App() {
                 <div style={{ fontSize: 16, fontWeight: 700, color: D_T.bg, letterSpacing: '-.01em' }}>
                   {lang === 'th' ? 'พ็อกเก็ต แบงก์' : 'Pocket Bank'}
                 </div>
-                <div style={{ fontSize: 11, color: D_T.mute2, marginTop: 3 }}>
+                <div style={{ fontSize: 12, color: D_T.mute2, marginTop: 2 }}>
                   {lang === 'th' ? 'โต๊ะปล่อยกู้ส่วนตัว' : 'Personal lending desk'}
                 </div>
               </div>
             </div>
 
             {/* Capital overview */}
-            <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 18, overflow: 'hidden' }}>
-              <div style={{ padding: '10px 16px', borderBottom: `1px solid ${D_T.line}`,
-                            fontSize: 10, fontWeight: 700, color: D_T.mute,
+            <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 16, overflow: 'hidden' }}>
+              <div style={{ padding: '8px 16px', borderBottom: `1px solid ${D_T.line}`,
+                            fontSize: 12, fontWeight: 700, color: D_T.mute,
                             letterSpacing: '.06em', textTransform: 'uppercase' }}>
                 {lang === 'th' ? 'ภาพรวมทุน' : 'Capital Overview'}
               </div>
@@ -2471,26 +2541,26 @@ export default function App() {
             </div>
 
             {/* Settings */}
-            <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 18, overflow: 'hidden' }}>
-              <div style={{ padding: '10px 16px', borderBottom: `1px solid ${D_T.line}`,
-                            fontSize: 10, fontWeight: 700, color: D_T.mute,
+            <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 16, overflow: 'hidden' }}>
+              <div style={{ padding: '8px 16px', borderBottom: `1px solid ${D_T.line}`,
+                            fontSize: 12, fontWeight: 700, color: D_T.mute,
                             letterSpacing: '.06em', textTransform: 'uppercase' }}>
                 {lang === 'th' ? 'ตั้งค่า' : 'Settings'}
               </div>
 
               {/* Language */}
-              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${D_T.line2}`,
+              <div style={{ padding: '12px 16px', borderBottom: `1px solid ${D_T.line2}`,
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: D_T.ink }}>
                     {lang === 'th' ? 'ภาษา' : 'Language'}
                   </div>
-                  <div style={{ fontSize: 11, color: D_T.mute, marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: D_T.mute, marginTop: 2 }}>
                     {lang === 'th' ? 'ไทย' : 'English'}
                   </div>
                 </div>
                 <button onClick={toggleLang}
-                  style={{ padding: '6px 14px', borderRadius: 999, border: `1px solid ${D_T.line}`,
+                  style={{ padding: '4px 12px', borderRadius: 999, border: `1px solid ${D_T.line}`,
                            background: D_T.surface2, fontSize: 12, fontWeight: 700, color: D_T.ink,
                            cursor: 'pointer', fontFamily: font }}>
                   {lang === 'th' ? 'EN' : 'TH'}
@@ -2498,13 +2568,13 @@ export default function App() {
               </div>
 
               {/* Notifications */}
-              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${D_T.line2}` }}>
+              <div style={{ padding: '12px 16px', borderBottom: `1px solid ${D_T.line2}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <div>
                     <div style={{ fontSize: 12, fontWeight: 600, color: D_T.ink }}>
                       {lang === 'th' ? 'การแจ้งเตือน' : 'Notifications'}
                     </div>
-                    <div style={{ fontSize: 11, color: isSubscribed ? D_T.mintDeep : notifPermission === 'denied' ? D_T.blushDeep : D_T.mute, marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: isSubscribed ? D_T.mintDeep : notifPermission === 'denied' ? D_T.blushDeep : D_T.mute, marginTop: 2 }}>
                       {isSubscribed ? (lang === 'th' ? '🔔 เปิดอยู่' : '🔔 On') :
                        notifPermission === 'denied' ? (lang === 'th' ? '🚫 ถูกบล็อก' : '🚫 Blocked') :
                        (lang === 'th' ? '🔕 ปิดอยู่' : '🔕 Off')}
@@ -2512,7 +2582,7 @@ export default function App() {
                   </div>
                   {!isSubscribed && notifPermission !== 'denied' && (
                     <button onClick={handleEnableNotif}
-                      style={{ padding: '6px 14px', borderRadius: 999, background: D_T.ink,
+                      style={{ padding: '4px 12px', borderRadius: 999, background: D_T.ink,
                                color: D_T.bg, border: 'none', fontSize: 12, fontWeight: 700,
                                cursor: 'pointer', fontFamily: font }}>
                       {lang === 'th' ? 'เปิด' : 'Enable'}
@@ -2520,7 +2590,7 @@ export default function App() {
                   )}
                   {isSubscribed && (
                     <button onClick={handleDisableNotif}
-                      style={{ padding: '6px 14px', borderRadius: 999, background: D_T.blush,
+                      style={{ padding: '4px 12px', borderRadius: 999, background: D_T.blush,
                                color: D_T.blushDeep, border: 'none', fontSize: 12, fontWeight: 700,
                                cursor: 'pointer', fontFamily: font }}>
                       {lang === 'th' ? 'ปิด' : 'Disable'}
@@ -2528,22 +2598,22 @@ export default function App() {
                   )}
                 </div>
                 {isSubscribed && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
                     <button onClick={() => handleTestNotif('morning')} disabled={isSendingTestNotif}
-                      style={{ padding: '7px 0', borderRadius: 10, background: D_T.lavender,
-                               color: D_T.lavDeep, border: 'none', fontSize: 11, fontWeight: 700,
+                      style={{ padding: '8px 0', borderRadius: 8, background: D_T.lavender,
+                               color: D_T.lavDeep, border: 'none', fontSize: 12, fontWeight: 700,
                                cursor: 'pointer', fontFamily: font }}>
                       {lang === 'th' ? 'ทดสอบ เช้า' : 'Test Morning'}
                     </button>
                     <button onClick={() => handleTestNotif('afternoon')} disabled={isSendingTestNotif}
-                      style={{ padding: '7px 0', borderRadius: 10, background: D_T.lavender,
-                               color: D_T.lavDeep, border: 'none', fontSize: 11, fontWeight: 700,
+                      style={{ padding: '8px 0', borderRadius: 8, background: D_T.lavender,
+                               color: D_T.lavDeep, border: 'none', fontSize: 12, fontWeight: 700,
                                cursor: 'pointer', fontFamily: font }}>
                       {lang === 'th' ? 'ทดสอบ บ่าย' : 'Test Afternoon'}
                     </button>
                     <button onClick={() => handleTestNotif('evening')} disabled={isSendingTestNotif}
-                      style={{ padding: '7px 0', borderRadius: 10, background: D_T.lavender,
-                               color: D_T.lavDeep, border: 'none', fontSize: 11, fontWeight: 700,
+                      style={{ padding: '8px 0', borderRadius: 8, background: D_T.lavender,
+                               color: D_T.lavDeep, border: 'none', fontSize: 12, fontWeight: 700,
                                cursor: 'pointer', fontFamily: font }}>
                       {lang === 'th' ? 'ทดสอบ เย็น' : 'Test Evening'}
                     </button>
@@ -2552,12 +2622,12 @@ export default function App() {
               </div>
 
               {/* Dark mode placeholder */}
-              <div style={{ padding: '14px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: D_T.mute2 }}>
                     {lang === 'th' ? 'โหมดมืด' : 'Dark mode'}
                   </div>
-                  <div style={{ fontSize: 11, color: D_T.mute2, marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: D_T.mute2, marginTop: 2 }}>
                     {lang === 'th' ? 'เร็วๆ นี้' : 'Coming soon'}
                   </div>
                 </div>
@@ -2570,26 +2640,26 @@ export default function App() {
             </div>
 
             {/* Data & sync */}
-            <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 18, overflow: 'hidden', marginBottom: 8 }}>
-              <div style={{ padding: '10px 16px', borderBottom: `1px solid ${D_T.line}`,
-                            fontSize: 10, fontWeight: 700, color: D_T.mute,
+            <div style={{ background: D_T.surface, border: `1px solid ${D_T.line}`, borderRadius: 16, overflow: 'hidden', marginBottom: 8 }}>
+              <div style={{ padding: '8px 16px', borderBottom: `1px solid ${D_T.line}`,
+                            fontSize: 12, fontWeight: 700, color: D_T.mute,
                             letterSpacing: '.06em', textTransform: 'uppercase' }}>
                 {lang === 'th' ? 'ข้อมูล & ซิงค์' : 'Data & Sync'}
               </div>
-              <div style={{ padding: '14px 16px', borderBottom: `1px solid ${D_T.line2}`,
+              <div style={{ padding: '12px 16px', borderBottom: `1px solid ${D_T.line2}`,
                             display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 600, color: D_T.ink }}>
                     {lang === 'th' ? 'ซิงค์ล่าสุด' : 'Last synced'}
                   </div>
-                  <div style={{ fontSize: 11, color: D_T.mute, marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: D_T.mute, marginTop: 2 }}>
                     {lastSynced
                       ? lastSynced.toLocaleTimeString(lang === 'th' ? 'th-TH' : 'en-US', { hour: '2-digit', minute: '2-digit' })
                       : (lang === 'th' ? 'ยังไม่ได้ซิงค์' : 'Not synced yet')}
                   </div>
                 </div>
                 <button onClick={() => loadData(false)} disabled={isSyncing}
-                  style={{ padding: '6px 14px', borderRadius: 999, background: isSyncing ? D_T.surface2 : D_T.ink,
+                  style={{ padding: '4px 12px', borderRadius: 999, background: isSyncing ? D_T.surface2 : D_T.ink,
                            color: isSyncing ? D_T.mute : D_T.bg, border: 'none',
                            fontSize: 12, fontWeight: 700, cursor: isSyncing ? 'default' : 'pointer',
                            fontFamily: font, transition: 'opacity 300ms cubic-bezier(0.22,1,0.36,1), transform 300ms cubic-bezier(0.22,1,0.36,1), background 300ms cubic-bezier(0.22,1,0.36,1)' }}>
@@ -2608,7 +2678,7 @@ export default function App() {
         {/* Mobile bottom tab bar */}
         <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, display: 'flex',
                       justifyContent: 'space-around', alignItems: 'center',
-                      padding: '10px 16px 20px', borderTop: `1px solid ${D_T.line}`,
+                      padding: '8px 16px 16px', borderTop: `1px solid ${D_T.line}`,
                       background: D_T.surface, zIndex: 40 }}>
           {([
             ['dashboard', lang === 'th' ? 'หน้าหลัก' : 'Home', '◉'],
@@ -2638,13 +2708,13 @@ export default function App() {
                   {id === 'loans' && overdueLoans.length > 0 && (
                     <span style={{ position: 'absolute', top: -2, right: -6, width: 14, height: 14,
                                    borderRadius: 99, background: D_T.blushDeep, color: '#fff',
-                                   fontSize: 8, fontWeight: 700, display: 'grid', placeItems: 'center' }}>
+                                   fontSize: 12, fontWeight: 700, display: 'grid', placeItems: 'center' }}>
                       {overdueLoans.length}
                     </span>
                   )}
                 </div>
                 {!isPrimary && (
-                  <span style={{ fontSize: 9.5, color: isActive ? D_T.ink : D_T.mute2,
+                  <span style={{ fontSize: 12, color: isActive ? D_T.ink : D_T.mute2,
                                  fontWeight: 700, letterSpacing: '.04em' }}>{label}</span>
                 )}
               </div>
@@ -2671,11 +2741,11 @@ export default function App() {
               onClick={e => e.stopPropagation()}>
 
               {/* Header */}
-              <div style={{ padding: '22px 24px 18px', borderBottom: `1px solid ${D_T.line}`,
+              <div style={{ padding: '24px 24px 16px', borderBottom: `1px solid ${D_T.line}`,
                             background: D_T.surface2 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <DChip tone="ghost">{selectedLoan.id}</DChip>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 4 }}>
                     <button onClick={() => setIsEditingLoan(!isEditingLoan)} aria-label={lang === 'th' ? 'แก้ไขรายการ' : 'Edit loan'}
                       style={{ width: 30, height: 30, borderRadius: 99, border: `1px solid ${D_T.line}`,
                                background: isEditingLoan ? D_T.lavender : D_T.surface,
@@ -2686,7 +2756,7 @@ export default function App() {
                                background: 'rgba(27,31,42,.06)', fontSize: 14, cursor: 'pointer' }}><X size={16} weight="bold" aria-hidden="true" /></button>
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
                   <div style={{ width: 52, height: 52, borderRadius: 16,
                                 background: getLoanTone(selectedLoan) === 'blush' ? D_T.blush :
                                             getLoanTone(selectedLoan) === 'mint' ? D_T.mint :
@@ -2709,27 +2779,27 @@ export default function App() {
               </div>
 
               {/* Body */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
                 {isEditingLoan ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                    <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
                       {lang === 'th' ? 'แก้ไขรายการ' : 'Edit loan'}
                     </div>
                     <div>
-                      <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                      <label style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
                         {lang === 'th' ? 'เงินต้น' : 'Principal'}
                       </label>
                       <input type="number" value={editLoanForm.principal}
                         onChange={e => setEditLoanForm({ ...editLoanForm, principal: e.target.value })}
-                        style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${D_T.line}`,
+                        style={{ width: '100%', padding: '8px 12px', borderRadius: 12, border: `1.5px solid ${D_T.line}`,
                                  background: D_T.surface2, fontSize: 16, fontWeight: 700, color: D_T.ink,
                                  outline: 'none', fontFamily: mono, boxSizing: 'border-box' }} />
-                      <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
                         {[10, 50, 100, 500, 1000].map(amt => (
                           <button key={amt} type="button"
                             onClick={() => setEditLoanForm(f => ({ ...f, principal: String(Math.max(0, parseFloat(f.principal || '0') + amt)) }))}
-                            style={{ padding: '5px 10px', borderRadius: 999, background: D_T.surface2,
-                                     color: D_T.ink2, fontSize: 11, fontWeight: 700, border: `1px solid ${D_T.line}`, cursor: 'pointer' }}>
+                            style={{ padding: '4px 8px', borderRadius: 999, background: D_T.surface2,
+                                     color: D_T.ink2, fontSize: 12, fontWeight: 700, border: `1px solid ${D_T.line}`, cursor: 'pointer' }}>
                             +{amt}
                           </button>
                         ))}
@@ -2737,7 +2807,7 @@ export default function App() {
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                       <div>
-                        <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                        <label style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
                           {lang === 'th' ? 'ดอกเบี้ย (฿)' : 'Interest (฿)'}
                         </label>
                         <input type="number" value={editLoanForm.expectedInterest}
@@ -2746,10 +2816,10 @@ export default function App() {
                             const p = parseFloat(editLoanForm.principal) || 1;
                             setEditLoanForm(f => ({ ...f, expectedInterest: amt, interestRate: parseFloat(((amt / p) * 100).toFixed(2)) }));
                           }}
-                          style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${D_T.line}`,
+                          style={{ width: '100%', padding: '8px 12px', borderRadius: 12, border: `1.5px solid ${D_T.line}`,
                                    background: D_T.surface2, fontSize: 16, fontWeight: 700, color: D_T.ink,
                                    outline: 'none', fontFamily: mono, boxSizing: 'border-box' }} />
-                        <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
                           {[50, 100, 150, 200, 350].map(amt => (
                             <button key={amt} type="button"
                               onClick={() => setEditLoanForm(f => {
@@ -2757,15 +2827,15 @@ export default function App() {
                                 const p = parseFloat(f.principal) || 1;
                                 return { ...f, expectedInterest: newAmt, interestRate: parseFloat(((newAmt / p) * 100).toFixed(2)) };
                               })}
-                              style={{ padding: '5px 10px', borderRadius: 999, background: D_T.surface2,
-                                       color: D_T.ink2, fontSize: 11, fontWeight: 700, border: `1px solid ${D_T.line}`, cursor: 'pointer' }}>
+                              style={{ padding: '4px 8px', borderRadius: 999, background: D_T.surface2,
+                                       color: D_T.ink2, fontSize: 12, fontWeight: 700, border: `1px solid ${D_T.line}`, cursor: 'pointer' }}>
                               +{amt}
                             </button>
                           ))}
                         </div>
                       </div>
                       <div>
-                        <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 6 }}>
+                        <label style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 4 }}>
                           {lang === 'th' ? 'อัตราดอก (%)' : 'Rate (%)'}
                         </label>
                         <input type="number" value={editLoanForm.interestRate}
@@ -2774,14 +2844,14 @@ export default function App() {
                             const p = parseFloat(editLoanForm.principal) || 0;
                             setEditLoanForm(f => ({ ...f, interestRate: rate, expectedInterest: parseFloat(((p * rate) / 100).toFixed(2)) }));
                           }}
-                          style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: `1.5px solid ${D_T.line}`,
+                          style={{ width: '100%', padding: '8px 12px', borderRadius: 12, border: `1.5px solid ${D_T.line}`,
                                    background: D_T.surface2, fontSize: 16, fontWeight: 700, color: D_T.ink,
                                    outline: 'none', fontFamily: mono, boxSizing: 'border-box' }} />
                       </div>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                       <div>
-                        <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, display: 'block', marginBottom: 6 }}>
+                        <label style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, display: 'block', marginBottom: 4 }}>
                           {lang === 'th' ? 'วันที่กู้' : 'Issue date'}
                         </label>
                         <DatePicker selected={editLoanForm.borrowDate}
@@ -2795,7 +2865,7 @@ export default function App() {
                           onFocus={e => e.target.blur()} />
                       </div>
                       <div>
-                        <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, display: 'block', marginBottom: 6 }}>
+                        <label style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, display: 'block', marginBottom: 4 }}>
                           {lang === 'th' ? 'กำหนดชำระ' : 'Due date'}
                         </label>
                         <DatePicker selected={editLoanForm.dueDate}
@@ -2805,7 +2875,7 @@ export default function App() {
                           onFocus={e => e.target.blur()} />
                       </div>
                     </div>
-                    <div style={{ padding: 16, borderRadius: 14, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
+                    <div style={{ padding: 16, borderRadius: 12, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                         <span style={{ fontSize: 12, color: D_T.mute }}>{lang === 'th' ? 'ยอดที่คาดว่าจะรับ' : 'Expected total'}</span>
                         <span style={{ fontSize: 20, fontWeight: 700, fontFamily: mono }}>
@@ -2817,14 +2887,14 @@ export default function App() {
                 ) : (
                   <>
                     {/* Amount */}
-                    <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                    <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
                       {lang === 'th' ? 'เขาเป็นหนี้คุณ' : 'They owe you'}
                     </div>
                     <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: '-.025em', marginTop: 4,
                                   lineHeight: 1, fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>
                       {formatCurrency(selectedLoan.totalExpected)}
                     </div>
-                    <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
                       <DChip tone={getLoanTone(selectedLoan)}>{getLoanStatusText(selectedLoan)}</DChip>
                       <span style={{ fontSize: 12, color: D_T.mute }}>
                         {lang === 'th' ? 'กำหนด' : 'due'} {selectedLoan.dueDate}
@@ -2833,14 +2903,14 @@ export default function App() {
                     </div>
 
                     {/* Breakdown */}
-                    <div style={{ marginTop: 22, padding: 18, borderRadius: 16, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
+                    <div style={{ marginTop: 24, padding: 16, borderRadius: 16, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
                       {[
                         [lang === 'th' ? 'เงินต้น' : 'Principal', formatCurrency(selectedLoan.principal), D_T.ink],
                         [`${lang === 'th' ? 'ดอก' : 'Interest'} @ ${selectedLoan.interestRate}%`, '+' + formatCurrency(selectedLoan.expectedInterest), D_T.mintDeep],
                         [lang === 'th' ? 'ค่าปรับ' : 'Penalty', formatCurrency(selectedLoan.penalty), D_T.mute],
                       ].map(([k, v, c], i, arr) => (
                         <div key={k as string} style={{ display: 'flex', justifyContent: 'space-between',
-                                          padding: '10px 0',
+                                          padding: '8px 0',
                                           borderBottom: i < arr.length - 1 ? `1px dashed ${D_T.line}` : 'none' }}>
                           <span style={{ fontSize: 12, color: D_T.ink2, fontWeight: 600 }}>{k}</span>
                           <span style={{ fontSize: 14, fontWeight: 700, color: c as string, fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>{v}</span>
@@ -2858,15 +2928,15 @@ export default function App() {
                     </div>
 
                     {/* Dates */}
-                    <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                      <div style={{ padding: '12px 14px', borderRadius: 12, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
-                        <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>
+                    <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <div style={{ padding: '12px 12px', borderRadius: 12, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
+                        <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>
                           {lang === 'th' ? 'วันที่กู้' : 'Borrowed'}
                         </div>
                         <div style={{ fontSize: 14, fontWeight: 700, fontFamily: mono }}>{selectedLoan.borrowDate}</div>
                       </div>
-                      <div style={{ padding: '12px 14px', borderRadius: 12, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
-                        <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>
+                      <div style={{ padding: '12px 12px', borderRadius: 12, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
+                        <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 4 }}>
                           {lang === 'th' ? 'กำหนดคืน' : 'Due back'}
                         </div>
                         <div style={{ fontSize: 14, fontWeight: 700, fontFamily: mono, color: selectedLoan.isOverdue ? D_T.blushDeep : D_T.ink }}>
@@ -2877,7 +2947,7 @@ export default function App() {
 
                     {/* Renewal history */}
                     {selectedLoan.historicalRenewalCount > 0 && (
-                      <div style={{ marginTop: 16, padding: 14, borderRadius: 12, background: D_T.lavender + '40', border: `1px solid ${D_T.lavender}` }}>
+                      <div style={{ marginTop: 16, padding: 12, borderRadius: 12, background: D_T.lavender + '40', border: `1px solid ${D_T.lavender}` }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span style={{ fontSize: 12, fontWeight: 700, color: D_T.lavDeep }}>
                             {lang === 'th' ? 'ต่อสัญญา' : 'Renewed'} {selectedLoan.historicalRenewalCount} {lang === 'th' ? 'ครั้ง' : 'time(s)'}
@@ -2891,9 +2961,9 @@ export default function App() {
 
                     {/* Note */}
                     {selectedLoan.note && (
-                      <div style={{ marginTop: 18, padding: '10px 14px', borderRadius: 12,
+                      <div style={{ marginTop: 16, padding: '8px 12px', borderRadius: 12,
                                     background: D_T.butter + '60', border: `1px solid ${D_T.line}` }}>
-                        <div style={{ fontSize: 10, color: D_T.butterDeep, fontWeight: 700,
+                        <div style={{ fontSize: 12, color: D_T.butterDeep, fontWeight: 700,
                                       letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 4 }}>
                           {lang === 'th' ? 'หมายเหตุ' : 'Note'}
                         </div>
@@ -2902,8 +2972,8 @@ export default function App() {
                     )}
 
                     {/* Timeline */}
-                    <div style={{ marginTop: 22 }}>
-                      <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>
+                    <div style={{ marginTop: 24 }}>
+                      <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>
                         {lang === 'th' ? 'ไทม์ไลน์' : 'Timeline'}
                       </div>
                       {[
@@ -2916,7 +2986,7 @@ export default function App() {
                           lang === 'th' ? 'รับแล้ว · ต่อสัญญา · หนี้เสีย' : 'Mark paid · renew · default',
                           selectedLoan.isPaid || selectedLoan.isRenewed || selectedLoan.isScam ? 'done' : 'future'],
                       ].map(([date, title, sub, state], i) => (
-                        <div key={i} style={{ display: 'flex', gap: 14, paddingBottom: 14, position: 'relative' }}>
+                        <div key={i} style={{ display: 'flex', gap: 12, paddingBottom: 12, position: 'relative' }}>
                           {i < 2 && <div style={{ position: 'absolute', left: 6, top: 18, bottom: -4, width: 1.5, background: D_T.line }} />}
                           <div style={{ width: 14, height: 14, borderRadius: 99, flexShrink: 0, marginTop: 4, position: 'relative', zIndex: 1,
                                         background: state === 'done' ? D_T.mintDeep : state === 'next' ? D_T.butter : D_T.surface,
@@ -2924,9 +2994,9 @@ export default function App() {
                           <div style={{ flex: 1 }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                               <span style={{ fontSize: 12, fontWeight: 700, color: state === 'future' ? D_T.mute : D_T.ink }}>{title}</span>
-                              <span style={{ fontSize: 11, color: D_T.mute, fontFamily: mono }}>{date}</span>
+                              <span style={{ fontSize: 12, color: D_T.mute, fontFamily: mono }}>{date}</span>
                             </div>
-                            <div style={{ fontSize: 11.5, color: D_T.mute, marginTop: 2 }}>{sub}</div>
+                            <div style={{ fontSize: 12, color: D_T.mute, marginTop: 2 }}>{sub}</div>
                           </div>
                         </div>
                       ))}
@@ -2936,21 +3006,21 @@ export default function App() {
 
                 {/* Penalty toggle */}
                 {!isEditingLoan && !selectedLoan.isPaid && !selectedLoan.isScam && !selectedLoan.isRenewed && (
-                  <div style={{ marginTop: 16, padding: 14, borderRadius: 12, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: hasPenalty ? 10 : 0 }}>
+                  <div style={{ marginTop: 16, padding: 12, borderRadius: 12, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: hasPenalty ? 10 : 0 }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: D_T.ink2, flex: 1 }}>
                         {lang === 'th' ? 'ค่าปรับ' : 'Penalty'}
                       </span>
                       <div style={{ display: 'flex', borderRadius: 99, overflow: 'hidden', border: `1px solid ${D_T.line}` }}>
                         <button onClick={() => setHasPenalty(false)}
-                          style={{ padding: '5px 12px', background: !hasPenalty ? D_T.ink : 'transparent',
-                                   color: !hasPenalty ? D_T.bg : D_T.ink2, fontSize: 11, fontWeight: 700,
+                          style={{ padding: '4px 12px', background: !hasPenalty ? D_T.ink : 'transparent',
+                                   color: !hasPenalty ? D_T.bg : D_T.ink2, fontSize: 12, fontWeight: 700,
                                    border: 'none', cursor: 'pointer', fontFamily: font }}>
                           {lang === 'th' ? 'ไม่มี' : 'None'}
                         </button>
                         <button onClick={() => { setPenaltyAmount(Math.max(1, selectedLoan.daysLate) * 200); setHasPenalty(true); }}
-                          style={{ padding: '5px 12px', background: hasPenalty ? D_T.butter : 'transparent',
-                                   color: hasPenalty ? D_T.butterDeep : D_T.ink2, fontSize: 11, fontWeight: 700,
+                          style={{ padding: '4px 12px', background: hasPenalty ? D_T.butter : 'transparent',
+                                   color: hasPenalty ? D_T.butterDeep : D_T.ink2, fontSize: 12, fontWeight: 700,
                                    border: 'none', cursor: 'pointer', fontFamily: font }}>
                           {lang === 'th' ? 'มี' : 'Yes'}
                         </button>
@@ -2960,7 +3030,7 @@ export default function App() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <input type="number" value={penaltyAmount}
                           onChange={e => setPenaltyAmount(Math.max(0, parseInt(e.target.value) || 0))}
-                          style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border: `1px solid ${D_T.butter}`,
+                          style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: `1px solid ${D_T.butter}`,
                                    background: D_T.butter + '60', fontSize: 16, fontWeight: 700,
                                    color: D_T.butterDeep, outline: 'none', fontFamily: mono }} />
                         <span style={{ fontSize: 12, fontWeight: 700, color: D_T.butterDeep }}>฿</span>
@@ -2971,7 +3041,7 @@ export default function App() {
 
                 {/* Action date */}
                 {!isEditingLoan && !selectedLoan.isPaid && !selectedLoan.isScam && !selectedLoan.isRenewed && (
-                  <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: D_T.mute, whiteSpace: 'nowrap' }}>
                       {lang === 'th' ? 'วันที่ดำเนินการ' : 'Action date'}
                     </span>
@@ -2985,11 +3055,11 @@ export default function App() {
               </div>
 
               {/* Action bar */}
-              <div style={{ padding: '16px 24px 22px', display: 'flex', flexDirection: 'column', gap: 8,
+              <div style={{ padding: '16px 24px 24px', display: 'flex', flexDirection: 'column', gap: 8,
                             borderTop: `1px solid ${D_T.line}`, background: D_T.surface }}>
                 {isEditingLoan ? (
                   <button onClick={handleSaveEdit} disabled={isSyncing}
-                    style={{ width: '100%', padding: '13px 0', borderRadius: 999, background: D_T.ink,
+                    style={{ width: '100%', padding: '12px 0', borderRadius: 999, background: D_T.ink,
                              color: D_T.bg, border: 'none', fontSize: 14, fontWeight: 700,
                              fontFamily: font, cursor: 'pointer', opacity: isSyncing ? 0.5 : 1 }}>
                     {isSyncing ? (lang === 'th' ? 'กำลังบันทึก…' : 'Saving…') : (lang === 'th' ? 'บันทึกการเปลี่ยนแปลง' : 'Save changes')}
@@ -3002,7 +3072,7 @@ export default function App() {
                 ) : (
                   <>
                     <button onClick={() => handleUpdateStatus('ชำระแล้ว')}
-                      style={{ width: '100%', padding: '13px 0', borderRadius: 999, background: D_T.ink,
+                      style={{ width: '100%', padding: '12px 0', borderRadius: 999, background: D_T.ink,
                                color: D_T.bg, border: 'none', fontSize: 14, fontWeight: 700,
                                fontFamily: font, cursor: 'pointer' }}>
                       {lang === 'th' ? `รับเงินแล้ว ${formatCurrency(selectedLoan.totalExpected)}` : `Got paid ${formatCurrency(selectedLoan.totalExpected)}`}
@@ -3019,13 +3089,13 @@ export default function App() {
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button onClick={() => handleUpdateStatus('ต่อดอก')}
-                        style={{ flex: 1, padding: '11px 0', borderRadius: 999, background: D_T.lavender,
+                        style={{ flex: 1, padding: '12px 0', borderRadius: 999, background: D_T.lavender,
                                  color: D_T.lavDeep, border: 'none', fontSize: 12, fontWeight: 700,
                                  fontFamily: font, cursor: 'pointer' }}>
                         {lang === 'th' ? 'ต่อสัญญาอีกรอบ' : 'Renew for another period'}
                       </button>
                       <button onClick={() => setShowConfirmDefault(true)}
-                        style={{ flex: 1, padding: '11px 0', borderRadius: 999, background: D_T.blush,
+                        style={{ flex: 1, padding: '12px 0', borderRadius: 999, background: D_T.blush,
                                  color: D_T.blushDeep, border: 'none', fontSize: 12, fontWeight: 700,
                                  fontFamily: font, cursor: 'pointer' }}>
                         {lang === 'th' ? 'บันทึกหนี้เสีย' : 'Mark as bad debt'}
@@ -3059,7 +3129,7 @@ export default function App() {
                             background: D_T.surface2, display: 'flex', justifyContent: 'space-between',
                             alignItems: 'center', flexShrink: 0 }}>
                 <div>
-                  <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                  <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
                     {lang === 'th' ? 'กระแสเงินสด 30 วัน' : '30-day cashflow'}
                   </div>
                   <div style={{ fontSize: isDesktop ? 18 : 15, fontWeight: 700, letterSpacing: '-.02em', marginTop: 2 }}>
@@ -3090,9 +3160,9 @@ export default function App() {
                       <ComposedChart data={trendData30} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}
                         onClick={(e: any) => { if (e?.activeLabel) setInsightDate(labelToFullDate.get(e.activeLabel) ?? e.activeLabel); }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={D_T.line} />
-                        <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: D_T.mute }} interval="preserveStartEnd" />
-                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fill: D_T.mute }} width={46} />
-                        <RechartsTooltip contentStyle={{ borderRadius: 10, border: `1px solid ${D_T.line}`, fontFamily: font, fontSize: 11 }} />
+                        <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: D_T.mute }} interval="preserveStartEnd" />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: D_T.mute }} width={46} />
+                        <RechartsTooltip contentStyle={{ borderRadius: 8, border: `1px solid ${D_T.line}`, fontFamily: font, fontSize: 12 }} />
                         <Bar dataKey="Expected" barSize={10} fill={D_T.line} radius={[3,3,0,0]} name={lang === 'th' ? 'คาด' : 'Expected'} />
                         <Line type="monotone" dataKey="Received" stroke={D_T.mintDeep} strokeWidth={2.5} dot={false}
                           activeDot={{ r: 5, fill: D_T.mintDeep, stroke: D_T.bg, strokeWidth: 2 }}
@@ -3103,11 +3173,11 @@ export default function App() {
 
                   {/* Date chips */}
                   <div>
-                    <div style={{ fontSize: 9.5, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em',
+                    <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em',
                                   textTransform: 'uppercase', marginBottom: 8 }}>
                       {lang === 'th' ? 'กดวันเพื่อดูรายละเอียด' : 'Tap a date to inspect'}
                     </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                       {trendData30.map(d => {
                         const fullDate = labelToFullDate.get(d.date) ?? d.date;
                         const sel = insightDate === fullDate;
@@ -3115,8 +3185,8 @@ export default function App() {
                         return (
                           <button key={d.date}
                             onClick={() => setInsightDate(sel ? null : fullDate)}
-                            style={{ padding: '6px 10px', borderRadius: 8, border: sel ? 'none' : `1px solid ${D_T.line}`,
-                                     cursor: 'pointer', fontFamily: mono, fontSize: 11, fontWeight: 700,
+                            style={{ padding: '4px 8px', borderRadius: 8, border: sel ? 'none' : `1px solid ${D_T.line}`,
+                                     cursor: 'pointer', fontFamily: mono, fontSize: 12, fontWeight: 700,
                                      background: sel ? D_T.ink : hasData ? D_T.mint + '55' : D_T.surface2,
                                      color: sel ? D_T.bg : hasData ? D_T.mintDeep : D_T.mute2,
                                      outline: 'none', transition: 'background 300ms cubic-bezier(0.22,1,0.36,1), color 300ms cubic-bezier(0.22,1,0.36,1)' }}>
@@ -3142,13 +3212,13 @@ export default function App() {
                   ) : (
                     <div>
                       {/* Date badge */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16,
-                                    paddingBottom: 14, borderBottom: `1px solid ${D_T.line}` }}>
-                        <div style={{ width: 34, height: 34, borderRadius: 10, background: D_T.lavender,
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
+                                    paddingBottom: 12, borderBottom: `1px solid ${D_T.line}` }}>
+                        <div style={{ width: 34, height: 34, borderRadius: 8, background: D_T.lavender,
                                       color: D_T.lavDeep, display: 'grid', placeItems: 'center', fontSize: 14 }}>📅</div>
                         <div>
                           <div style={{ fontSize: 16, fontWeight: 700 }}>{insightDate}</div>
-                          <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase' }}>
+                          <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase' }}>
                             Daily Insight
                           </div>
                         </div>
@@ -3159,7 +3229,7 @@ export default function App() {
 
                       {/* Expected due */}
                       <div style={{ marginBottom: 16 }}>
-                        <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em',
+                        <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em',
                                       textTransform: 'uppercase', marginBottom: 8 }}>
                           {lang === 'th' ? 'ดอกที่คาด' : 'Expected due'}
                         </div>
@@ -3169,13 +3239,13 @@ export default function App() {
                           </div>
                         ) : expDue.map(l => (
                           <div key={'exp-' + l.id} {...tap(() => { setInsightDate(null); setShowExpandedTrend(false); setSelectedLoan(l); })}
-                            style={{ padding: '9px 12px', background: D_T.surface2, borderRadius: 10,
-                                     border: `1px solid ${D_T.line}`, marginBottom: 6,
+                            style={{ padding: '8px 12px', background: D_T.surface2, borderRadius: 8,
+                                     border: `1px solid ${D_T.line}`, marginBottom: 4,
                                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                                      cursor: 'pointer' }}>
                             <div>
                               <div style={{ fontSize: 12, fontWeight: 700 }}>{l.name}</div>
-                              <div style={{ fontSize: 10.5, color: D_T.mute }}>{l.id}</div>
+                              <div style={{ fontSize: 12, color: D_T.mute }}>{l.id}</div>
                             </div>
                             <div style={{ fontFamily: mono, fontWeight: 700, color: D_T.mintDeep, fontSize: 12 }}>
                               +{formatCurrency(l.expectedInterest)}
@@ -3186,7 +3256,7 @@ export default function App() {
 
                       {/* Payments received */}
                       <div>
-                        <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em',
+                        <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em',
                                       textTransform: 'uppercase', marginBottom: 8 }}>
                           {lang === 'th' ? 'รับจริง' : 'Received'}
                         </div>
@@ -3196,8 +3266,8 @@ export default function App() {
                           </div>
                         ) : expPaid.map(l => (
                           <div key={'act-' + l.id} {...tap(() => { setInsightDate(null); setShowExpandedTrend(false); setSelectedLoan(l); })}
-                            style={{ padding: '9px 12px', background: D_T.mint + '35', borderRadius: 10,
-                                     border: `1px solid ${D_T.mint}`, marginBottom: 6,
+                            style={{ padding: '8px 12px', background: D_T.mint + '35', borderRadius: 8,
+                                     border: `1px solid ${D_T.mint}`, marginBottom: 4,
                                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                                      cursor: 'pointer' }}>
                             <div>
@@ -3208,7 +3278,7 @@ export default function App() {
                               <div style={{ fontFamily: mono, fontWeight: 700, color: D_T.mintDeep, fontSize: 12 }}>
                                 +{formatCurrency(l.paidInterest)}
                               </div>
-                              <div style={{ fontSize: 10.5, color: D_T.mute }}>{formatCurrency(l.paidPrincipal)}</div>
+                              <div style={{ fontSize: 12, color: D_T.mute }}>{formatCurrency(l.paidPrincipal)}</div>
                             </div>
                           </div>
                         ))}
@@ -3314,14 +3384,14 @@ export default function App() {
         <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'flex-end',
                       justifyContent: 'center', background: 'rgba(27,31,42,.5)', backdropFilter: 'blur(4px)' }}
           onClick={() => setShowReserveBreakdown(false)}>
-          <div style={{ background: D_T.surface, borderRadius: '22px 22px 0 0', width: '100%', maxWidth: 520,
+          <div style={{ background: D_T.surface, borderRadius: '24px 24px 0 0', width: '100%', maxWidth: 520,
                         maxHeight: '85vh', overflow: 'hidden', overscrollBehavior: 'contain', display: 'flex', flexDirection: 'column',
                         boxShadow: '0 -12px 40px rgba(27,31,42,.2)' }}
             onClick={e => e.stopPropagation()}>
-            <div style={{ padding: '20px 22px 16px', borderBottom: `1px solid ${D_T.line}`, background: D_T.surface2 }}>
+            <div style={{ padding: '16px 24px 16px', borderBottom: `1px solid ${D_T.line}`, background: D_T.surface2 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                  <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
                     {lang === 'th' ? 'ดอกสำรองล็อกอยู่' : 'Interest Reserve'}
                   </div>
                   <div style={{ fontSize: 20, fontWeight: 700, marginTop: 4 }}>
@@ -3332,7 +3402,7 @@ export default function App() {
                   style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
                            border: 'none', fontSize: 14, cursor: 'pointer' }}><X size={16} weight="bold" aria-hidden="true" /></button>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
                 {[
                   [lang === 'th' ? 'ยอดว่าง' : 'Available', formatCurrency(data?.summary.available ?? 0), D_T.ink],
                   [lang === 'th' ? 'สำรองล็อก' : 'Reserved', formatCurrency(reserveData.totalLocked), D_T.blushDeep],
@@ -3340,34 +3410,34 @@ export default function App() {
                   [lang === 'th' ? 'Coverage Ratio' : 'Coverage Ratio', `${reserveData.coverageRatio.toFixed(1)}%`,
                     reserveData.coverageRatio >= 100 ? D_T.mintDeep : reserveData.coverageRatio >= 50 ? D_T.butterDeep : D_T.blushDeep],
                 ].map(([label, val, color]) => (
-                  <div key={label as string} style={{ padding: '10px 12px', borderRadius: 10, background: D_T.surface }}>
-                    <div style={{ fontSize: 9, color: D_T.mute, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase' }}>{label}</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, fontFamily: mono, color: color as string, marginTop: 3 }}>{val}</div>
+                  <div key={label as string} style={{ padding: '8px 12px', borderRadius: 8, background: D_T.surface }}>
+                    <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase' }}>{label}</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, fontFamily: mono, color: color as string, marginTop: 2 }}>{val}</div>
                   </div>
                 ))}
               </div>
             </div>
-            <div style={{ overflowY: 'auto', padding: '14px 22px 30px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ overflowY: 'auto', padding: '12px 24px 32px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {/* กลุ่มเสี่ยง */}
               {reserveData.items.filter(i => !i.isBreakEven).length > 0 && (
                 <>
-                  <div style={{ fontSize: 11, color: D_T.blushDeep, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 2 }}>
+                  <div style={{ fontSize: 12, color: D_T.blushDeep, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 2 }}>
                     {lang === 'th' ? 'ยังเสี่ยง — ดอกยังไม่ถึงต้น' : 'At risk — interest below principal'}
                   </div>
                   {reserveData.items.filter(i => !i.isBreakEven).map(({ loan: l, locked, excess, recoveryPct, remaining, renewalsNeeded, isBreakEven, isLongTerm, approxDaysRenewing }) => (
-                    <div key={l.id} style={{ padding: '12px 14px', borderRadius: 14, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
+                    <div key={l.id} style={{ padding: '12px 12px', borderRadius: 12, background: D_T.surface2, border: `1px solid ${D_T.line}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                         <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                             <span style={{ fontSize: 12, fontWeight: 700 }}>{l.name}</span>
                             {isLongTerm && (
-                              <span style={{ fontSize: 9, fontWeight: 700, color: D_T.blushDeep, background: D_T.blush + '40',
-                                             padding: '2px 6px', borderRadius: 99, letterSpacing: '.04em' }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: D_T.blushDeep, background: D_T.blush + '40',
+                                             padding: '2px 4px', borderRadius: 99, letterSpacing: '.04em' }}>
                                 {lang === 'th' ? 'ระยะยาว' : 'LONG-TERM'}
                               </span>
                             )}
                           </div>
-                          <div style={{ fontSize: 10.5, color: D_T.mute, marginTop: 1 }}>
+                          <div style={{ fontSize: 12, color: D_T.mute, marginTop: 0 }}>
                             {lang === 'th' ? 'ต่อดอกแล้ว' : 'Renewed'} {l.historicalRenewalCount} {lang === 'th' ? 'ครั้ง' : 'x'}
                             {isLongTerm && ` · ~${approxDaysRenewing} ${lang === 'th' ? 'วัน' : 'd'}`} · {l.id}
                           </div>
@@ -3376,7 +3446,7 @@ export default function App() {
                           <div style={{ fontSize: 12, fontWeight: 700, fontFamily: mono, color: D_T.blushDeep }}>
                             {formatCurrency(locked)}
                           </div>
-                          <div style={{ fontSize: 10, color: D_T.mute, marginTop: 1 }}>
+                          <div style={{ fontSize: 12, color: D_T.mute, marginTop: 0 }}>
                             {lang === 'th' ? 'สำรองไว้' : 'reserved'}
                           </div>
                         </div>
@@ -3388,26 +3458,26 @@ export default function App() {
                                         transition: 'width 500ms cubic-bezier(0.22,1,0.36,1)' }} />
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-                          <span style={{ fontSize: 10, color: D_T.mute }}>
+                          <span style={{ fontSize: 12, color: D_T.mute }}>
                             {lang === 'th' ? 'ดอกสะสม' : 'Interest earned'} {formatCurrency(l.historicalRenewalInterest)}
                           </span>
-                          <span style={{ fontSize: 10, fontWeight: 700,
+                          <span style={{ fontSize: 12, fontWeight: 700,
                                          color: recoveryPct >= 60 ? D_T.butterDeep : D_T.blushDeep }}>
                             {recoveryPct.toFixed(0)}%
                           </span>
                         </div>
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                        <div style={{ padding: '8px 10px', borderRadius: 9, background: D_T.surface }}>
-                          <div style={{ fontSize: 9, color: D_T.mute, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                        <div style={{ padding: '8px 8px', borderRadius: 8, background: D_T.surface }}>
+                          <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase' }}>
                             {lang === 'th' ? 'ต้นยังขาด' : 'To break-even'}
                           </div>
                           <div style={{ fontSize: 12, fontWeight: 700, fontFamily: mono, marginTop: 2, color: D_T.ink }}>
                             {formatCurrency(remaining)}
                           </div>
                         </div>
-                        <div style={{ padding: '8px 10px', borderRadius: 9, background: D_T.surface }}>
-                          <div style={{ fontSize: 9, color: D_T.mute, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase' }}>
+                        <div style={{ padding: '8px 8px', borderRadius: 8, background: D_T.surface }}>
+                          <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase' }}>
                             {lang === 'th' ? 'ต่ออีกกี่ครั้ง' : 'Renewals left'}
                           </div>
                           <div style={{ fontSize: 12, fontWeight: 700, marginTop: 2,
@@ -3423,24 +3493,24 @@ export default function App() {
               {/* กลุ่มปลอดภัย */}
               {reserveData.items.filter(i => i.isBreakEven).length > 0 && (
                 <>
-                  <div style={{ fontSize: 11, color: D_T.mintDeep, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
+                  <div style={{ fontSize: 12, color: D_T.mintDeep, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
                                  marginTop: reserveData.items.filter(i => !i.isBreakEven).length > 0 ? 10 : 2, marginBottom: 2 }}>
                     {lang === 'th' ? 'ปลอดภัย — ดอกเกินต้นแล้ว' : 'Safe — interest exceeds principal'}
                   </div>
                   {reserveData.items.filter(i => i.isBreakEven).map(({ loan: l, locked, excess, recoveryPct, remaining, renewalsNeeded, isBreakEven, isLongTerm, approxDaysRenewing }) => (
-                    <div key={l.id} style={{ padding: '12px 14px', borderRadius: 14, background: D_T.surface2, border: `1px solid ${D_T.mint}60` }}>
+                    <div key={l.id} style={{ padding: '12px 12px', borderRadius: 12, background: D_T.surface2, border: `1px solid ${D_T.mint}60` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                         <div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                             <span style={{ fontSize: 12, fontWeight: 700 }}>{l.name}</span>
                             {isLongTerm && (
-                              <span style={{ fontSize: 9, fontWeight: 700, color: D_T.butterDeep, background: D_T.butter + '60',
-                                             padding: '2px 6px', borderRadius: 99, letterSpacing: '.04em' }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: D_T.butterDeep, background: D_T.butter + '60',
+                                             padding: '2px 4px', borderRadius: 99, letterSpacing: '.04em' }}>
                                 {lang === 'th' ? 'ระยะยาว' : 'LONG-TERM'}
                               </span>
                             )}
                           </div>
-                          <div style={{ fontSize: 10.5, color: D_T.mute, marginTop: 1 }}>
+                          <div style={{ fontSize: 12, color: D_T.mute, marginTop: 0 }}>
                             {lang === 'th' ? 'ต่อดอกแล้ว' : 'Renewed'} {l.historicalRenewalCount} {lang === 'th' ? 'ครั้ง' : 'x'}
                             {isLongTerm && ` · ~${approxDaysRenewing} ${lang === 'th' ? 'วัน' : 'd'}`} · {l.id}
                           </div>
@@ -3449,11 +3519,11 @@ export default function App() {
                           <div style={{ fontSize: 12, fontWeight: 700, fontFamily: mono, color: D_T.blushDeep }}>
                             {formatCurrency(locked)}
                           </div>
-                          <div style={{ fontSize: 10, color: D_T.mute, marginTop: 1 }}>
+                          <div style={{ fontSize: 12, color: D_T.mute, marginTop: 0 }}>
                             {lang === 'th' ? 'สำรองไว้' : 'reserved'}
                           </div>
                           {excess > 0 && (
-                            <div style={{ fontSize: 11, fontWeight: 700, color: D_T.mintDeep, marginTop: 2 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: D_T.mintDeep, marginTop: 2 }}>
                               +{formatCurrency(excess)} {lang === 'th' ? 'เบิกได้' : 'withdrawable'}
                             </div>
                           )}
@@ -3465,15 +3535,15 @@ export default function App() {
                                         background: D_T.mintDeep, transition: 'width 500ms cubic-bezier(0.22,1,0.36,1)' }} />
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-                          <span style={{ fontSize: 10, color: D_T.mute }}>
+                          <span style={{ fontSize: 12, color: D_T.mute }}>
                             {lang === 'th' ? 'ดอกสะสม' : 'Interest earned'} {formatCurrency(l.historicalRenewalInterest)}
                           </span>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: D_T.mintDeep }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: D_T.mintDeep }}>
                             {recoveryPct.toFixed(0)}%
                           </span>
                         </div>
                       </div>
-                      <div style={{ padding: '8px 10px', borderRadius: 9, background: D_T.surface, textAlign: 'center' }}>
+                      <div style={{ padding: '8px 8px', borderRadius: 8, background: D_T.surface, textAlign: 'center' }}>
                         <div style={{ fontSize: 12, fontWeight: 700, color: D_T.mintDeep }}>
                           {lang === 'th' ? 'ดอกคุ้มทุนแล้ว — ต้นสำรองถึงปิดยอด' : 'Break-even reached — principal reserved until closure'}
                         </div>
@@ -3490,25 +3560,25 @@ export default function App() {
 
               {/* ── ประวัติหนี้เสีย ── */}
               {reserveData.scamItems.length > 0 && (
-                <div style={{ marginTop: 20 }}>
-                  <div style={{ fontSize: 11, color: D_T.blushDeep, fontWeight: 700,
+                <div style={{ marginTop: 16 }}>
+                  <div style={{ fontSize: 12, color: D_T.blushDeep, fontWeight: 700,
                                 letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
                     {lang === 'th' ? 'ประวัติหนี้เสีย' : 'Default history'}
                   </div>
 
                   {/* Summary bar */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
                     {[
                       [lang === 'th' ? 'สูญต้น' : 'Principal lost', formatCurrency(reserveData.totalScamPrincipal), D_T.blushDeep],
                       [lang === 'th' ? 'ดอกดูดซับ' : 'Interest offset', formatCurrency(reserveData.totalInterestAbsorbed), D_T.butterDeep],
                       [lang === 'th' ? 'ขาดทุนสุทธิ' : 'Net loss', formatCurrency(reserveData.totalNetLoss), reserveData.totalNetLoss <= 0 ? D_T.mintDeep : D_T.blushDeep],
                     ].map(([label, val, color]) => (
-                      <div key={label as string} style={{ padding: '10px 12px', borderRadius: 10,
+                      <div key={label as string} style={{ padding: '8px 12px', borderRadius: 8,
                                   background: D_T.blush + '30', border: `1px solid ${D_T.blush}` }}>
-                        <div style={{ fontSize: 9, color: D_T.blushDeep, fontWeight: 700,
+                        <div style={{ fontSize: 12, color: D_T.blushDeep, fontWeight: 700,
                                       letterSpacing: '.05em', textTransform: 'uppercase' }}>{label}</div>
                         <div style={{ fontSize: 12, fontWeight: 700, fontFamily: mono,
-                                      color: color as string, marginTop: 3 }}>{val}</div>
+                                      color: color as string, marginTop: 2 }}>{val}</div>
                       </div>
                     ))}
                   </div>
@@ -3516,17 +3586,17 @@ export default function App() {
                   {/* รายคน */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     {reserveData.scamItems.map((sc, idx) => (
-                      <div key={sc.id} style={{ padding: '12px 14px', borderRadius: 14,
+                      <div key={sc.id} style={{ padding: '12px 12px', borderRadius: 12,
                                   background: D_T.surface2, border: `1px solid ${D_T.blush}` }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                           <div>
                             <div style={{ fontSize: 12, fontWeight: 700 }}>{sc.name}</div>
-                            <div style={{ fontSize: 10.5, color: D_T.mute, marginTop: 1 }}>
+                            <div style={{ fontSize: 12, color: D_T.mute, marginTop: 0 }}>
                               {sc.id} · {lang === 'th' ? 'ต่อดอก' : 'renewed'} {sc.renewalCount} {lang === 'th' ? 'ครั้งก่อนบิด' : 'x before default'}
                             </div>
                           </div>
                           <div style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: 11, color: D_T.mute }}>{lang === 'th' ? 'ขาดทุนสุทธิ' : 'Net loss'}</div>
+                            <div style={{ fontSize: 12, color: D_T.mute }}>{lang === 'th' ? 'ขาดทุนสุทธิ' : 'Net loss'}</div>
                             <div style={{ fontSize: 14, fontWeight: 700, fontFamily: mono,
                                           color: sc.netLoss <= 0 ? D_T.mintDeep : D_T.blushDeep }}>
                               {sc.netLoss <= 0 ? '+' : '-'}{formatCurrency(Math.abs(sc.netLoss))}
@@ -3538,11 +3608,11 @@ export default function App() {
                                         width: `${Math.min(100, sc.principal > 0 ? (sc.interestAbsorbed / sc.principal) * 100 : 0)}%`,
                                         background: sc.interestAbsorbed >= sc.principal ? D_T.mintDeep : D_T.butterDeep }} />
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
-                          <span style={{ fontSize: 10, color: D_T.mute }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                          <span style={{ fontSize: 12, color: D_T.mute }}>
                             {lang === 'th' ? 'ต้นสูญ' : 'Lost'} {formatCurrency(sc.principal)}
                           </span>
-                          <span style={{ fontSize: 10, color: D_T.butterDeep, fontWeight: 700 }}>
+                          <span style={{ fontSize: 12, color: D_T.butterDeep, fontWeight: 700 }}>
                             {lang === 'th' ? 'ดอกดูดซับ' : 'Offset'} {formatCurrency(sc.interestAbsorbed)}
                           </span>
                         </div>
@@ -3561,13 +3631,13 @@ export default function App() {
                       justifyContent: 'center', padding: 16, background: 'rgba(27,31,42,.5)',
                       backdropFilter: 'blur(4px)' }}
           onClick={() => setShowWithdrawModal(false)}>
-          <div style={{ background: D_T.surface, borderRadius: 22, width: '100%', maxWidth: 480,
+          <div style={{ background: D_T.surface, borderRadius: 24, width: '100%', maxWidth: 480,
                         overflow: 'hidden', boxShadow: '0 24px 60px -20px rgba(27,31,42,.35)' }}
             onClick={e => e.stopPropagation()}>
-            <div style={{ padding: '22px 26px 18px', borderBottom: `1px solid ${D_T.line}`,
+            <div style={{ padding: '24px 24px 16px', borderBottom: `1px solid ${D_T.line}`,
                           background: D_T.surface2, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
                   {lang === 'th' ? 'ถอนเงิน' : 'Withdraw'}
                 </div>
                 <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-.02em', marginTop: 4 }}>
@@ -3578,12 +3648,12 @@ export default function App() {
                 style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
                          border: 'none', fontSize: 14, cursor: 'pointer' }}><X size={16} weight="bold" aria-hidden="true" /></button>
             </div>
-            <form onSubmit={handleWithdrawSubmit} style={{ padding: '24px 26px 22px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+            <form onSubmit={handleWithdrawSubmit} style={{ padding: '24px 24px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div>
-                <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                <label style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
                   {lang === 'th' ? 'จำนวนเงิน' : 'Amount'}
                 </label>
-                <div style={{ padding: '12px 14px', borderRadius: 12, background: D_T.surface2, border: `1.5px solid ${D_T.ink}`,
+                <div style={{ padding: '12px 12px', borderRadius: 12, background: D_T.surface2, border: `1.5px solid ${D_T.ink}`,
                               display: 'flex', alignItems: 'baseline' }}>
                   <span style={{ fontSize: 18, fontWeight: 700 }}>฿</span>
                   <input type="number" required min="1" value={withdrawForm.principal}
@@ -3591,21 +3661,21 @@ export default function App() {
                     placeholder="0"
                     style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 24, fontWeight: 700,
                              letterSpacing: '-.02em', color: D_T.ink, outline: 'none', fontFamily: mono,
-                             marginLeft: 6, fontVariantNumeric: 'tabular-nums' }} />
+                             marginLeft: 4, fontVariantNumeric: 'tabular-nums' }} />
                 </div>
-                <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
                   {[100, 500, 1000, 2000, 5000].map(amt => (
                     <button key={amt} type="button"
                       onClick={() => setWithdrawForm(f => ({ ...f, principal: String(Math.max(0, parseFloat(f.principal || '0') + amt)) }))}
-                      style={{ padding: '5px 10px', borderRadius: 999, background: D_T.blush, color: D_T.blushDeep,
-                               fontSize: 11, fontWeight: 700, border: 'none', cursor: 'pointer', fontFamily: font }}>
+                      style={{ padding: '4px 8px', borderRadius: 999, background: D_T.blush, color: D_T.blushDeep,
+                               fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer', fontFamily: font }}>
                       +{amt}
                     </button>
                   ))}
                 </div>
               </div>
               <div>
-                <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                <label style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
                   {lang === 'th' ? 'วันที่' : 'Date'}
                 </label>
                 <DatePicker selected={withdrawForm.date}
@@ -3613,17 +3683,17 @@ export default function App() {
                   dateFormat="dd/MM/yyyy" className="w-full" onFocus={e => e.target.blur()} />
               </div>
               <div>
-                <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                <label style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
                   {lang === 'th' ? 'หมายเหตุ (ไม่บังคับ)' : 'Note (optional)'}
                 </label>
                 <input type="text" value={withdrawForm.name}
                   onChange={e => setWithdrawForm({ ...withdrawForm, name: e.target.value })}
                   placeholder={lang === 'th' ? 'ค่าใช้จ่าย…' : 'Expense…'}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: `1px solid ${D_T.line}`,
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 12, border: `1px solid ${D_T.line}`,
                            background: D_T.surface2, fontSize: 16, color: D_T.ink, outline: 'none',
                            fontFamily: font, boxSizing: 'border-box' }} />
               </div>
-              <div style={{ display: 'flex', gap: 10, paddingTop: 4, borderTop: `1px solid ${D_T.line}` }}>
+              <div style={{ display: 'flex', gap: 8, paddingTop: 4, borderTop: `1px solid ${D_T.line}` }}>
                 <button type="button" onClick={() => setShowWithdrawModal(false)}
                   style={{ padding: '12px 16px', borderRadius: 999, background: D_T.surface,
                            color: D_T.ink, border: `1px solid ${D_T.line}`, fontSize: 12, fontWeight: 700,
@@ -3652,10 +3722,10 @@ export default function App() {
                         maxHeight: '92vh', display: 'flex', flexDirection: 'column' }}
             onClick={e => e.stopPropagation()}>
             {/* Header */}
-            <div style={{ padding: '22px 26px 18px', borderBottom: `1px solid ${D_T.line}`,
+            <div style={{ padding: '24px 24px 16px', borderBottom: `1px solid ${D_T.line}`,
                           background: D_T.surface2, display: 'flex', justifyContent: 'space-between' }}>
               <div>
-                <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
                   {lang === 'th' ? 'สินเชื่อใหม่' : 'New loan'}
                 </div>
                 <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-.02em', marginTop: 4 }}>
@@ -3670,10 +3740,10 @@ export default function App() {
                          border: 'none', fontSize: 14, cursor: 'pointer', alignSelf: 'flex-start' }}><X size={16} weight="bold" aria-hidden="true" /></button>
             </div>
             {/* Form */}
-            <form onSubmit={handleCreateNewLoan} style={{ padding: '24px 26px 14px', display: 'flex', flexDirection: 'column', gap: 18, overflowY: 'auto', flex: 1 }}>
+            <form onSubmit={handleCreateNewLoan} style={{ padding: '24px 24px 12px', display: 'flex', flexDirection: 'column', gap: 16, overflowY: 'auto', flex: 1 }}>
               {/* Name */}
               <div>
-                <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                <label style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
                   {lang === 'th' ? 'ใครจะกู้' : "Who's borrowing"}
                 </label>
                 <div style={{ position: 'relative' }}>
@@ -3681,7 +3751,7 @@ export default function App() {
                     onChange={e => setNewLoanForm({ ...newLoanForm, name: e.target.value })}
                     placeholder={lang === 'th' ? 'ชื่อผู้กู้' : 'Borrower name'}
                     autoComplete="off"
-                    style={{ width: '100%', padding: '12px 14px', borderRadius: 12,
+                    style={{ width: '100%', padding: '12px 12px', borderRadius: 12,
                              border: newLoanForm.name ? `1.5px solid ${D_T.ink}` : `1px solid ${D_T.line}`,
                              background: D_T.surface2, fontSize: 16, fontWeight: 600, color: D_T.ink,
                              outline: 'none', fontFamily: font, boxSizing: 'border-box' }} />
@@ -3697,10 +3767,10 @@ export default function App() {
                           const idx = name.toLowerCase().indexOf(newLoanForm.name.toLowerCase());
                           return (
                             <div key={name} onMouseDown={() => setNewLoanForm(f => ({ ...f, name }))}
-                              style={{ padding: '11px 14px', cursor: 'pointer', fontSize: 14, fontWeight: 600,
+                              style={{ padding: '12px 12px', cursor: 'pointer', fontSize: 14, fontWeight: 600,
                                        color: D_T.ink, borderBottom: `1px solid ${D_T.line2}`,
                                        display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ fontSize: 11, color: D_T.mute, fontWeight: 500, width: 20, textAlign: 'center' }}>
+                              <span style={{ fontSize: 12, color: D_T.mute, fontWeight: 500, width: 20, textAlign: 'center' }}>
                                 {borrowerStats.find(b => b.name === name) ? (() => { const s = borrowerStats.find(b => b.name === name)!; return s.hasScam ? '⚠' : s.totalRenewals >= 6 ? '★' : s.totalRenewals >= 3 ? '◈' : '○'; })() : '○'}
                               </span>
                               <span>
@@ -3718,10 +3788,10 @@ export default function App() {
               {/* Amount + days */}
               <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12 }}>
                 <div style={{ minWidth: 0 }}>
-                  <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                  <label style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
                     {lang === 'th' ? 'เงินต้น' : 'Principal'}
                   </label>
-                  <div style={{ padding: '12px 14px', borderRadius: 12, background: D_T.surface2,
+                  <div style={{ padding: '12px 12px', borderRadius: 12, background: D_T.surface2,
                                 border: `1px solid ${D_T.line}`, display: 'flex', alignItems: 'baseline', overflow: 'hidden' }}>
                     <span style={{ fontSize: 18, fontWeight: 700, flexShrink: 0 }}>฿</span>
                     <input type="number" required min="1" value={newLoanForm.principal}
@@ -3730,48 +3800,48 @@ export default function App() {
                                letterSpacing: '-.02em', color: D_T.ink, outline: 'none', fontFamily: mono,
                                marginLeft: 4, fontVariantNumeric: 'tabular-nums', width: '100%' }} />
                   </div>
-                  <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
                     {['500', '1000', '1500', '2000', '3000'].map((p, i) => (
                       <span key={p} {...tap(() => setNewLoanForm(f => ({ ...f, principal: p })))}
-                        style={{ padding: '5px 9px', borderRadius: 999, cursor: 'pointer',
+                        style={{ padding: '4px 8px', borderRadius: 999, cursor: 'pointer',
                                  background: newLoanForm.principal === p ? D_T.ink : D_T.surface2,
                                  color: newLoanForm.principal === p ? D_T.bg : D_T.ink2,
-                                 fontSize: 11, fontWeight: 700, border: newLoanForm.principal === p ? 'none' : `1px solid ${D_T.line}` }}>
+                                 fontSize: 12, fontWeight: 700, border: newLoanForm.principal === p ? 'none' : `1px solid ${D_T.line}` }}>
                         {parseInt(p) >= 1000 ? (parseInt(p)/1000) + 'k' : p}
                       </span>
                     ))}
                   </div>
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                  <label style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
                     {lang === 'th' ? 'นานเท่าไหร่' : 'For how long'}
                   </label>
-                  <div style={{ padding: '8px 8px 8px 14px', borderRadius: 12, background: D_T.surface2,
-                                border: `1px solid ${D_T.line}`, display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+                  <div style={{ padding: '8px 8px 8px 12px', borderRadius: 12, background: D_T.surface2,
+                                border: `1px solid ${D_T.line}`, display: 'flex', alignItems: 'center', gap: 4, overflow: 'hidden' }}>
                     <input type="number" min="1" value={newLoanForm.daysBorrowed}
                       onChange={e => handleDaysChange(Number(e.target.value))}
                       style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 20, fontWeight: 700,
                                letterSpacing: '-.02em', color: D_T.ink, outline: 'none', fontFamily: mono,
                                fontVariantNumeric: 'tabular-nums', minWidth: 0 }} />
                     <span style={{ fontSize: 12, color: D_T.mute }}>{lang === 'th' ? 'วัน' : 'd'}</span>
-                    <div style={{ display: 'flex', gap: 3 }}>
+                    <div style={{ display: 'flex', gap: 2 }}>
                       <button type="button" onClick={() => handleDaysChange(newLoanForm.daysBorrowed - 1)}
-                        style={{ width: 26, height: 26, borderRadius: 7, border: `1px solid ${D_T.line}`,
+                        style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${D_T.line}`,
                                  background: D_T.surface, color: D_T.ink, fontSize: 14, fontWeight: 700,
                                  cursor: 'pointer', display: 'grid', placeItems: 'center', lineHeight: 1 }}>−</button>
                       <button type="button" onClick={() => handleDaysChange(newLoanForm.daysBorrowed + 1)}
-                        style={{ width: 26, height: 26, borderRadius: 7, border: `1px solid ${D_T.line}`,
+                        style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${D_T.line}`,
                                  background: D_T.surface, color: D_T.ink, fontSize: 14, fontWeight: 700,
                                  cursor: 'pointer', display: 'grid', placeItems: 'center', lineHeight: 1 }}>+</button>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                  <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
                     {[3, 5, 7].map(d => (
                       <span key={d} {...tap(() => handleDaysChange(d))}
-                        style={{ padding: '5px 12px', borderRadius: 999, cursor: 'pointer',
+                        style={{ padding: '4px 12px', borderRadius: 999, cursor: 'pointer',
                                  background: newLoanForm.daysBorrowed === d ? D_T.ink : D_T.surface2,
                                  color: newLoanForm.daysBorrowed === d ? D_T.bg : D_T.ink2,
-                                 fontSize: 11, fontWeight: 700, border: newLoanForm.daysBorrowed === d ? 'none' : `1px solid ${D_T.line}` }}>
+                                 fontSize: 12, fontWeight: 700, border: newLoanForm.daysBorrowed === d ? 'none' : `1px solid ${D_T.line}` }}>
                         {d}{lang === 'th' ? 'ว' : 'd'}
                       </span>
                     ))}
@@ -3781,7 +3851,7 @@ export default function App() {
 
               {/* Start date */}
               <div>
-                <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
+                <label style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
                   {lang === 'th' ? 'วันที่เริ่ม' : 'Start date'}
                 </label>
                 <div style={{ display: 'flex', gap: 12 }}>
@@ -3797,27 +3867,27 @@ export default function App() {
               {/* Interest rate */}
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
-                  <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                  <label style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
                     {lang === 'th' ? 'อัตราดอกเบี้ย' : 'Interest rate'}
                   </label>
-                  <span style={{ fontSize: 11, color: D_T.mute }}>{lang === 'th' ? 'ต่อรอบสัญญา' : 'per loan period'}</span>
+                  <span style={{ fontSize: 12, color: D_T.mute }}>{lang === 'th' ? 'ต่อรอบสัญญา' : 'per loan period'}</span>
                 </div>
-                <div style={{ padding: '12px 14px', borderRadius: 12, background: D_T.mint,
+                <div style={{ padding: '12px 12px', borderRadius: 12, background: D_T.mint,
                               display: 'flex', alignItems: 'center', gap: 12 }}>
                   <input type="number" min="0" value={newLoanForm.interestRate}
                     onChange={e => setNewLoanForm({ ...newLoanForm, interestRate: Number(e.target.value) })}
                     style={{ width: 60, border: 'none', background: 'transparent', fontSize: 20, fontWeight: 700,
                              letterSpacing: '-.02em', color: D_T.ink, outline: 'none', fontFamily: mono }} />
                   <span style={{ fontSize: 16, fontWeight: 700, color: D_T.mintDeep }}>%</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: D_T.mintDeep, marginLeft: 'auto' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: D_T.mintDeep, marginLeft: 'auto' }}>
                     ≈ {formatCurrency((parseFloat(newLoanForm.principal || '0') * newLoanForm.interestRate) / 100)}
                   </span>
                 </div>
               </div>
 
               {/* Preview */}
-              <div style={{ padding: 16, borderRadius: 14, background: D_T.surface2, border: `1px dashed ${D_T.line}` }}>
-                <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 10 }}>
+              <div style={{ padding: 16, borderRadius: 12, background: D_T.surface2, border: `1px dashed ${D_T.line}` }}>
+                <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
                   {lang === 'th' ? 'ตัวอย่าง' : "Here's how it'll look"}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
@@ -3827,7 +3897,7 @@ export default function App() {
                     [lang === 'th' ? 'กำหนด' : 'Due', newLoanForm.dueDate.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { day: 'numeric', month: 'short' }), D_T.mintDeep],
                   ] as [string, string, string][]).map(([lbl, v, c]) => (
                     <div key={lbl}>
-                      <div style={{ fontSize: 10.5, color: D_T.mute, fontWeight: 600 }}>{lbl}</div>
+                      <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 600 }}>{lbl}</div>
                       <div style={{ fontSize: 16, fontWeight: 700, color: c, marginTop: 4,
                                     letterSpacing: '-.01em', fontVariantNumeric: 'tabular-nums', fontFamily: mono }}>{v}</div>
                     </div>
@@ -3837,21 +3907,21 @@ export default function App() {
 
               {/* Note / Remark */}
               <div>
-                <label style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em',
+                <label style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em',
                                  textTransform: 'uppercase', display: 'block', marginBottom: 8 }}>
                   {lang === 'th' ? 'หมายเหตุ (ไม่บังคับ)' : 'Note (optional)'}
                 </label>
                 <textarea rows={2} value={newLoanForm.note}
                   onChange={e => setNewLoanForm({ ...newLoanForm, note: e.target.value })}
                   placeholder={lang === 'th' ? 'เพิ่มหมายเหตุหรือรายละเอียดเพิ่มเติม…' : 'Add a note or extra details…'}
-                  style={{ width: '100%', padding: '10px 14px', borderRadius: 12,
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: 12,
                            border: `1px solid ${D_T.line}`, background: D_T.surface2,
                            fontSize: 16, color: D_T.ink, outline: 'none', fontFamily: font,
                            boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.5 }} />
               </div>
             </form>
             {/* Footer */}
-            <div style={{ padding: '16px 26px 22px', display: 'flex', gap: 10,
+            <div style={{ padding: '16px 24px 24px', display: 'flex', gap: 8,
                           borderTop: `1px solid ${D_T.line}`, background: D_T.surface2 }}>
               <button type="button" onClick={() => setShowNewLoanModal(false)}
                 style={{ padding: '12px 16px', borderRadius: 999, background: D_T.surface,
@@ -3877,10 +3947,10 @@ export default function App() {
                       justifyContent: 'center', padding: 16, background: 'rgba(27,31,42,.5)',
                       backdropFilter: 'blur(4px)' }}
           onClick={() => setShowNotifModal(false)}>
-          <div style={{ background: D_T.surface, borderRadius: 22, width: '100%', maxWidth: 400,
+          <div style={{ background: D_T.surface, borderRadius: 24, width: '100%', maxWidth: 400,
                         overflow: 'hidden', boxShadow: '0 24px 60px -20px rgba(27,31,42,.35)' }}
             onClick={e => e.stopPropagation()}>
-            <div style={{ padding: '20px 24px', borderBottom: `1px solid ${D_T.line}`,
+            <div style={{ padding: '16px 24px', borderBottom: `1px solid ${D_T.line}`,
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                           background: D_T.surface2 }}>
               <div style={{ fontSize: 18, fontWeight: 700 }}>
@@ -3890,8 +3960,8 @@ export default function App() {
                 style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
                          border: 'none', fontSize: 14, cursor: 'pointer' }}><X size={16} weight="bold" aria-hidden="true" /></button>
             </div>
-            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ padding: 14, borderRadius: 14, textAlign: 'center',
+            <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ padding: 12, borderRadius: 12, textAlign: 'center',
                             background: isSubscribed ? D_T.mint + '40' : notifPermission === 'denied' ? D_T.blush + '40' : D_T.surface2,
                             border: `1px solid ${isSubscribed ? D_T.mint : notifPermission === 'denied' ? D_T.blush : D_T.line}` }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: isSubscribed ? D_T.mintDeep : notifPermission === 'denied' ? D_T.blushDeep : D_T.ink2 }}>
@@ -3902,17 +3972,17 @@ export default function App() {
               </div>
               {isSubscribed && (
                 <div>
-                  <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
                     {lang === 'th' ? 'ทดสอบ' : 'Test'}
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <button onClick={() => handleTestNotif('morning')} disabled={isSendingTestNotif}
-                      style={{ padding: '10px 0', borderRadius: 12, background: D_T.lavender, color: D_T.lavDeep,
+                      style={{ padding: '8px 0', borderRadius: 12, background: D_T.lavender, color: D_T.lavDeep,
                                border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>
                       {lang === 'th' ? 'เช้า' : 'Morning'}
                     </button>
                     <button onClick={() => handleTestNotif('afternoon')} disabled={isSendingTestNotif}
-                      style={{ padding: '10px 0', borderRadius: 12, background: D_T.lavender, color: D_T.lavDeep,
+                      style={{ padding: '8px 0', borderRadius: 12, background: D_T.lavender, color: D_T.lavDeep,
                                border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: font }}>
                       {lang === 'th' ? 'บ่าย' : 'Afternoon'}
                     </button>
@@ -3952,17 +4022,17 @@ export default function App() {
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={() => setShowFabMenu(false)}>
             <div style={{ position: 'absolute', inset: 0, background: 'rgba(27,31,42,.6)', backdropFilter: 'blur(4px)' }} />
-            <motion.div style={{ position: 'relative', padding: '0 24px 112px', display: 'flex', flexDirection: 'column', gap: 12 }}
+            <motion.div style={{ position: 'relative', padding: '0 24px 96px', display: 'flex', flexDirection: 'column', gap: 12 }}
               initial={{ opacity: 0, y: 32 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 16 }}
               transition={{ duration: 0.2 }} onClick={e => e.stopPropagation()}>
               <button onClick={() => { setShowFabMenu(false); setShowNewLoanModal(true); }}
-                style={{ width: '100%', padding: '16px 0', borderRadius: 20, background: D_T.ink,
+                style={{ width: '100%', padding: '16px 0', borderRadius: 16, background: D_T.ink,
                          color: D_T.bg, border: 'none', fontSize: 14, fontWeight: 700,
                          cursor: 'pointer', fontFamily: font, boxShadow: '0 8px 24px rgba(27,31,42,.3)' }}>
                 {lang === 'th' ? '+ ปล่อยกู้' : '+ Lend money'}
               </button>
               <button onClick={() => { setShowFabMenu(false); setShowWithdrawModal(true); }}
-                style={{ width: '100%', padding: '16px 0', borderRadius: 20, background: D_T.surface,
+                style={{ width: '100%', padding: '16px 0', borderRadius: 16, background: D_T.surface,
                          color: D_T.ink, border: `1px solid ${D_T.line}`, fontSize: 14, fontWeight: 700,
                          cursor: 'pointer', fontFamily: font }}>
                 {lang === 'th' ? 'ถอนเงิน' : 'Withdraw'}
@@ -3979,13 +4049,13 @@ export default function App() {
                                backdropFilter: 'blur(4px)' }}
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={() => setShowConfirmDefault(false)}>
-            <motion.div style={{ background: D_T.surface, borderRadius: 22, width: '100%', maxWidth: 360,
+            <motion.div style={{ background: D_T.surface, borderRadius: 24, width: '100%', maxWidth: 360,
                                   overflow: 'hidden', boxShadow: '0 24px 60px -20px rgba(27,31,42,.35)' }}
               initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
               onClick={e => e.stopPropagation()}>
-              <div style={{ padding: '28px 24px', textAlign: 'center' }}>
-                <div style={{ width: 56, height: 56, borderRadius: 18, background: D_T.blush,
+              <div style={{ padding: '24px 24px', textAlign: 'center' }}>
+                <div style={{ width: 56, height: 56, borderRadius: 16, background: D_T.blush,
                               display: 'grid', placeItems: 'center', margin: '0 auto 16px',
                               fontSize: 24 }}>💀</div>
                 <div style={{ fontSize: 18, fontWeight: 700, color: D_T.ink, marginBottom: 8 }}>
@@ -3994,7 +4064,7 @@ export default function App() {
                 <div style={{ fontSize: 12, color: D_T.mute, marginBottom: 24, lineHeight: 1.5 }}>
                   {lang === 'th' ? 'รายการนี้จะถูกบันทึกว่าโดนบิด ยากที่จะยกเลิก' : 'This loan will be marked as defaulted. Hard to undo.'}
                 </div>
-                <div style={{ display: 'flex', gap: 10 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => setShowConfirmDefault(false)}
                     style={{ flex: 1, padding: '12px 0', borderRadius: 999, background: D_T.surface2,
                              color: D_T.ink2, border: `1px solid ${D_T.line}`, fontSize: 12, fontWeight: 700,
@@ -4019,13 +4089,13 @@ export default function App() {
                       justifyContent: 'center', padding: 16, background: 'rgba(27,31,42,.5)',
                       backdropFilter: 'blur(4px)' }}
           onClick={() => setShowProfitModal(false)}>
-          <div style={{ background: D_T.surface, borderRadius: 22, width: '100%', maxWidth: 380,
+          <div style={{ background: D_T.surface, borderRadius: 24, width: '100%', maxWidth: 380,
                         overflow: 'hidden', boxShadow: '0 24px 60px -20px rgba(27,31,42,.35)' }}
             onClick={e => e.stopPropagation()}>
-            <div style={{ padding: '20px 24px', borderBottom: `1px solid ${D_T.line}`, background: D_T.surface2,
+            <div style={{ padding: '16px 24px', borderBottom: `1px solid ${D_T.line}`, background: D_T.surface2,
                           display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <div style={{ fontSize: 11, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
                   {lang === 'th' ? 'รายละเอียดกำไร' : 'Profit Breakdown'}
                 </div>
                 <div style={{ fontSize: 24, fontWeight: 700, marginTop: 4, fontVariantNumeric: 'tabular-nums',
@@ -4037,19 +4107,19 @@ export default function App() {
                 style={{ width: 30, height: 30, borderRadius: 99, background: 'rgba(27,31,42,.06)',
                          border: 'none', fontSize: 14, cursor: 'pointer' }}><X size={16} weight="bold" aria-hidden="true" /></button>
             </div>
-            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ padding: '16px 24px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[
                 [lang === 'th' ? 'ดอกที่ได้รับ' : 'Interest received', s.paidInterest, D_T.mint, D_T.mintDeep, '+'],
                 [lang === 'th' ? 'หักโดนบิด' : 'Defaults', s.scamPrincipal, D_T.blush, D_T.blushDeep, '−'],
                 [lang === 'th' ? 'หักเบิก' : 'Withdrawals', s.withdrawn, D_T.butter, D_T.butterDeep, '−'],
               ].map(([label, val, bg, fg, sign]) => (
                 <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                                      padding: '10px 14px', borderRadius: 12, background: bg as string + '40' }}>
+                                      padding: '8px 12px', borderRadius: 12, background: bg as string + '40' }}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: fg as string }}>{label}</span>
                   <span style={{ fontSize: 14, fontWeight: 700, color: fg as string, fontFamily: mono }}>{sign}{formatCurrency(val as number)}</span>
                 </div>
               ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px',
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 12px',
                             borderTop: `1.5px solid ${D_T.ink}`, marginTop: 4 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' }}>
                   {lang === 'th' ? 'กำไรสุทธิ' : 'Net Profit'}
@@ -4059,12 +4129,12 @@ export default function App() {
                   {formatCurrency(s.netProfit)}
                 </span>
               </div>
-              <div style={{ padding: '14px', borderRadius: 14, background: D_T.lavender + '40',
+              <div style={{ padding: '12px', borderRadius: 12, background: D_T.lavender + '40',
                             border: `1px solid ${D_T.lavender}` }}>
-                <div style={{ fontSize: 11, color: D_T.lavDeep, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: D_T.lavDeep, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 8 }}>
                   {lang === 'th' ? 'ดอกรอรับ' : 'Unrealized Interest'}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <span style={{ fontSize: 12, color: D_T.ink2 }}>{lang === 'th' ? 'ดอกที่ยังไม่ถึงกำหนด' : 'Pending'}</span>
                   <span style={{ fontSize: 12, fontWeight: 700, fontFamily: mono, color: D_T.lavDeep }}>+{formatCurrency(s.unpaidInterest)}</span>
                 </div>
@@ -4075,16 +4145,16 @@ export default function App() {
                   </span>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 <div style={{ padding: '12px', borderRadius: 12, background: D_T.surface2, textAlign: 'center' }}>
                   <div style={{ fontSize: 18, fontWeight: 700, fontFamily: mono }}>{s.profitPct.toFixed(1)}%</div>
-                  <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>
                     {lang === 'th' ? 'yield ต่อทุน' : 'Yield on capital'}
                   </div>
                 </div>
                 <div style={{ padding: '12px', borderRadius: 12, background: D_T.surface2, textAlign: 'center' }}>
                   <div style={{ fontSize: 18, fontWeight: 700, fontFamily: mono }}>{formatCurrency(s.paidInterest)}</div>
-                  <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', marginTop: 2 }}>
                     {lang === 'th' ? 'ดอกสะสม' : 'Total interest'}
                   </div>
                 </div>
@@ -4098,15 +4168,15 @@ export default function App() {
         <div style={{ position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(27,31,42,.5)',
                       backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-end' }}
           onClick={() => setShowWeeklySheet(false)}>
-          <div style={{ background: D_T.surface, width: '100%', borderRadius: '20px 20px 0 0',
+          <div style={{ background: D_T.surface, width: '100%', borderRadius: '16px 16px 0 0',
                         maxHeight: '80vh', display: 'flex', flexDirection: 'column',
                         boxShadow: '0 -8px 40px -12px rgba(27,31,42,.3)' }}
             onClick={e => e.stopPropagation()}>
-            <div style={{ padding: '14px 20px', borderBottom: `1px solid ${D_T.line}`,
-                          background: D_T.surface2, borderRadius: '20px 20px 0 0',
+            <div style={{ padding: '12px 16px', borderBottom: `1px solid ${D_T.line}`,
+                          background: D_T.surface2, borderRadius: '16px 16px 0 0',
                           display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
               <div>
-                <div style={{ fontSize: 10, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
+                <div style={{ fontSize: 12, color: D_T.mute, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase' }}>
                   {lang === 'th' ? 'นับรอบทุกวันจันทร์' : 'Resets every Monday'}
                 </div>
                 <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>
@@ -4122,33 +4192,33 @@ export default function App() {
                 const fi = (v: number) => new Intl.NumberFormat('th-TH', { maximumFractionDigits: 0 }).format(Math.round(v));
                 const fmtDay = (d: Date) => d.toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { day: 'numeric', month: 'short' });
                 return weeklySummary.length === 0
-                  ? <div style={{ padding: '40px 20px', textAlign: 'center', color: D_T.mute, fontSize: 12 }}>ยังไม่มีข้อมูล</div>
+                  ? <div style={{ padding: '40px 16px', textAlign: 'center', color: D_T.mute, fontSize: 12 }}>ยังไม่มีข้อมูล</div>
                   : weeklySummary.map(w => {
                       const monday = new Date(w.key + 'T00:00:00');
                       const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
                       const net = w.interest - w.scam - w.withdrawn;
                       return (
-                        <div key={w.key} style={{ padding: '13px 20px', borderBottom: `1px solid ${D_T.line2}`,
+                        <div key={w.key} style={{ padding: '12px 16px', borderBottom: `1px solid ${D_T.line2}`,
                                                   display: 'flex', alignItems: 'center', gap: 12,
                                                   background: w.isCurrentWeek ? D_T.mint + '18' : 'transparent' }}>
                           <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
                               <span style={{ fontSize: 12, fontWeight: 700, color: D_T.ink }}>
                                 {fmtDay(monday)} – {fmtDay(sunday)}
                               </span>
                               {w.isCurrentWeek && (
-                                <span style={{ fontSize: 8, fontWeight: 700, color: D_T.mintDeep,
-                                               background: D_T.mint + '60', borderRadius: 6, padding: '1px 6px',
+                                <span style={{ fontSize: 12, fontWeight: 700, color: D_T.mintDeep,
+                                               background: D_T.mint + '60', borderRadius: 6, padding: '0 4px',
                                                letterSpacing: '.05em', textTransform: 'uppercase' }}>
                                   {lang === 'th' ? 'สัปดาห์นี้' : 'now'}
                                 </span>
                               )}
                             </div>
-                            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: 11, color: D_T.mintDeep, fontWeight: 700, fontFamily: mono }}>+฿{fi(w.interest)}</span>
-                              {w.scam > 0 && <span style={{ fontSize: 11, color: D_T.blushDeep, fontFamily: mono }}>−฿{fi(w.scam)}</span>}
-                              {w.withdrawn > 0 && <span style={{ fontSize: 11, color: D_T.butterDeep, fontFamily: mono }}>เบิก ฿{fi(w.withdrawn)}</span>}
-                              <span style={{ fontSize: 10, color: D_T.mute }}>{w.count} ราย</span>
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 12, color: D_T.mintDeep, fontWeight: 700, fontFamily: mono }}>+฿{fi(w.interest)}</span>
+                              {w.scam > 0 && <span style={{ fontSize: 12, color: D_T.blushDeep, fontFamily: mono }}>−฿{fi(w.scam)}</span>}
+                              {w.withdrawn > 0 && <span style={{ fontSize: 12, color: D_T.butterDeep, fontFamily: mono }}>เบิก ฿{fi(w.withdrawn)}</span>}
+                              <span style={{ fontSize: 12, color: D_T.mute }}>{w.count} ราย</span>
                             </div>
                           </div>
                           <div style={{ flexShrink: 0 }}>
@@ -4167,8 +4237,8 @@ export default function App() {
 
       {toastMessage && (
         <div role="status" aria-live="polite" style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 100 }} className="animate-slide-up">
-          <div style={{ padding: '12px 20px', borderRadius: 14, background: toastMessage.type === 'success' ? D_T.mintDeep : D_T.blushDeep,
-                        color: '#fff', fontWeight: 700, fontSize: 12, display: 'flex', alignItems: 'center', gap: 10,
+          <div style={{ padding: '12px 16px', borderRadius: 12, background: toastMessage.type === 'success' ? D_T.mintDeep : D_T.blushDeep,
+                        color: '#fff', fontWeight: 700, fontSize: 12, display: 'flex', alignItems: 'center', gap: 8,
                         boxShadow: '0 8px 24px rgba(27,31,42,.3)', fontFamily: font }}>
             {toastMessage.type === 'success' ? '✓' : '⚠'} {toastMessage.text}
           </div>

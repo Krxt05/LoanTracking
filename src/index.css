@@ -172,3 +172,7 @@ p { text-wrap: pretty; }
   }
   button:not(:disabled):active { transform: none; }
 }
+
+/* Skeleton loading: opacity pulse only */
+@keyframes lt-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+.lt-sk { animation: lt-pulse 1.4s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
