@@ -1,9 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Hanken Grotesk", "IBM Plex Sans Thai", system-ui, sans-serif;
-  --font-mono: "DM Mono", ui-monospace, monospace;
+  --font-sans: "Manrope", "IBM Plex Sans Thai", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
 }
 
 /* ── Custom keyframes ── */
@@ -146,4 +146,26 @@
 body {
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
+}
+
+
+/* ── Interaction states (design skill B7/B9) ── */
+:root { --ease-base: cubic-bezier(0.22, 1, 0.36, 1); }
+button { transition: transform 300ms var(--ease-base), opacity 300ms var(--ease-base); }
+button:not(:disabled):active { transform: scale(0.98); }
+button:focus-visible, input:focus-visible, select:focus-visible, [role="button"]:focus-visible {
+  outline: 2px solid #2f7a5a;
+  outline-offset: 2px;
+}
+.lt-btn:not(:disabled):hover { opacity: 0.85; }
+h1, h2, h3 { text-wrap: balance; }
+p { text-wrap: pretty; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+  button:not(:disabled):active { transform: none; }
 }

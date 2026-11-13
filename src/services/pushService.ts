@@ -94,7 +94,7 @@ export async function unsubscribeFromPush(): Promise<boolean> {
 // ทดสอบ notification (local - ไม่ผ่าน server)
 export async function sendTestNotification(title: string, body: string): Promise<void> {
   if (Notification.permission !== 'granted') {
-    alert('กรุณาอนุญาตการแจ้งเตือนก่อนครับ');
+    console.warn('Notification permission not granted');
     return;
   }
 

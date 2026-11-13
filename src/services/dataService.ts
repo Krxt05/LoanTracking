@@ -18,8 +18,42 @@ import { parseNumeric, parseThaiDate } from '../lib/utils';
 
 export const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRYsFTD4K-tyIFIJry2YLJtnv6gUxZy9VZCvRZcOeGrD9X7inE8udy-cJU_ajJEWcouDSswJZYdAjE8/pub?gid=164801172&single=true&output=csv';
 
-// เงินต้นเริ่มต้นที่ลงทุน — แก้ตรงนี้เมื่อเพิ่มทุน
-export const INITIAL_CAPITAL = 40000;
+// ทุนตั้งต้น (ค่าเริ่มต้น) — ค่าจริงเก็บใน Vercel KV ผ่าน /api/capital
+// และปรับได้จากในแอป (ปุ่ม "เช็คกับบัญชีจริง") ไม่ต้องแก้โค้ด
+// 11,980 = เงินในบัญชีจริง 4,000 + ปล่อยกู้อยู่ 9,500 − กำไรที่ได้แล้ว 1,520 (14/11/2026)
+export const DEFAULT_CAPITAL = 11980;
+
+export interface CapitalConfig {
+  capital: number;
+  updatedAt?: string;
+  history?: { capital: number; bankBalance?: number; at: string }[];
+}
+
+export async function fetchCapital(): Promise<CapitalConfig> {
+  try {
+    const res = await fetch('/api/capital', { cache: 'no-store' });
+    if (!res.ok) throw new Error(String(res.status));
+    const json = await res.json();
+    if (typeof json?.capital === 'number' && json.capital > 0) return json;
+  } catch (e) {
+    console.warn('fetchCapital fallback to default:', e);
+  }
+  return { capital: DEFAULT_CAPITAL };
+}
+
+export async function saveCapital(capital: number, bankBalance?: number): Promise<CapitalConfig | null> {
+  try {
+    const res = await fetch('/api/capital', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capital, bankBalance }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
 
 export interface DashboardSummary {
   available: number;       // ยอดว่าง
@@ -78,7 +112,7 @@ export interface AppData {
   loans: LoanRecord[];
 }
 
-export async function fetchAppData(): Promise<AppData | null> {
+export async function fetchAppData(capital: number = DEFAULT_CAPITAL): Promise<AppData | null> {
   const fetchProcess = async () => {
     return await new Promise<AppData | null>((resolve) => {
       Papa.parse(`${CSV_URL}&_=${new Date().getTime()}`, {
@@ -179,57 +213,7 @@ export async function fetchAppData(): Promise<AppData | null> {
               }
             }
 
-            // Compute summary from loan records
-            let paidPrincipal = 0, paidInterest = 0;
-            let unpaidPrincipal = 0, unpaidInterest = 0;
-            let scamPrincipal = 0, withdrawnTotal = 0;
-
-            for (const l of loans) {
-              if (l.isWithdrawn) {
-                withdrawnTotal += l.principal;
-              } else if (l.isScam) {
-                scamPrincipal += l.principal;
-              } else if (l.isPaid) {
-                paidPrincipal += l.paidPrincipal;
-                paidInterest += l.paidInterest;
-              } else if (l.isRenewed) {
-                paidInterest += l.paidInterest;
-              } else {
-                unpaidPrincipal += l.principal;
-                unpaidInterest += l.expectedInterest;
-              }
-            }
-
-            const totalBorrowed = paidPrincipal + unpaidPrincipal + scamPrincipal;
-            const totalInterest = paidInterest + unpaidInterest;
-            const totalPaid = paidPrincipal + paidInterest;
-            const totalExpected = unpaidPrincipal + unpaidInterest;
-            const grossProfit = paidInterest;
-            const netProfit = paidInterest - scamPrincipal - withdrawnTotal;
-            // วงเงิน = เงินต้นเริ่มต้น + ดอกที่ได้รับ − โดนบิด − เบิก
-            const totalLimit = INITIAL_CAPITAL + paidInterest - scamPrincipal - withdrawnTotal;
-            const profitPct = ((totalLimit - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100;
-            // ยอดว่าง = วงเงิน − ปล่อยกู้อยู่
-            const available = totalLimit - unpaidPrincipal;
-
-            const summary: DashboardSummary = {
-              available,
-              totalLimit,
-              profitPct,
-              grossProfit,
-              netProfit,
-              withdrawn: withdrawnTotal,
-              totalExpected,
-              totalPaid,
-              totalUnpaid: totalExpected,
-              totalBorrowed,
-              totalInterest,
-              paidPrincipal,
-              paidInterest,
-              unpaidPrincipal,
-              unpaidInterest,
-              scamPrincipal,
-            };
+            const summary = computeSummary(loans, capital);
 
             resolve({ summary, loans });
           } catch (e) {
@@ -255,12 +239,58 @@ export async function fetchAppData(): Promise<AppData | null> {
   return Promise.race([fetchProcess(), timeoutPromise]);
 }
 
+// สรุปยอดจากรายการกู้ + ทุนตั้งต้น
+//   วงเงิน   = ทุน + ดอกที่ได้รับ − โดนบิด − เบิก
+//   ยอดว่าง = วงเงิน − ต้นที่ปล่อยกู้อยู่  (= เงินที่ควรอยู่ในบัญชีจริง)
+export function computeSummary(loans: LoanRecord[], capital: number): DashboardSummary {
+  let paidPrincipal = 0, paidInterest = 0;
+  let unpaidPrincipal = 0, unpaidInterest = 0;
+  let scamPrincipal = 0, withdrawnTotal = 0;
+
+  for (const l of loans) {
+    if (l.isWithdrawn) {
+      withdrawnTotal += l.principal;
+    } else if (l.isScam) {
+      scamPrincipal += l.principal;
+    } else if (l.isPaid) {
+      paidPrincipal += l.paidPrincipal;
+      paidInterest += l.paidInterest;
+    } else if (l.isRenewed) {
+      paidInterest += l.paidInterest;
+    } else {
+      unpaidPrincipal += l.principal;
+      unpaidInterest += l.expectedInterest;
+    }
+  }
+
+  const totalLimit = capital + paidInterest - scamPrincipal - withdrawnTotal;
+  const totalExpected = unpaidPrincipal + unpaidInterest;
+  return {
+    available: totalLimit - unpaidPrincipal,
+    totalLimit,
+    profitPct: capital > 0 ? ((totalLimit - capital) / capital) * 100 : 0,
+    grossProfit: paidInterest,
+    netProfit: paidInterest - scamPrincipal - withdrawnTotal,
+    withdrawn: withdrawnTotal,
+    totalExpected,
+    totalPaid: paidPrincipal + paidInterest,
+    totalUnpaid: totalExpected,
+    totalBorrowed: paidPrincipal + unpaidPrincipal + scamPrincipal,
+    totalInterest: paidInterest + unpaidInterest,
+    paidPrincipal,
+    paidInterest,
+    unpaidPrincipal,
+    unpaidInterest,
+    scamPrincipal,
+  };
+}
+
 // URL ของ Web App ที่ได้จาก Google Apps Script (ตอน Deploy)
 export const GOOGLE_SCRIPT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycby-lRM0gDRdqvyVYbIj4_-PrGOoxO_BDKbdJ012PhWGWIkzruVehHl1Td6ArovHnQs/exec";
 
 export async function updateLoanStatus(id: string, action: 'ชำระแล้ว' | 'ต่อดอก' | 'โดนบิด', actionDate?: string, penalty?: number, renewFromDate?: string): Promise<boolean> {
   if (!GOOGLE_SCRIPT_WEB_APP_URL) {
-    alert("กรุณาใส่ GOOGLE_SCRIPT_WEB_APP_URL ในไฟล์ src/services/dataService.ts ก่อนครับ");
+    console.error("Missing GOOGLE_SCRIPT_WEB_APP_URL");
     return false;
   }
 
@@ -284,7 +314,6 @@ export async function updateLoanStatus(id: string, action: 'ชำระแล�
     return result.success;
   } catch (error: any) {
     console.error("Failed to update status:", error);
-    alert("เกิดข้อผิดพลาด: " + error.message);
     return false;
   }
 }
@@ -320,7 +349,6 @@ export async function editExistingLoan(id: string, editData: {
     return result.success;
   } catch (error: any) {
     console.error("Failed to edit loan:", error);
-    alert("เกิดข้อผิดพลาดในการแก้ไขข้อมูล: " + error.message);
     return false;
   }
 }
