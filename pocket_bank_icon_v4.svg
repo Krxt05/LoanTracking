@@ -1,0 +1,26 @@
+<svg width="100%" viewBox="0 0 680 320" role="img" xmlns="http://www.w3.org/2000/svg" style="">
+  <title style="fill:rgb(0, 0, 0);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto">Pocket Bank icon</title>
+  <desc style="fill:rgb(0, 0, 0);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto">Premium app icon — geometric rings with gold P monogram, no arrow</desc>
+
+  <defs>
+    <clipPath id="iconclip">
+      <rect x="270" y="60" width="140" height="140" rx="34"/>
+    </clipPath>
+  <mask id="imagine-text-gaps-kjysl3" maskUnits="userSpaceOnUse"><rect x="0" y="0" width="680" height="320" fill="white"/><rect x="318.26953125" y="102.5" width="43.521484375" height="63" fill="black" rx="2"/></mask></defs>
+
+  <rect x="270" y="60" width="140" height="140" rx="34" fill="#181815" style="fill:rgb(24, 24, 21);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+  <circle cx="310" cy="100" r="88" fill="#222220" clip-path="url(#iconclip)" style="fill:rgb(34, 34, 32);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+  <circle cx="310" cy="100" r="66" fill="#2a2a26" clip-path="url(#iconclip)" style="fill:rgb(42, 42, 38);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+  <circle cx="310" cy="100" r="44" fill="#323230" clip-path="url(#iconclip)" style="fill:rgb(50, 50, 48);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+  <!-- Gold arc sweep -->
+  <path d="M340 172 A52 52 0 0 0 392 120" fill="none" stroke="#e8b84b" stroke-width="5" stroke-linecap="round" clip-path="url(#iconclip)" style="fill:none;stroke:rgb(232, 184, 75);color:rgb(0, 0, 0);stroke-width:5px;stroke-linecap:round;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+  <path d="M340 172 A36 36 0 0 0 376 136" fill="none" stroke="#e8b84b" stroke-width="2.5" stroke-linecap="round" opacity="0.4" clip-path="url(#iconclip)" mask="url(#imagine-text-gaps-kjysl3)" style="fill:none;stroke:rgb(232, 184, 75);color:rgb(0, 0, 0);stroke-width:2.5px;stroke-linecap:round;stroke-linejoin:miter;opacity:0.4;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+
+  <!-- P monogram — clean geometric -->
+  <text x="340" y="152" text-anchor="middle" font-family="Georgia,serif" font-size="52" font-weight="700" fill="#ffffff" letter-spacing="-1" style="fill:rgb(255, 255, 255);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:Georgia, serif;font-size:52px;font-weight:700;text-anchor:middle;dominant-baseline:auto">P</text>
+
+  <!-- Gold dot -->
+  <circle cx="392" cy="182" r="5" fill="#e8b84b" style="fill:rgb(232, 184, 75);stroke:none;color:rgb(0, 0, 0);stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;opacity:1;font-family:&quot;Anthropic Sans&quot;, -apple-system, &quot;system-ui&quot;, &quot;Segoe UI&quot;, sans-serif;font-size:16px;font-weight:400;text-anchor:start;dominant-baseline:auto"/>
+</svg>
